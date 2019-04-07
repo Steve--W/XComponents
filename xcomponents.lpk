@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <Package Version="4">
+    <PathDelim Value="\"/>
+    <Name Value="XComponents"/>
+    <Type Value="RunAndDesignTime"/>
+    <CompilerOptions>
+      <Version Value="11"/>
+      <PathDelim Value="\"/>
+      <SearchPaths>
+        <IncludeFiles Value="Icons"/>
+        <OtherUnitFiles Value="$(XComponents_Pas2JSPaths);$(XComponents_cefPaths)"/>
+        <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
+      </SearchPaths>
+      <Conditionals Value="if ((TargetOS='win32') or (TargetOS='win64')) then
+ begin
+   XComponents_Pas2JSPaths :=  'C:\pas2jsnew\compiler\packages\fcl-js\src\;C:\pas2jsnew\compiler\packages\fcl-json\src\;C:\pas2jsnew\compiler\packages\fcl-passrc\src\;C:\pas2jsnew\compiler\packages\pastojs\src\';
+   XComponents_cefPaths :=  'C:\cef4\CEF4Delphi-master\packages\lib\i386-win32\';
+ end
+ else if (TargetOS='linux') then
+ begin
+   XComponents_Pas2JSPaths :=  '/home/pi/pas2jsnew/compiler/packages/fcl-js/src/;/home/pi/pas2jsnew/compiler/packages/fcl-json/src/;/home/pi/pas2jsnew/compiler/packages/fcl-passrc/src/;/home/pi/pas2jsnew/compiler/packages/pastojs/src/';
+   XComponents_cefPaths :=  '';
+ end;"/>
+      <BuildMacros>
+        <Count Value="2"/>
+        <Item1>
+          <Identifier Value="XComponents_Pas2JSPaths"/>
+          <Description Value="C:\pas2jsnew\compiler\packages\fcl-js\src\;C:\pas2jsnew\compiler\packages\fcl-json\src\;C:\pas2jsnew\compiler\packages\fcl-passrc\src\;C:\pas2jsnew\compiler\packages\pastojs\src\"/>
+          <Values Count="2">
+            <Item1 Value="win"/>
+            <Item2 Value="rasp"/>
+          </Values>
+          <ValueDescriptions Count="2"/>
+        </Item1>
+        <Item2>
+          <Identifier Value="XComponents_cefPaths"/>
+          <Values Count="2">
+            <Item1 Value="win"/>
+            <Item2 Value="rasp"/>
+          </Values>
+          <ValueDescriptions Count="2"/>
+        </Item2>
+      </BuildMacros>
+      <Linking>
+        <Debugging>
+          <UseLineInfoUnit Value="False"/>
+        </Debugging>
+      </Linking>
+      <Other>
+        <CustomOptions Value="//-dChromium"/>
+      </Other>
+    </CompilerOptions>
+    <Files Count="44">
+      <Item1>
+        <Filename Value="wrapperpanel.pas"/>
+        <UnitName Value="WrapperPanel"/>
+      </Item1>
+      <Item2>
+        <Filename Value="stringutils.pas"/>
+        <UnitName Value="StringUtils"/>
+      </Item2>
+      <Item3>
+        <Filename Value="lazsutils.pas"/>
+        <UnitName Value="LazsUtils"/>
+      </Item3>
+      <Item4>
+        <Filename Value="nodeutils.pas"/>
+        <UnitName Value="NodeUtils"/>
+      </Item4>
+      <Item5>
+        <Filename Value="htmlutils.pas"/>
+        <UnitName Value="HTMLUtils"/>
+      </Item5>
+      <Item6>
+        <AddToUsesPkgSection Value="False"/>
+      </Item6>
+      <Item7>
+        <Filename Value="events.pas"/>
+        <UnitName Value="Events"/>
+      </Item7>
+      <Item8>
+        <Filename Value="xform.pas"/>
+        <UnitName Value="XForm"/>
+      </Item8>
+      <Item9>
+        <Filename Value="eventsinterface.pas"/>
+        <UnitName Value="EventsInterface"/>
+      </Item9>
+      <Item10>
+        <Filename Value="utilsjscompile.pas"/>
+        <UnitName Value="UtilsJSCompile"/>
+      </Item10>
+      <Item11>
+        <Filename Value="xvbox.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XVBox"/>
+      </Item11>
+      <Item12>
+        <Filename Value="xhbox.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XHBox"/>
+      </Item12>
+      <Item13>
+        <Filename Value="xscrollbox.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XScrollBox"/>
+      </Item13>
+      <Item14>
+        <Filename Value="xtabcontrol.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XTabControl"/>
+      </Item14>
+      <Item15>
+        <Filename Value="xgroupbox.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XGroupBox"/>
+      </Item15>
+      <Item16>
+        <Filename Value="xbutton.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XButton"/>
+      </Item16>
+      <Item17>
+        <Filename Value="xeditbox.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XEditBox"/>
+      </Item17>
+      <Item18>
+        <Filename Value="xcheckbox.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XCheckBox"/>
+      </Item18>
+      <Item19>
+        <Filename Value="xlabel.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XLabel"/>
+      </Item19>
+      <Item20>
+        <Filename Value="xhyperlink.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XHyperLink"/>
+      </Item20>
+      <Item21>
+        <Filename Value="xcombobox.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XComboBox"/>
+      </Item21>
+      <Item22>
+        <Filename Value="xmemo.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XMemo"/>
+      </Item22>
+      <Item23>
+        <Filename Value="xtree.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XTree"/>
+      </Item23>
+      <Item24>
+        <Filename Value="xtable.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XTable"/>
+      </Item24>
+      <Item25>
+        <Filename Value="xcode.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XCode"/>
+      </Item25>
+      <Item26>
+        <Filename Value="xprogressbar.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XProgressBar"/>
+      </Item26>
+      <Item27>
+        <Filename Value="xnumericslider.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XNumericSlider"/>
+      </Item27>
+      <Item28>
+        <Filename Value="xnumberspinner.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XNumberSpinner"/>
+      </Item28>
+      <Item29>
+        <Filename Value="xdatepicker.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XDatePicker"/>
+      </Item29>
+      <Item30>
+        <Filename Value="xcolorpicker.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XColorPicker"/>
+      </Item30>
+      <Item31>
+        <Filename Value="ximage.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XImage"/>
+      </Item31>
+      <Item32>
+        <Filename Value="xbitmap.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XBitMap"/>
+      </Item32>
+      <Item33>
+        <Filename Value="xradiobtns.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XRadioBtns"/>
+      </Item33>
+      <Item34>
+        <Filename Value="xmenu.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XMenu"/>
+      </Item34>
+      <Item35>
+        <Filename Value="xiframe.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XIFrame"/>
+      </Item35>
+      <Item36>
+        <Filename Value="xhtmltext.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XHTMLText"/>
+      </Item36>
+      <Item37>
+        <Filename Value="xhtmleditor.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XHTMLEditor"/>
+      </Item37>
+      <Item38>
+        <Filename Value="xsvgcontainer.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XSVGContainer"/>
+      </Item38>
+      <Item39>
+        <Filename Value="xgpucanvas.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XGPUCanvas"/>
+      </Item39>
+      <Item40>
+        <Filename Value="xthreads.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XThreads"/>
+      </Item40>
+      <Item41>
+        <Filename Value="xtrapevents.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XTrapEvents"/>
+      </Item41>
+      <Item42>
+        <Filename Value="xstore.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XStore"/>
+      </Item42>
+      <Item43>
+        <Filename Value="pastedialogunit.pas"/>
+        <UnitName Value="PasteDialogUnit"/>
+      </Item43>
+      <Item44>
+        <Filename Value="compilerlogunit.pas"/>
+        <UnitName Value="CompilerLogUnit"/>
+      </Item44>
+    </Files>
+    <RequiredPkgs Count="6">
+      <Item1>
+        <PackageName Value="TurboPowerIPro"/>
+      </Item1>
+      <Item2>
+        <PackageName Value="SynEdit"/>
+      </Item2>
+      <Item3>
+        <PackageName Value="RunTimeTypeInfoControls"/>
+      </Item3>
+      <Item4>
+        <PackageName Value="CodeTools"/>
+      </Item4>
+      <Item5>
+        <PackageName Value="DateTimeCtrls"/>
+      </Item5>
+      <Item6>
+        <PackageName Value="LCL"/>
+      </Item6>
+    </RequiredPkgs>
+    <UsageOptions>
+      <UnitPath Value="$(PkgOutDir)"/>
+    </UsageOptions>
+    <PublishOptions>
+      <Version Value="2"/>
+    </PublishOptions>
+    <CustomOptions Items="ExternHelp" Version="2">
+      <_ExternHelp Items="Count"/>
+    </CustomOptions>
+  </Package>
+</CONFIG>
