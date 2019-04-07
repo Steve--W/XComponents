@@ -1,0 +1,62 @@
+object __MAINFORM__: T__MAINFORM__
+  Left = 585
+  Height = 513
+  Top = 123
+  Width = 872
+  Caption = '__MAINFORM__'
+  ClientHeight = 493
+  ClientWidth = 872
+  Menu = __MAINFORM__MainMenu
+  OnCreate = FormCreate
+  OnResize = FormResize
+  LCLVersion = '2.1.0.0'
+  object MyRootDiv: TXScrollBox
+    Name = 'MyRootDiv'
+    Tag = 368184480
+    AnchorSideLeft.Control = Owner
+    AnchorSideTop.Side = asrCenter
+    Left = 0
+    Height = 509
+    Top = 0
+    Width = 870
+    HorzScrollBar.Page = 1
+    VertScrollBar.Page = 1
+    Align = alTop
+    AutoSize = True
+    BorderStyle = bsNone
+    Constraints.MaxHeight = 509
+    Constraints.MaxWidth = 870
+    Constraints.MinHeight = 509
+    Constraints.MinWidth = 870
+    Color = 16777088
+    ParentColor = False
+    TabOrder = 0
+    IsContainer = True
+    AlignChildrenVertical = True
+    Alignment = 'Left'
+    IsVisible = True
+    SpacingAround = 0
+    ContainerWidth = '100%'
+    ContainerHeight = '100%'
+    BgColor = 16777088
+    ScrollType = 'Both'
+  end
+  object __MAINFORM__MainMenu: TXMainMenu
+    Name = '__MAINFORM__MainMenu'
+    IsContainer = True
+    IsVisible = True
+    Left = 216
+    Top = 760
+    object WebMenu: TMenuItem
+      Caption = 'Web'
+      object CompileToJS: TMenuItem
+        Caption = 'Run in Browser'
+        OnClick = CompileToJSClick
+      end
+      object CompilerShowLog: TMenuItem
+        Caption = 'Compiler Log'
+        OnClick = CompilerShowLogClick
+      end
+    end
+  end
+end

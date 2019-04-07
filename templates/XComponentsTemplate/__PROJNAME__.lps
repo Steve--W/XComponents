@@ -1,0 +1,396 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <ProjectSession>
+    <PathDelim Value="\"/>
+    <Version Value="11"/>
+    <BuildModes Active="Default"/>
+    <Units Count="41">
+      <Unit0>
+        <Filename Value="__PROJNAME__.lpr"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="1"/>
+        <CursorPos X="32" Y="18"/>
+        <UsageCount Value="200"/>
+        <Loaded Value="True"/>
+      </Unit0>
+      <Unit1>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="__MAINFORM__"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <IsVisibleTab Value="True"/>
+        <TopLine Value="13"/>
+        <CursorPos X="27" Y="22"/>
+        <UsageCount Value="200"/>
+        <Loaded Value="True"/>
+        <LoadedDesigner Value="True"/>
+      </Unit1>
+      <Unit2>
+        <Filename Value="rtl.lrs"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="64695"/>
+        <CursorPos X="52" Y="64715"/>
+        <UsageCount Value="25"/>
+      </Unit2>
+      <Unit3>
+        <Filename Value="compilerlogunit.pas"/>
+        <ComponentName Value="CompilerLogForm"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="CompilerLogUnit"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="16"/>
+        <CursorPos X="24" Y="31"/>
+        <UsageCount Value="244"/>
+      </Unit3>
+      <Unit4>
+        <Filename Value="..\..\xvbox.pas"/>
+        <UnitName Value="XVBox"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="11"/>
+      </Unit4>
+      <Unit5>
+        <Filename Value="..\..\wrapperpanel.pas"/>
+        <UnitName Value="WrapperPanel"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="11"/>
+      </Unit5>
+      <Unit6>
+        <Filename Value="..\..\stringutils.pas"/>
+        <UnitName Value="StringUtils"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="11"/>
+      </Unit6>
+      <Unit7>
+        <Filename Value="..\..\nodeutils.pas"/>
+        <UnitName Value="NodeUtils"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="3123"/>
+        <CursorPos X="94" Y="3142"/>
+        <UsageCount Value="11"/>
+      </Unit7>
+      <Unit8>
+        <Filename Value="..\..\lazsutils.pas"/>
+        <UnitName Value="LazsUtils"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="89"/>
+      </Unit8>
+      <Unit9>
+        <Filename Value="..\..\utilsjscompile.pas"/>
+        <UnitName Value="UtilsJSCompile"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos X="38" Y="22"/>
+        <UsageCount Value="92"/>
+      </Unit9>
+      <Unit10>
+        <Filename Value="..\..\htmlutils.pas"/>
+        <UnitName Value="HTMLUtils"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="258"/>
+        <CursorPos X="52" Y="283"/>
+        <UsageCount Value="11"/>
+      </Unit10>
+      <Unit11>
+        <Filename Value="..\..\xhbox.pas"/>
+        <UnitName Value="XHBox"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="11"/>
+      </Unit11>
+      <Unit12>
+        <Filename Value="..\..\xbutton.pas"/>
+        <UnitName Value="XButton"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="11"/>
+      </Unit12>
+      <Unit13>
+        <Filename Value="..\..\events.pas"/>
+        <UnitName Value="Events"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="11"/>
+      </Unit13>
+      <Unit14>
+        <Filename Value="..\..\xeditbox.pas"/>
+        <UnitName Value="XEditBox"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="5"/>
+      </Unit14>
+      <Unit15>
+        <Filename Value="..\..\xscrollbox.pas"/>
+        <UnitName Value="XScrollBox"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="5"/>
+      </Unit15>
+      <Unit16>
+        <Filename Value="C:\fpcupdeluxe\fpcsrc\packages\pastojs\src\pas2jscompiler.pp"/>
+        <UnitName Value="Pas2jsCompiler"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="460"/>
+        <CursorPos X="23" Y="477"/>
+        <UsageCount Value="65"/>
+      </Unit16>
+      <Unit17>
+        <Filename Value="C:\fpcupdeluxe\fpcsrc\packages\pastojs\src\pas2jslogger.pp"/>
+        <UnitName Value="Pas2jsLogger"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="15"/>
+        <UsageCount Value="65"/>
+      </Unit17>
+      <Unit18>
+        <Filename Value="..\..\xcheckbox.pas"/>
+        <UnitName Value="XCheckBox"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="1"/>
+      </Unit18>
+      <Unit19>
+        <Filename Value="..\..\xtabcontrol.pas"/>
+        <UnitName Value="XTabControl"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="79"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="2"/>
+      </Unit19>
+      <Unit20>
+        <Filename Value="..\..\xlabel.pas"/>
+        <UnitName Value="XLabel"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="1"/>
+      </Unit20>
+      <Unit21>
+        <Filename Value="..\..\xhyperlink.pas"/>
+        <UnitName Value="XHyperLink"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="1"/>
+      </Unit21>
+      <Unit22>
+        <Filename Value="..\..\xmemo.pas"/>
+        <UnitName Value="XMemo"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="1"/>
+      </Unit22>
+      <Unit23>
+        <Filename Value="..\..\xtree.pas"/>
+        <UnitName Value="XTree"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="1"/>
+      </Unit23>
+      <Unit24>
+        <Filename Value="..\..\xradiobtns.pas"/>
+        <UnitName Value="XRadioBtns"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="1"/>
+      </Unit24>
+      <Unit25>
+        <Filename Value="..\..\popup.pas"/>
+        <UnitName Value="Popup"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="1"/>
+      </Unit25>
+      <Unit26>
+        <Filename Value="..\..\xiframe.pas"/>
+        <UnitName Value="XIFrame"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="1"/>
+      </Unit26>
+      <Unit27>
+        <Filename Value="..\..\xtable.pas"/>
+        <UnitName Value="XTable"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="1"/>
+      </Unit27>
+      <Unit28>
+        <Filename Value="C:\fpcupdeluxe\lazarus\lcl\interfaces\win32\win32callback.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="2678"/>
+        <CursorPos Y="2698"/>
+        <UsageCount Value="1"/>
+      </Unit28>
+      <Unit29>
+        <Filename Value="C:\fpcupdeluxe\lazarus\lcl\interfaces\win32\win32object.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="404"/>
+        <CursorPos Y="423"/>
+        <UsageCount Value="1"/>
+      </Unit29>
+      <Unit30>
+        <Filename Value="C:\fpcupdeluxe\lazarus\lcl\include\application.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="1395"/>
+        <CursorPos Y="1418"/>
+        <UsageCount Value="1"/>
+      </Unit30>
+      <Unit31>
+        <Filename Value="C:\fpcupdeluxe\lazarus\lcl\include\control.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="3943"/>
+        <CursorPos Y="3963"/>
+        <UsageCount Value="10"/>
+      </Unit31>
+      <Unit32>
+        <Filename Value="dfltImage.gif"/>
+        <EditorIndex Value="-1"/>
+        <WindowIndex Value="-1"/>
+        <TopLine Value="-1"/>
+        <CursorPos X="-1" Y="-1"/>
+        <UsageCount Value="11"/>
+        <DefaultSyntaxHighlighter Value="None"/>
+      </Unit32>
+      <Unit33>
+        <Filename Value="..\..\ximage.pas"/>
+        <UnitName Value="XImage"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="265"/>
+        <CursorPos X="5" Y="345"/>
+        <UsageCount Value="1"/>
+      </Unit33>
+      <Unit34>
+        <Filename Value="..\..\xcomponents.pas"/>
+        <UnitName Value="XComponents"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos X="17" Y="41"/>
+        <UsageCount Value="1"/>
+      </Unit34>
+      <Unit35>
+        <Filename Value="..\..\xmenu.pas"/>
+        <UnitName Value="XMenu"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="1267"/>
+        <CursorPos Y="1287"/>
+        <UsageCount Value="10"/>
+      </Unit35>
+      <Unit36>
+        <Filename Value="..\..\xform.pas"/>
+        <UnitName Value="XForm"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="302"/>
+        <CursorPos X="5" Y="319"/>
+        <UsageCount Value="10"/>
+      </Unit36>
+      <Unit37>
+        <Filename Value="C:\fpcupdeluxe\lazarus\lcl\lresources.pp"/>
+        <UnitName Value="LResources"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="5338"/>
+        <CursorPos Y="5366"/>
+        <UsageCount Value="10"/>
+      </Unit37>
+      <Unit38>
+        <Filename Value="C:\pas2jsnew\compiler\packages\pastojs\src\pas2jscompiler.pp"/>
+        <UnitName Value="Pas2jsCompiler"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="19"/>
+        <UsageCount Value="11"/>
+      </Unit38>
+      <Unit39>
+        <Filename Value="project.ini"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos X="40" Y="5"/>
+        <UsageCount Value="11"/>
+        <DefaultSyntaxHighlighter Value="Ini"/>
+      </Unit39>
+      <Unit40>
+        <Filename Value="..\..\compilerlogunit.pas"/>
+        <UnitName Value="CompilerLogUnit"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos X="69" Y="27"/>
+        <UsageCount Value="10"/>
+      </Unit40>
+    </Units>
+    <JumpHistory Count="18" HistoryIndex="17">
+      <Position1>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="9" Column="37" TopLine="7"/>
+      </Position1>
+      <Position2>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="135" Column="9" TopLine="121"/>
+      </Position2>
+      <Position3>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="32" Column="42" TopLine="28"/>
+      </Position3>
+      <Position4>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="112" TopLine="107"/>
+      </Position4>
+      <Position5>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="52" Column="31" TopLine="29"/>
+      </Position5>
+      <Position6>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="50" TopLine="45"/>
+      </Position6>
+      <Position7>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="46" TopLine="45"/>
+      </Position7>
+      <Position8>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="118" Column="22" TopLine="106"/>
+      </Position8>
+      <Position9>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="125" Column="82" TopLine="106"/>
+      </Position9>
+      <Position10>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="124" Column="82" TopLine="93"/>
+      </Position10>
+      <Position11>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="26" Column="47" TopLine="6"/>
+      </Position11>
+      <Position12>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="102" Column="3" TopLine="100"/>
+      </Position12>
+      <Position13>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="191" Column="30" TopLine="174"/>
+      </Position13>
+      <Position14>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="190" Column="31" TopLine="174"/>
+      </Position14>
+      <Position15>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="245" Column="39" TopLine="218"/>
+      </Position15>
+      <Position16>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="23" Column="12" TopLine="5"/>
+      </Position16>
+      <Position17>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="220" TopLine="216"/>
+      </Position17>
+      <Position18>
+        <Filename Value="__MAINUNIT__.pas"/>
+        <Caret Line="41" Column="11" TopLine="31"/>
+      </Position18>
+    </JumpHistory>
+    <RunParams>
+      <FormatVersion Value="2"/>
+      <Modes Count="0" ActiveMode="default"/>
+    </RunParams>
+  </ProjectSession>
+</CONFIG>
