@@ -1,0 +1,461 @@
+object Example1Form: TExample1Form
+  Left = 654
+  Height = 691
+  Top = 203
+  Width = 872
+  Caption = 'Example1Form'
+  ClientHeight = 671
+  ClientWidth = 872
+  Menu = MainMenu1
+  OnActivate = FormActivate
+  OnCreate = FormCreate
+  OnResize = FormResize
+  LCLVersion = '2.1.0.0'
+  object Example1FormMyRootDiv: TXScrollBox
+    Name = 'Example1FormMyRootDiv'
+    Tag = 740329096
+    AnchorSideLeft.Control = Owner
+    AnchorSideTop.Side = asrCenter
+    Left = 0
+    Height = 687
+    Top = 0
+    Width = 870
+    HorzScrollBar.Page = 600
+    VertScrollBar.Page = 607
+    Align = alTop
+    AutoSize = True
+    BorderStyle = bsNone
+    ClientHeight = 687
+    ClientWidth = 870
+    Constraints.MaxHeight = 687
+    Constraints.MaxWidth = 870
+    Constraints.MinHeight = 687
+    Constraints.MinWidth = 870
+    Color = 16777088
+    ParentColor = False
+    TabOrder = 0
+    IsContainer = True
+    AlignChildrenVertical = True
+    Alignment = 'Left'
+    IsVisible = True
+    SpacingAround = 0
+    ContainerWidth = '100%'
+    ContainerHeight = '100%'
+    BgColor = 16777088
+    ScrollType = 'Both'
+    object Example1FormXEditBox1: TXEditBox
+      Name = 'Example1FormXEditBox1'
+      Tag = -1
+      Left = 0
+      Height = 23
+      Top = 0
+      Width = 870
+      Align = alTop
+      AutoSize = True
+      myControl.Tag = -1
+      myControl.AnchorSideLeft.Control = Example1FormXEditBox1
+      myControl.AnchorSideTop.Side = asrCenter
+      myControl.Left = 0
+      myControl.Height = 23
+      myControl.Top = 0
+      myControl.Width = 200
+      myControl.Constraints.MaxWidth = 200
+      myControl.Constraints.MinWidth = 200
+      myControl.TabOrder = 0
+      myControl.Text = 'Text...'
+      IsContainer = False
+      AlignChildrenVertical = True
+      Alignment = 'Left'
+      LabelText = 'Edit Box'
+      LabelPos = 'Right'
+      IsVisible = True
+      BgColor = clNone
+      SpacingAround = 0
+      Border = False
+      ItemValue = 'Text...'
+      ReadOnly = False
+      BoxWidth = '200'
+      PasswordBox = False
+    end
+    object Example1FormXCheckBox1: TXCheckBox
+      Name = 'Example1FormXCheckBox1'
+      Tag = -1
+      Left = 0
+      Height = 19
+      Top = 23
+      Width = 870
+      Align = alTop
+      AutoSize = True
+      myControl.AnchorSideLeft.Control = Example1FormXCheckBox1
+      myControl.AnchorSideTop.Side = asrCenter
+      myControl.Left = 0
+      myControl.Height = 19
+      myControl.Top = 0
+      myControl.Width = 20
+      myControl.Constraints.MaxHeight = 20
+      myControl.Constraints.MaxWidth = 20
+      myControl.TabOrder = 0
+      IsContainer = False
+      AlignChildrenVertical = True
+      Alignment = 'Left'
+      LabelText = 'Hide Buttons'
+      LabelPos = 'Right'
+      IsVisible = True
+      BgColor = clNone
+      SpacingAround = 0
+      Border = False
+      Checked = False
+      ReadOnly = False
+      HandleClick = Example1FormXCheckBox1HandleClick
+    end
+    object Example1FormXHyperLink1: TXHyperLink
+      Name = 'Example1FormXHyperLink1'
+      Tag = -1
+      Left = 0
+      Height = 15
+      Top = 42
+      Width = 870
+      Align = alTop
+      AutoSize = True
+      myControl.AnchorSideLeft.Control = Example1FormXHyperLink1
+      myControl.AnchorSideTop.Side = asrCenter
+      myControl.Left = 0
+      myControl.Height = 15
+      myControl.Top = 0
+      myControl.Width = 54
+      myControl.Caption = 'BBC News'
+      myControl.Font.Color = clBlue
+      myControl.Font.Style = [fsUnderline]
+      myControl.ParentColor = False
+      myControl.ParentFont = False
+      IsContainer = False
+      AlignChildrenVertical = True
+      Alignment = 'Left'
+      IsVisible = True
+      BgColor = clNone
+      SpacingAround = 0
+      Border = False
+      LabelCaption = 'BBC News'
+      URL = 'http://www.bbc.co.uk/news'
+    end
+    object Example1FormXHBox1: TXHBox
+      Name = 'Example1FormXHBox1'
+      Tag = -1
+      Left = 0
+      Height = 50
+      Top = 57
+      Width = 870
+      Align = alTop
+      AutoSize = True
+      IsContainer = True
+      AlignChildrenVertical = False
+      Alignment = 'Left'
+      IsVisible = True
+      ContainerHeight = '50px'
+      BgColor = 16777088
+      SpacingAround = 0
+      Border = True
+      InheritColor = False
+      object Example1FormXButton2: TXButton
+        Name = 'Example1FormXButton2'
+        Tag = -1
+        Left = 2
+        Height = 46
+        Top = 2
+        Width = 130
+        Align = alLeft
+        AutoSize = True
+        myControl.Tag = -1
+        myControl.AnchorSideLeft.Side = asrCenter
+        myControl.AnchorSideTop.Control = Example1FormXButton2
+        myControl.AnchorSideTop.Side = asrCenter
+        myControl.Left = 0
+        myControl.Height = 25
+        myControl.Top = 11
+        myControl.Width = 130
+        myControl.AutoSize = True
+        myControl.Caption = 'Hide BBC Link'
+        myControl.Constraints.MaxWidth = 130
+        myControl.Constraints.MinWidth = 130
+        myControl.TabOrder = 0
+        IsContainer = False
+        AlignChildrenVertical = True
+        Alignment = 'Centre'
+        IsVisible = True
+        BgColor = clNone
+        SpacingAround = 0
+        Border = False
+        Caption = 'Hide BBC Link'
+        Enabled = True
+        ButtonWidth = '130'
+        HandleButtonClick = Example1FormXButton2HandleButtonClick
+      end
+      object Example1FormXButton1: TXButton
+        Name = 'Example1FormXButton1'
+        Tag = -1
+        Left = 132
+        Height = 46
+        Top = 2
+        Width = 130
+        Align = alLeft
+        AutoSize = True
+        myControl.Tag = -1
+        myControl.AnchorSideLeft.Side = asrCenter
+        myControl.AnchorSideTop.Control = Example1FormXButton1
+        myControl.AnchorSideTop.Side = asrCenter
+        myControl.Left = 0
+        myControl.Height = 25
+        myControl.Top = 11
+        myControl.Width = 130
+        myControl.AutoSize = True
+        myControl.Caption = 'Disable Edit Box'
+        myControl.Constraints.MaxWidth = 130
+        myControl.Constraints.MinWidth = 130
+        myControl.TabOrder = 0
+        IsContainer = False
+        AlignChildrenVertical = True
+        Alignment = 'Centre'
+        IsVisible = True
+        BgColor = clNone
+        SpacingAround = 0
+        Border = False
+        Caption = 'Disable Edit Box'
+        Enabled = True
+        ButtonWidth = '130'
+        HandleButtonClick = Example1FormXButton1HandleButtonClick
+      end
+    end
+    object Example1FormXTabControl1: TXTabControl
+      Name = 'Example1FormXTabControl1'
+      Tag = -1
+      Left = 0
+      Height = 500
+      Top = 107
+      Width = 600
+      ActivePage = XTabSheet2
+      Align = alTop
+      Constraints.MaxHeight = 500
+      Constraints.MaxWidth = 600
+      Constraints.MinHeight = 500
+      Constraints.MinWidth = 600
+      TabIndex = 1
+      TabOrder = 4
+      IsContainer = True
+      IsVisible = True
+      ContainerWidth = '600px'
+      ContainerHeight = '500'
+      BgColor = clNone
+      Alignment = 'Left'
+      object XTabSheet1: TXTabSheet
+        Name = 'XTabSheet1'
+        Caption = 'Blue Tab'
+        ClientHeight = 472
+        ClientWidth = 592
+        AlignChildrenVertical = True
+        IsContainer = True
+        IsVisible = True
+        BgColor = clSkyBlue
+        object Example1FormXVBox1: TXVBox
+          Name = 'Example1FormXVBox1'
+          Tag = 740329048
+          AnchorSideLeft.Control = XTabSheet1
+          AnchorSideTop.Side = asrCenter
+          Left = 0
+          Height = 496
+          Top = 0
+          Width = 598
+          Align = alTop
+          AutoSize = True
+          IsContainer = True
+          AlignChildrenVertical = True
+          Alignment = 'Left'
+          IsVisible = True
+          ContainerWidth = '100%'
+          ContainerHeight = '100%'
+          BgColor = 16744576
+          SpacingAround = 0
+          Border = True
+          InheritColor = False
+          object Example1FormXRadioBtns1: TXRadioBtns
+            Name = 'Example1FormXRadioBtns1'
+            Tag = -1
+            Left = 2
+            Height = 105
+            Top = 2
+            Width = 594
+            Align = alTop
+            AutoSize = True
+            myControl.Tag = -1
+            myControl.AnchorSideLeft.Control = Example1FormXRadioBtns1
+            myControl.AnchorSideLeft.Side = asrCenter
+            myControl.AnchorSideTop.Side = asrCenter
+            myControl.Left = 205
+            myControl.Height = 105
+            myControl.Top = 0
+            myControl.Width = 300
+            myControl.AutoFill = True
+            myControl.Caption = 'Radio Buttons'
+            myControl.ChildSizing.LeftRightSpacing = 6
+            myControl.ChildSizing.EnlargeHorizontal = crsHomogenousChildResize
+            myControl.ChildSizing.EnlargeVertical = crsHomogenousChildResize
+            myControl.ChildSizing.ShrinkHorizontal = crsScaleChilds
+            myControl.ChildSizing.ShrinkVertical = crsScaleChilds
+            myControl.ChildSizing.Layout = cclLeftToRightThenTopToBottom
+            myControl.ChildSizing.ControlsPerLine = 1
+            myControl.ClientHeight = 85
+            myControl.ClientWidth = 296
+            myControl.Constraints.MaxWidth = 300
+            myControl.Constraints.MinWidth = 300
+            myControl.ItemIndex = 0
+            myControl.Items.Strings = (
+              'Option 1'
+              'Option 2'
+              'Option 3'
+            )
+            myControl.TabOrder = 0
+            IsContainer = False
+            AlignChildrenVertical = True
+            Alignment = 'Centre'
+            IsVisible = True
+            BgColor = clNone
+            SpacingAround = 0
+            Border = False
+            ReadOnly = False
+            ItemValue = 'Option 1'
+            Caption = 'Radio Buttons'
+            OptionList = '["Option 1","Option 2","Option 3"]'
+            BoxWidth = '300'
+            HandleChange = Example1FormXRadioBtns1HandleChange
+          end
+          object Example1FormXLabel1: TXLabel
+            Name = 'Example1FormXLabel1'
+            Tag = -1
+            Left = 5
+            Height = 15
+            Top = 110
+            Width = 588
+            Align = alTop
+            AutoSize = True
+            myControl.AnchorSideLeft.Control = Example1FormXLabel1
+            myControl.AnchorSideTop.Side = asrCenter
+            myControl.Left = 0
+            myControl.Height = 15
+            myControl.Top = 0
+            myControl.Width = 46
+            myControl.Caption = '...Label...'
+            myControl.ParentColor = False
+            IsContainer = False
+            AlignChildrenVertical = True
+            Alignment = 'Left'
+            IsVisible = True
+            BgColor = clNone
+            SpacingAround = 0
+            Border = False
+            LabelCaption = '...Label...'
+          end
+        end
+      end
+      object XTabSheet2: TXTabSheet
+        Name = 'XTabSheet2'
+        Caption = 'Yellow Tab'
+        ClientHeight = 472
+        ClientWidth = 592
+        AlignChildrenVertical = True
+        IsContainer = True
+        IsVisible = True
+        BgColor = clYellow
+        object Example1FormXVBox2: TXVBox
+          Name = 'Example1FormXVBox2'
+          Tag = 740329704
+          AnchorSideLeft.Control = XTabSheet2
+          AnchorSideTop.Side = asrCenter
+          Left = 0
+          Height = 468
+          Top = 0
+          Width = 598
+          Align = alTop
+          AutoSize = True
+          IsContainer = True
+          AlignChildrenVertical = True
+          Alignment = 'Left'
+          IsVisible = True
+          ContainerWidth = '100%'
+          ContainerHeight = '100%'
+          BgColor = clYellow
+          SpacingAround = 0
+          Border = True
+          InheritColor = False
+          object Example1FormXRadioBtns2: TXRadioBtns
+            Name = 'Example1FormXRadioBtns2'
+            Tag = -1
+            Left = 2
+            Height = 105
+            Top = 2
+            Width = 594
+            Align = alTop
+            AutoSize = True
+            myControl.Tag = -1
+            myControl.AnchorSideLeft.Control = Example1FormXRadioBtns2
+            myControl.AnchorSideLeft.Side = asrCenter
+            myControl.AnchorSideTop.Side = asrCenter
+            myControl.Left = 147
+            myControl.Height = 105
+            myControl.Top = 0
+            myControl.Width = 300
+            myControl.AutoFill = True
+            myControl.Caption = 'Radio Buttons'
+            myControl.ChildSizing.LeftRightSpacing = 6
+            myControl.ChildSizing.EnlargeHorizontal = crsHomogenousChildResize
+            myControl.ChildSizing.EnlargeVertical = crsHomogenousChildResize
+            myControl.ChildSizing.ShrinkHorizontal = crsScaleChilds
+            myControl.ChildSizing.ShrinkVertical = crsScaleChilds
+            myControl.ChildSizing.Layout = cclLeftToRightThenTopToBottom
+            myControl.ChildSizing.ControlsPerLine = 1
+            myControl.ClientHeight = 85
+            myControl.ClientWidth = 296
+            myControl.Constraints.MaxWidth = 300
+            myControl.Constraints.MinWidth = 300
+            myControl.ItemIndex = 0
+            myControl.Items.Strings = (
+              'Option 1'
+              'Option 2'
+              'Option 3'
+            )
+            myControl.TabOrder = 0
+            IsContainer = False
+            AlignChildrenVertical = True
+            Alignment = 'Centre'
+            IsVisible = True
+            BgColor = clNone
+            SpacingAround = 0
+            Border = False
+            ReadOnly = False
+            ItemValue = 'Option 1'
+            Caption = 'Radio Buttons'
+            OptionList = '["Option 1","Option 2","Option 3"]'
+            BoxWidth = '300'
+            HandleChange = Example1FormXRadioBtns2HandleChange
+          end
+        end
+      end
+    end
+  end
+  object MainMenu1: TXMainMenu
+    Name = 'MainMenu1'
+    IsContainer = True
+    IsVisible = True
+    Left = 216
+    Top = 760
+    object WebMenu: TMenuItem
+      Caption = 'Web'
+      object CompileToJS: TMenuItem
+        Caption = 'Run in Browser'
+        OnClick = CompileToJSClick
+      end
+      object CompilerShowLog: TMenuItem
+        Caption = 'Compiler Log'
+        OnClick = CompilerShowLogClick
+      end
+    end
+  end
+end
