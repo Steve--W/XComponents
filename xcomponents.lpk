@@ -14,12 +14,13 @@
       </SearchPaths>
       <Conditionals Value="if ((TargetOS='win32') or (TargetOS='win64')) then
  begin
-   XComponents_Pas2JSPaths :=  'C:\pas2jsnew\compiler\packages\fcl-js\src\;C:\pas2jsnew\compiler\packages\fcl-json\src\;C:\pas2jsnew\compiler\packages\fcl-passrc\src\;C:\pas2jsnew\compiler\packages\pastojs\src\';
-   XComponents_cefPaths :=  'C:\cef4\CEF4Delphi-master\packages\lib\i386-win32\';
+   //XComponents_Pas2JSPaths :=  'C:\pas2jsnew\compiler\packages\fcl-js\src\;C:\pas2jsnew\compiler\packages\fcl-json\src\;C:\pas2jsnew\compiler\packages\fcl-passrc\src\;C:\pas2jsnew\compiler\packages\pastojs\src\';
+   XComponents_Pas2JSPaths :=  'pas2js0\';
+   XComponents_cefPaths :=  'C:\cef4Master\CEF4Delphi-master\packages\lib\i386-win32\';
  end
  else if (TargetOS='linux') then
  begin
-   XComponents_Pas2JSPaths :=  '/home/pi/pas2jsnew/compiler/packages/fcl-js/src/;/home/pi/pas2jsnew/compiler/packages/fcl-json/src/;/home/pi/pas2jsnew/compiler/packages/fcl-passrc/src/;/home/pi/pas2jsnew/compiler/packages/pastojs/src/';
+   XComponents_Pas2JSPaths :=  './pas2js0/';
    XComponents_cefPaths :=  '';
  end;"/>
       <BuildMacros>
@@ -48,10 +49,13 @@
         </Debugging>
       </Linking>
       <Other>
-        <CustomOptions Value="//-dChromium"/>
+        <Verbosity>
+          <ShowAll Value="True"/>
+        </Verbosity>
+        <CustomOptions Value="-dChromium"/>
       </Other>
     </CompilerOptions>
-    <Files Count="44">
+    <Files Count="42">
       <Item1>
         <Filename Value="wrapperpanel.pas"/>
         <UnitName Value="WrapperPanel"/>
@@ -217,48 +221,38 @@
         <UnitName Value="XIFrame"/>
       </Item35>
       <Item36>
-        <Filename Value="xhtmltext.pas"/>
-        <HasRegisterProc Value="True"/>
-        <UnitName Value="XHTMLText"/>
-      </Item36>
-      <Item37>
         <Filename Value="xhtmleditor.pas"/>
         <HasRegisterProc Value="True"/>
         <UnitName Value="XHTMLEditor"/>
-      </Item37>
-      <Item38>
+      </Item36>
+      <Item37>
         <Filename Value="xsvgcontainer.pas"/>
         <HasRegisterProc Value="True"/>
         <UnitName Value="XSVGContainer"/>
+      </Item37>
+      <Item38>
+        <Filename Value="xhtmltext.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XHTMLText"/>
       </Item38>
       <Item39>
-        <Filename Value="xgpucanvas.pas"/>
-        <HasRegisterProc Value="True"/>
-        <UnitName Value="XGPUCanvas"/>
-      </Item39>
-      <Item40>
-        <Filename Value="xthreads.pas"/>
-        <HasRegisterProc Value="True"/>
-        <UnitName Value="XThreads"/>
-      </Item40>
-      <Item41>
         <Filename Value="xtrapevents.pas"/>
         <HasRegisterProc Value="True"/>
         <UnitName Value="XTrapEvents"/>
-      </Item41>
-      <Item42>
+      </Item39>
+      <Item40>
         <Filename Value="xstore.pas"/>
         <HasRegisterProc Value="True"/>
         <UnitName Value="XStore"/>
-      </Item42>
-      <Item43>
+      </Item40>
+      <Item41>
         <Filename Value="pastedialogunit.pas"/>
         <UnitName Value="PasteDialogUnit"/>
-      </Item43>
-      <Item44>
+      </Item41>
+      <Item42>
         <Filename Value="compilerlogunit.pas"/>
         <UnitName Value="CompilerLogUnit"/>
-      </Item44>
+      </Item42>
     </Files>
     <RequiredPkgs Count="6">
       <Item1>

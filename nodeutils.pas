@@ -41,11 +41,19 @@ type TEventHandlerRec = record
 end;
 type TEventHandlers = Array of TEventHandlerRec;
 type TGenericHandler = function(MyEventType,myValue:string;myNode:TDataNode):Boolean of object;
+{$ifdef windows}
    {$ifdef Win64}
 type   WinSizeDependentInt = int64;
    {$else}
 type  WinSizeDependentInt = integer;
    {$endif}
+{$else}
+   {$ifdef CPU64}
+type   WinSizeDependentInt = int64;
+   {$else}
+type  WinSizeDependentInt = integer;
+   {$endif}
+{$endif}
 
 {$ifndef JScript}
 type TAddComponentFunc = function(ParentNode:TDataNode;ObjectName:String;position:integer;Alignment:String): TDataNode;
@@ -191,6 +199,7 @@ function CreateFormNode(myForm:TForm):TDataNode;
 function AddFormToNodeTree(myForm:TForm):TdataNode;
 function InitialiseCodeTree:TdataNode;
 procedure AddDefaultsToTable(MyNodeType:String;myDefaultAttribs:TDefaultAttributesArray);
+function GetDefaultAttribs(NodeType:String):TDefaultAttributesArray;
 function GetDefaultAttrib(NodeType,AttrName:String):TDefaultAttribute;
 procedure AddDefaultAttribs(myComponent:TObject;NewNode:TDataNode;defaultAttribs:TDefaultAttributesArray);
 procedure AddDefaultAttribute(var Attribs:TDefaultAttributesArray;AttrName,AttrType,AttrValue,AttrHint:String; ro:Boolean);
@@ -200,7 +209,6 @@ procedure AddChildToParentNode(var ParentNode, ChildNode:TDataNode; position:int
 function StringToCodeInputs(InputString:String):TCodeInputs;
 function CodeInputsToString(myInputs:TCodeInputs):String;
 function NodeTreeToXML(CurrentItem,ParentNode:TDataNode;DynamicOnly,QuotedString:Boolean):String;
-Procedure SaveSystem(ToClip:Boolean);
 function FindDataNodeById(InTree:TDataNode; ScreenObjectID:String;showerror:boolean):TDataNode;
 function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode;showerror:Boolean;var position:Integer):TDataNode;  overload;
 function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode):TDataNode;  overload;
@@ -234,6 +242,7 @@ procedure EditAttributeValue(NodeNameToEdit:String; SourceAttrib:TNodeAttribute;
 procedure EditAttributeValue(NodeNameToEdit,AttrNameToEdit,newValue:String;AddIfMissing:Boolean); overload;
 procedure EditAttributeValue(NodeNameToEdit,AttrNameToEdit,newValue:String); overload;
 {$ifndef JScript}
+Procedure SaveSystemToIncFile;
 procedure EditAttributeValue(NodeNameToEdit,AttrNameToEdit,newValue:PChar); overload;
 {$endif}
 procedure EditAttributeValue2(NodeNameToEdit,AttrNameToEdit,newValue:String);
@@ -316,9 +325,9 @@ const AttributeTypes:String = '["String","Integer","Boolean","Color","TableStrin
 
 implementation
 {$ifndef JScript}
-uses LazsUtils,WrapperPanel, XForm, XBitMap, XGPUCanvas, XIFrame, Events, PasteDialogUnit, CompilerLogUnit;
+uses LazsUtils,WrapperPanel, XForm, XBitMap, XIFrame, Events, PasteDialogUnit, CompilerLogUnit;
 {$else}
-uses WrapperPanel, XForm, XButton, XBitMap, XGPUCanvas, PasteDialogUnit;
+uses WrapperPanel, XForm, XButton, XBitMap, PasteDialogUnit;
 {$endif}
 
 
@@ -431,6 +440,27 @@ end;
 function TDataNode.GetAttributeAnyCase(AttrName:string):TNodeAttribute;
 begin
   result:=self.GetAttributeAnyCase(AttrName,false);
+end;
+
+function GetDefaultAttribs(NodeType:String):TDefaultAttributesArray;
+var
+  i,j:integer;
+  empty:TDefaultAttributesArray;
+  thisrec:TDefaultAttribsByType;
+begin
+  setLength(empty,0);
+  result:=empty;
+  i:=0;
+  while i<length(DefaultAttribsByType) do
+  begin
+    if DefaultAttribsByType[i].NodeType=NodeType then
+    begin
+      thisrec:=DefaultAttribsByType[i];
+      result:=thisrec.DefaultAttribs;
+      i:=length(DefaultAttribsByType);
+    end;
+    i:=i+1;
+  end;
 end;
 
 function GetDefaultAttrib(NodeType,AttrName:String):TDefaultAttribute;
@@ -1228,13 +1258,13 @@ begin
       if CurrentItem.NodeType='TXTree' then
       begin
          // has a function been declared to create hints for nodes in this tree?
-
          // If so, add code to assign the function to the new node in the javascript object
          if CurrentItem.MyForm.MethodAddress(CurrentItem.NodeName+'TreeNodeHintFunc')<>nil then
            resultString:=resultString +
                          CurrentItem.MyForm.Name+'.'+CurrentItem.NodeName+'.TreeNodeHintFunc:=@'+
                                              CurrentItem.MyForm.Name+'.'+CurrentItem.NodeName+'TreeNodeHintFunc;'
                                              +LineEnding;
+         // ditto for a dropaccepted function...
          if CurrentItem.MyForm.MethodAddress(CurrentItem.NodeName+'TreeNodeDropAccepted')<>nil then
            resultString:=resultString +
                          CurrentItem.MyForm.Name+'.'+CurrentItem.NodeName+'.TreeNodeDropAccepted:=@'+
@@ -1261,35 +1291,20 @@ begin
   end;
   result:=( resultString);
 end;
-{$endif}
 
-Procedure SaveSystem(ToClip:Boolean);
+Procedure SaveSystemToIncFile;
 var
   systemstring,eventstring,fullstring:string;
   interfaceString:string;
 begin
-  {$ifndef JScript}
   interfaceString:=NodeTreeToInterfaceString(SystemNodeTree,MainForm.Name);
   WriteToFile(ProjectDirectory+'tempinc/systemintface.inc',interfaceString);
-  {$endif}
-  systemstring:= NodeTreeToXML(SystemNodeTree,nil,false,(not ToClip));
+  systemstring:= NodeTreeToXML(SystemNodeTree,nil,false,true);
   fullstring:= systemstring;
 
-  if ToClip then
-  begin
-    {$ifndef JScript}
-    myCopyToClip('System',fullstring );
-    {$endif}
-  end
-  else
-  begin
-    {$ifndef JScript}
-    WriteToFile(ProjectDirectory+'tempinc/systemnodetree.inc','LoadedSystemString:=''*'';LoadedSystemString := '''+fullstring+''';');
-    {$endif}
-  end;
+  WriteToFile(ProjectDirectory+'tempinc/systemnodetree.inc','LoadedSystemString:=''*'';LoadedSystemString := '''+fullstring+''';');
 end;
 
-{$ifndef JScript}
 procedure AddNodeFuncLookup(NodeType:string;ScreenObjFunc:TAddComponentFunc);
 var
     myRec:TNodeFuncsLookup;
@@ -1731,7 +1746,6 @@ begin
   result:=myself;
 end;
 
-//function AttribsFromXML(attributeList:TStringList;offset:integer;var ParentName:String;var NewLink:TXPropertyLink):TNodeAttributesArray;
 function AttribsFromXML(attributeList:TStringList;offset:integer;var ParentName:String):TNodeAttributesArray;
 var
   myAttribs:TNodeAttributesArray;
@@ -2465,12 +2479,14 @@ begin
        int:=integer(tf);
        SetOrdProp(myObj,PropName,int);
     end
+    {$ifdef windows}            // SetDynArrayProp missing .... check versions tbd!!!!
     else if pType in [tkDynArray] then
     begin
       arr:=CommaListToStringArray(newValue);
       parr:=Pointer(arr);
       SetDynArrayProp(myObj,PropName,parr);
     end
+    {$endif}
     {$else}
     if pType = tkString then
     begin

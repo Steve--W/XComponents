@@ -14,7 +14,7 @@ interface
 uses
   SysUtils,Classes, StringUtils, NodeUtils, EventsInterface,
   {$ifndef JScript}
-  LCLType, FileUtil, DateTimePicker,  Forms, Controls,
+  LCLType, {FileUtil,} DateTimePicker,  Forms, Controls,
   Graphics, Dialogs, StdCtrls, ExtCtrls, Menus,   ColorBox,Clipbrd,
   ComCtrls, Spin,lclintf , EditBtn, Dynlibs,
   LazsUtils;
@@ -58,6 +58,7 @@ function FindEventFunction(myName,EventType:string;MyNode:TDataNode;DoBind:Boole
 
 var DllName:String;
 
+procedure ExecuteEventHandler(e:TEventStatus;MyEventType,nodeID,myValue:string;myNode:TDataNode);
 procedure handleEvent(e:TEventStatus;MyEventType,nodeID,myValue,PropName:string);     overload;
 procedure handleEvent(e:TEventStatus;MyEventType,nodeID,myValue:string);     overload;
 procedure handleEvent(MyEventType,nodeID,myValue:string);     overload;
@@ -324,7 +325,7 @@ try {
   // with dynamically added event code (eg. using the XIDE project)
   // in which case look for the event handler in module XIDEMainEvents
 
-    //alert('RunComponentEvent looking in dynamic events unit '+UnitName+' for '+handlerName);
+    //alert('FindEventFunction looking in dynamic events unit '+UnitName+' for '+handlerName);
     var mdl=pas[UnitName];
     if ((mdl!=null)&&(mdl!=undefined)) {
       //alert('found module '+UnitName);
@@ -337,6 +338,23 @@ try {
       }
     }
 
+    // FOURTH ......
+    if (fn==null) {
+    // the event we seek may be a thread event, for a TXThreads component.
+    // These events are compiled into a separate unit (MainUnitName+'EventsThreads')
+
+      //alert('FindEventFunction looking in thread events unit '+UnitName+'Threads for '+handlerName);
+      var mdl=pas[UnitName+'Threads'];
+      if ((mdl!=null)&&(mdl!=undefined)) {
+        //alert('found module '+UnitName);
+          fn = mdl[ handlerName];
+          if (fn!=null) {
+            //alert('found function '+handlerName);
+            if (DoBind) {
+            fn = fn.bind(mdl); }    // so that the 'this' context will be preserved
+          }
+        }
+      }
     if (fn==undefined) {fn=null;}
 
 }catch(err) { alert(err.message+'  in Events.FindEventFunction '+myName+' '+EventType);}
@@ -393,11 +411,11 @@ function ExecuteEventTrappers(e:TEventStatus;MyEventType,nodeID,myValue:string;m
 
 end;
 
-function ExecuteEventHandlers(e:TEventStatus;MyEventType,nodeID,myValue:string;myNode:TDataNode): String ;
+procedure ExecuteEventHandler(e:TEventStatus;MyEventType,nodeID,myValue:string;myNode:TDataNode);
   var
      i,NumHandlers:integer;
   begin
-    //ShowMessage('ExecuteEventHandlers. '+MyEventType+' NodeId='+nodeID+' value='+myValue);
+    //ShowMessage('ExecuteEventHandler. '+MyEventType+' NodeId='+nodeID+' value='+myValue);
     NumHandlers:= myNode.MyEventTypes.count;
     for i:=0 to NumHandlers - 1 do
     begin
@@ -477,8 +495,8 @@ begin
          if e.ContinueAfterTrappers then
          begin
             // run the specific event handler defined in the form for this component and event type (if any)
-            //showmessage('calling ExecuteEventHandlers');
-            ExecuteEventHandlers(e,MyEventType,CurrentNode.nodeName,myValue,CurrentNode) ;
+            //showmessage('calling ExecuteEventHandler');
+            ExecuteEventHandler(e,MyEventType,CurrentNode.nodeName,myValue,CurrentNode) ;
          end;
 
      end;

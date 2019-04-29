@@ -34,9 +34,11 @@ uses
   LResources, Forms, Controls, StdCtrls, Graphics, Dialogs, ExtCtrls, Propedits, RTTICtrls,
   LazsUtils, LCLIntf,
   {$if defined ( windows)}
-  Windows,
+  Windows, UTF8Process,
+  {$else}
+  process,
   {$endif}
-  LazHelpHTML, UTF8Process,
+  LazHelpHTML,
     {$ifdef Chromium}
     uCEFChromium, uCEFWindowParent, uCEFInterfaces, uCEFConstants, uCEFTypes,
     uCEFWinControl,
@@ -92,7 +94,9 @@ type
   protected
     { Protected declarations }
     procedure DoConstructor(TheOwner:TComponent;IsDynamic:Boolean);
+    {$if defined ( windows)}
     procedure WMPaint(var Message: TWMPaint); message WM_PAINT;
+    {$ENDIF}
   public
     { Public declarations }
     BrowserLaunched:Boolean;
@@ -747,6 +751,7 @@ begin
 end;
 
 
+{$if defined ( windows)}
 procedure TXIFrame.WMPaint(var Message: TWMPaint);
 var
   MCanvas:TControlCanvas;
@@ -764,7 +769,7 @@ begin
     myReloadTimer.Enabled:=true;
   {$endif}
 end;
-
+{$endif}
 
 procedure TXIFrame.ReLoadURL;
 begin

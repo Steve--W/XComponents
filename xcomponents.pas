@@ -13,8 +13,8 @@ uses
   XGroupBox, XButton, XEditBox, XCheckBox, XLabel, XHyperLink, XComboBox, 
   XMemo, XTree, XTable, XCode, XProgressBar, XNumericSlider, XNumberSpinner, 
   XDatePicker, XColorPicker, XImage, XBitMap, XRadioBtns, XMenu, XIFrame, 
-  XHTMLText, XHTMLEditor, XSVGContainer, XGPUCanvas, XThreads, XTrapEvents, 
-  XStore, PasteDialogUnit, CompilerLogUnit, LazarusPackageIntf;
+  XHTMLEditor, XSVGContainer, XHTMLText, XTrapEvents, XStore, PasteDialogUnit, 
+  CompilerLogUnit, LazarusPackageIntf;
 
 implementation
 
@@ -45,11 +45,9 @@ begin
   RegisterUnit('XRadioBtns', @XRadioBtns.Register);
   RegisterUnit('XMenu', @XMenu.Register);
   RegisterUnit('XIFrame', @XIFrame.Register);
-  RegisterUnit('XHTMLText', @XHTMLText.Register);
   RegisterUnit('XHTMLEditor', @XHTMLEditor.Register);
   RegisterUnit('XSVGContainer', @XSVGContainer.Register);
-  RegisterUnit('XGPUCanvas', @XGPUCanvas.Register);
-  RegisterUnit('XThreads', @XThreads.Register);
+  RegisterUnit('XHTMLText', @XHTMLText.Register);
   RegisterUnit('XTrapEvents', @XTrapEvents.Register);
   RegisterUnit('XStore', @XStore.Register);
 end;

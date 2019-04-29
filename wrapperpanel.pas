@@ -186,7 +186,7 @@ var SuppressedDesignerProperties:TSuppressedDesignerProperties;
 function FindSuppressedProperty(Classname,pName:string):integer;
 
 implementation
-uses XScrollBox, XTabControl, XForm, XGPUCanvas;
+uses XScrollBox, XTabControl, XForm;
 
 
 {$ifndef JScript}
@@ -1042,13 +1042,14 @@ begin
   MyLabelPos:=self.LabelPos;
   ParentNode:=FindParentOfNodeByName(SystemNodeTree,self.NodeName,false,pos);
 
-  if ParentNode=nil then
-  // is this within the GPU Editor form (special case - not held in the node tree)?
-  begin
-    //showmessage('look for '+nm+' in GPUEditorForm');
-    if GPUEditorForm<>nil then
-      ParentNode:=FindParentOfNodeByName(TDataNode(GPUEditorForm),self.NodeName,false,pos);
-  end;
+//  if ParentNode=nil then
+//  // is this within the GPU Editor form (special case - not held in the node tree)?
+//  begin
+//    //showmessage('look for '+nm+' in GPUEditorForm');
+//    if GPUEditorForm<>nil then
+//      ParentNode:=FindParentOfNodeByName(TDataNode(GPUEditorForm),self.NodeName,false,pos);
+//  end;
+
   if ParentNode<>nil then
   begin
     ParentAlignChildrenVertical := TWrapperPanel(ParentNode).AlignChildrenVertical;

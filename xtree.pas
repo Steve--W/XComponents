@@ -14,22 +14,22 @@ unit XTree;
 {$mode objfpc}{$H+}
 {$endif}
 
+
 interface
 
 uses
-  Classes, SysUtils,TypInfo, NodeUtils,StringUtils,
+  Classes, SysUtils,TypInfo, NodeUtils,StringUtils,EventsInterface, Events,
   {$ifndef JScript}
   fpjson, jsonparser,
   LResources, Forms, Controls, StdCtrls, Graphics, Dialogs, ExtCtrls,ComCtrls,
   Propedits,RTTICtrls,
-  LazsUtils, Events,
+  LazsUtils,
   {$else}
   HTMLUtils,
   {$endif}
   WrapperPanel;
 
 type TTreeNodeHint = function(TreeLabelStr:String):String of object;
-
 
 {$ifndef JScript}
 type TXTree=class;
@@ -110,14 +110,16 @@ type
   TXTree = class(TWrapperPanel)
   private
     { Private declarations }
+    fAllowDrop:Boolean;
     fTreeNodeHint:TTreeNodeHint;
-    fTreeNodeDropAccepted:TTreeNodeDropAccepted;
+  //  fTreeNodeDropAccepted:TTreeNodeDropAccepted;
 
     {$ifndef JScript}
     fHandleClick:TEventHandler;
     fHandleChange:TEventHandler;
     fHandleDragStart:TEventHandler;
     fHandleDrop:TEventHandler;
+    fDropAccepted:TEventHandler;
 
     procedure TreeClick(Sender:TObject);
     {$else}
@@ -183,9 +185,11 @@ type
     property ReadOnly: Boolean read GetReadOnly write SetReadOnly;
     property Draggable: Boolean read GetDraggable write SetDraggable;
     property OpenToLevel: Integer read GetOpenToLevel write SetOpenToLevel;
+    property AllowDrop:Boolean read fAllowDrop write fAllowDrop;
 
+    // these properties will appear as events on Lazarus IDE...
     property TreeNodeHintFunc: TTreeNodeHint read FTreeNodeHint write FTreeNodeHint;
-    property TreeNodeDropAccepted: TTreeNodeDropAccepted read FTreeNodeDropAccepted write FTreeNodeDropAccepted;
+ //   property TreeNodeDropAccepted: TTreeNodeDropAccepted read FTreeNodeDropAccepted write FTreeNodeDropAccepted;
 
     {$ifndef JScript}
     // Events to be visible in Lazarus IDE
@@ -193,6 +197,7 @@ type
     property HandleTreeNodeClick: TEventHandler read FHandleChange write FHandleChange;
     property HandleDragStart: TEventHandler read FHandleDragStart write FHandleDragStart;
     property HandleDrop: TEventHandler read FHandleDrop write FHandleDrop;
+    property HandleDropAccepted: TEventHandler read FDropAccepted write FDropAccepted;
     {$else}
     property NodeBeingDragged: String read fNodeBeingDragged write fNodeBeingDragged;   // NodeBeingDragged is a SUMMARY item in the HTML tree structure
     property SelectedNodeId: String read fSelectedNodeId write SetSelectedNodeId;       // SelectedNodeId is a SUMMARY item in the HTML tree structure
@@ -227,6 +232,7 @@ begin
   MyEventTypes.Add('TreeNodeClick');
   MyEventTypes.Add('DragStart');
   MyEventTypes.Add('Drop');
+  MyEventTypes.Add('DropAccepted');
 end;
 
 {$ifndef JScript}
@@ -347,47 +353,70 @@ procedure TmyTreeView.HandleDragOver(Sender, Source: TObject; X, Y: Integer;
   State: TDragState; var Accept: Boolean);
 var
   Src,DestTreeNode: TTreeNode;
+  DestNode:TDataNode;
   SourceName, DestName, DstText:string;
   i:integer;
+  e:TEventStatus;
+  ob:TNodeEventValue;
 begin
-
-  SourceName:=TTreeView(Source).parent.Name;
-  DestName:=TTreeView(Sender).parent.Name;
-
-
-  DestTreeNode := TTreeNode(TTreeView(Sender).GetNodeAt(X, Y)) ;
-  Src := TTreeView(Source).Selected;
-
-  Accept:=true;
-  // Decide whether a drop is allowed here
-  if TXTree(self.Parent).TreeNodeDropAccepted<>nil then
+  if (Source is TTreeView) then
   begin
-    if (DestTreeNode<>nil) then DstText:=DestTreeNode.Text else DstText:='';
-    Accept := TXTree(self.Parent).TreeNodeDropAccepted(TXTree(self.Parent),SourceName,Src.Text,DstText);
-  end;
 
+    SourceName:=TTreeView(Source).parent.Name;
+    DestName:=TTreeView(Sender).parent.Name;
 
-  if (Src<>nil)
-  and (self.IsDropTarget = false)
-  then
-  begin
-    if (Source=Sender) then
-      CallHandleEvent('DragStart',Src.Text,Sender);    // pick up source node for dragging
-    if (Accept) then
+    DestTreeNode := TTreeNode(TTreeView(Sender).GetNodeAt(X, Y)) ;
+    Src := TTreeView(Source).Selected;
+
+    Accept:=true;
+    // Decide whether a drop is allowed here
+//    if TXTree(self.Parent).TreeNodeDropAccepted<>nil then
+//    begin
+//      if (DestTreeNode<>nil) then DstText:=DestTreeNode.Text else DstText:='';
+//      Accept := TXTree(self.Parent).TreeNodeDropAccepted(TXTree(self.Parent),SourceName,Src.Text,DstText);
+//    end;
+    // OR.....do it the XIDE way...
+    // 1) is there a function? (in the form, or registered, or in user code)
+    // 2) execute the function - send in SourceName,Src.Text,DstText
+    // 3) get the result (e.ReturnString)
+    if (DestTreeNode<>nil) then
     begin
-       self.IsDropTarget:=true;
+      ob:=TNodeEventValue.Create;
+      DstText:=DestTreeNode.Text;
+      DestNode:=TXTree(self.parent).myNode;
+      e:=TEventStatus.Create('DropAccepted',DestName);
+      ob.DstText:=DstText;
+      ob.myTree:=TXTree(self.Parent);
+      ob.SrcText:=Src.Text;
+      ob.SourceName:=SourceName;
+      e.ValueObject:=ob;
+      ExecuteEventHandler(e,'DropAccepted',DestName,'',DestNode);
+      Accept := MyStrToBool(e.ReturnString);
     end;
-  end;
 
-  if (Accept)
-  and (DestTreeNode<>nil) then
-  begin
-    // mark the node as available for drop
-    if DestTreeNode.HasChildren then
-       TTreeView(Sender).SetInsertMark(DestTreeNode,tvimAsFirstChild)
-    else
-       TTreeView(Sender).SetInsertMark(DestTreeNode,tvimAsPrevSibling);
-    TTreeView(Sender).Update;
+    if (Src<>nil)
+    and (self.IsDropTarget = false)
+    then
+    begin
+      if (Source=Sender) then
+        CallHandleEvent('DragStart',Src.Text,Sender);    // pick up source node for dragging
+      if (Accept) then
+      begin
+         self.IsDropTarget:=true;
+      end;
+    end;
+
+    if (Accept)
+    and (DestTreeNode<>nil) then
+    begin
+      // mark the node as available for drop
+      if DestTreeNode.HasChildren then
+         TTreeView(Sender).SetInsertMark(DestTreeNode,tvimAsFirstChild)
+      else
+         TTreeView(Sender).SetInsertMark(DestTreeNode,tvimAsPrevSibling);
+      TTreeView(Sender).Update;
+    end;
+
   end;
 end;
 
@@ -859,19 +888,36 @@ function HandleTreeNodeDragOver(ob:TObject;DestTreeId,DstText:string):Boolean;
 var
   thisXTree:TXTree;
   thisNode:TDataNode;
+  e:TEventStatus;
+  NodeObj:TNodeEventValue;
 begin
 //showmessage('HandleTreeNodeDragOver DestTreeId='+DestTreeId+' DstText='+DstText);
   //ob:object raising the event
   // DstText ..... text of node in the tree that is being dragged over
-
+  result:=true;
   if DraggingTree<>nil then
   begin
     thisNode:=FindDataNodeById(SystemNodeTree,DestTreeId,true);
     thisXTree:=TXTree(thisNode.ScreenObject);
-    if thisXTree.TreeNodeDropAccepted<>nil then
+//    if thisXTree.TreeNodeDropAccepted<>nil then
+//    begin
+//      //  showmessage('SourceTree='+DraggingTree.myNode.NodeName+' SourceNode='+DraggingTree.NodeBeingDragged+' destNode='+DstText);
+//      result := thisXTree.TreeNodeDropAccepted(thisXTree,DraggingTree.myNode.NodeName,DraggingTree.NodeBeingDragged,DstText);
+//    end;
+    // OR.....do it the XIDE way...
+    // 1) is there a function? (in the form, or registered, or in user code)
+    // 2) execute the function - send in SourceName,Src.Text,DstText
+    // 3) get the result (e.ReturnString)
     begin
-      //  showmessage('SourceTree='+DraggingTree.myNode.NodeName+' SourceNode='+DraggingTree.NodeBeingDragged+' destNode='+DstText);
-      result := thisXTree.TreeNodeDropAccepted(thisXTree,DraggingTree.myNode.NodeName,DraggingTree.NodeBeingDragged,DstText);
+      NodeObj:=TNodeEventValue.Create;
+      e:=TEventStatus.Create('DropAccepted',thisNode.NodeName);
+      NodeObj.DstText:=DstText;
+      NodeObj.myTree:=thisXTree;
+      NodeObj.SrcText:=DraggingTree.NodeBeingDragged;
+      NodeObj.SourceName:=DraggingTree.myNode.NodeName;
+      e.ValueObject:=NodeObj;
+      ExecuteEventHandler(e,'DropAccepted',thisNode.NodeName,'',thisXTree);
+      result := MyStrToBool(e.ReturnString);
     end;
   end;
 end;

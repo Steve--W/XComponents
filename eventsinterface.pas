@@ -31,9 +31,14 @@ public
   ContinueAfterTrappers:Boolean; // is true unless the event was intercepted by a trapper, and stopped.
   ReturnString:String;           // used by TXThreads, and also for completion stage of async events (eg. in copyfromclip)
   eventValue:String;             // to carry original event value, for trapper events
+  ValueObject:TObject;
   constructor Create(EvType,NdId:String);
   function EventHasWaitingAsyncProcs():Boolean;
 
+end;
+type TNodeEventValue = class(TObject)
+  myTree:TObject;
+  SourceName,SrcText,DstText:String;
 end;
 
 implementation
