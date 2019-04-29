@@ -9,7 +9,7 @@
         <Filename Value="__PROJNAME__.lpr"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="1"/>
-        <CursorPos X="32" Y="18"/>
+        <CursorPos X="31" Y="23"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -20,8 +20,8 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="13"/>
-        <CursorPos X="27" Y="22"/>
+        <TopLine Value="151"/>
+        <CursorPos X="25" Y="28"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
@@ -302,7 +302,7 @@
       <Unit39>
         <Filename Value="project.ini"/>
         <EditorIndex Value="-1"/>
-        <CursorPos X="40" Y="5"/>
+        <CursorPos Y="4"/>
         <UsageCount Value="11"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
       </Unit39>

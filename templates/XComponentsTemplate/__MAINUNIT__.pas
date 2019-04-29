@@ -25,7 +25,7 @@ uses
   XTabControl, XButton, XLabel, XEditBox, XCheckBox, XHyperLink, XRadioBtns,
   XForm, XTable, XProgressBar, XNumericSlider, XNumberSpinner,
   XComboBox, XDatePicker, XColorPicker, XImage, XGroupBox, XCode, XStore,
-  XBitMap, XTrapEvents, XThreads, XGPUCanvas,XHTMLText, XHTMLEditor;
+  XBitMap, XTrapEvents, XHTMLText, XHTMLEditor;
 
 
 {$ifdef JScript}

@@ -12,7 +12,7 @@ object __MAINFORM__: T__MAINFORM__
   LCLVersion = '2.1.0.0'
   object MyRootDiv: TXScrollBox
     Name = 'MyRootDiv'
-    Tag = 368184480
+    Tag = 389116760
     AnchorSideLeft.Control = Owner
     AnchorSideTop.Side = asrCenter
     Left = 0

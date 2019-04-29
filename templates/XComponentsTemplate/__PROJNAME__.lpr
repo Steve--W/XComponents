@@ -20,7 +20,7 @@ uses
 {$ifdef Chromium}
 const
 //  CEFLibDir:String = 'C:\cef4\FrameworkDir';
-  CEFLibDir:String = '__CEFFrameworkDir__';
+  CEFLibDir:String = 'cef4';
 {$endif}
 
 begin
