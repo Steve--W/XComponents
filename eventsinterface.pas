@@ -26,6 +26,7 @@ type TEventStatus = class(TObject)
 public
   EventType:String;
   NodeId:String;
+  NameSpace:String;
   InitRunning:Boolean;           // true for an event that is running (or has run) the initialisation phase, but not yet the main phase.
   AsyncProcsRunning:TStringList; // list of async procs fired off during the initialisation phase.
   ContinueAfterTrappers:Boolean; // is true unless the event was intercepted by a trapper, and stopped.
@@ -39,6 +40,7 @@ end;
 type TNodeEventValue = class(TObject)
   myTree:TObject;
   SourceName,SrcText,DstText:String;
+  myNode:TObject;
 end;
 
 implementation

@@ -55,7 +55,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
 
   published
@@ -135,11 +135,11 @@ begin
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXLabel',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXLabel',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -166,9 +166,9 @@ end;
 
 {$else}
 
-constructor TXLabel.Create(MyForm:TForm;NodeName:String);
+constructor TXLabel.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -180,7 +180,7 @@ begin
 end;
 
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   LabelText:string;
   OnClickString:String;
@@ -191,20 +191,21 @@ begin
                            +glbMarginSpacing+' '
                            +glbMarginSpacing+' '
                            +glbMarginSpacing+';';
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', this.value);" ';
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
 
   asm
     try{
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid = NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
 
     var HTMLString = ' <label id='+MyObjectName+' '+
                    OnClickString +
                  ' style="display: inline-block;'+marginString+'; backgroundColor=inherit"  >'
                  +LabelText+'</label> ';
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
     }
@@ -219,9 +220,9 @@ begin
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXLabel.Create(MyForm,NodeName));
+  result:=TObject(TXLabel.Create(MyForm,NodeName,NameSpace));
 end;
 
 
@@ -242,7 +243,7 @@ begin
   end;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
     //alert('set labelCaption to '+AValue);
        ob.innerHTML=AValue;   }
@@ -253,9 +254,7 @@ end;
 
 begin
   // this is the set of node attributes that each XHBox instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelCaption','String','...Label...','',false);

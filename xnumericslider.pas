@@ -56,7 +56,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
   published
     property ItemValue: integer read GetItemValue write SetItemValue;
@@ -121,7 +121,7 @@ begin
   TTrackBar(myControl).OnMouseUp:=@self.NumericSliderMouseUp;
 
   self.SetMyEventTypes;
-  //self.myNode:=CreateComponentDataNode(self.Name,MyNodeType, self.myEventTypes, self,TheOwner,IsDynamic);
+
   CreateComponentDataNode2(self,MyNodeType,myDefaultAttribs, self.myEventTypes, TheOwner,IsDynamic);
 
   self.ParentColor:=true;
@@ -136,11 +136,11 @@ begin
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXNumericSlider',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXNumericSlider',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -175,9 +175,9 @@ end;
 
 {$else}
 
-constructor TXNumericSlider.Create(MyForm:TForm;NodeName:String);
+constructor TXNumericSlider.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -189,7 +189,7 @@ begin
 end;
 
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   ItemValue,MaxVal,MinVal,LabelText,LabelPos:string;
   ReadOnly:String;
@@ -201,17 +201,18 @@ begin
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
   ReadOnly:= MyNode.getAttribute('ReadOnly',true).AttribValue;
 
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', this.value);" ';
-  OnChangeString:='onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''',''ItemValue'',this.value);' +
-                            'pas.Events.handleEvent(null,''Change'','''+ScreenObjectName+''', this.value.toString());" ';
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
+  OnChangeString:='onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''','''+NameSpace+''',''ItemValue'',this.value);' +
+                            'pas.Events.handleEvent(null,''Change'','''+ScreenObjectName+''','''+NameSpace+''', this.value.toString());" ';
 
   asm
     try{
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
     var HTMLString='';
     var NodeIDString = "'"+ScreenObjectName+"'";
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid = NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
     var ReadOnlyString = '';
     if (ReadOnly=='True') { ReadOnlyString = ' readonly ';}
 
@@ -226,7 +227,7 @@ begin
 
     HTMLString = labelstring+SliderString;
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
   }
@@ -242,9 +243,9 @@ end;
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXNumericSlider.Create(MyForm,NodeName));
+  result:=TObject(TXNumericSlider.Create(MyForm,NodeName,NameSpace));
 end;
 
 
@@ -252,7 +253,7 @@ procedure TXNumericSlider.SetBarWidth(AValue:string);
 begin
   myNode.SetAttributeValue('BarWidth',AValue);
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
 end;
@@ -284,7 +285,7 @@ begin
   TProgressBar(myControl).Position:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
        ob.value=AValue;  }
   end;
@@ -298,7 +299,7 @@ begin
   TProgressBar(myControl).Max:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
        ob.max=AValue;  }
   end;
@@ -311,7 +312,7 @@ begin
   TProgressBar(myControl).Min:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
        ob.min=AValue;  }
   end;
@@ -320,9 +321,7 @@ end;
 
 begin
   // this is the set of node attributes that each TXNumberSpinner instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'BarWidth','String','50','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);

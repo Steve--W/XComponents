@@ -13,7 +13,7 @@ unit XForm;
 interface
 
 uses
-  Classes, SysUtils, Types, NodeUtils,StringUtils,
+  Classes, SysUtils, Types, NodeUtils,StringUtils, Events,
   {$ifndef JScript}
   Forms, Menus, Controls, StdCtrls, Graphics, Dialogs, ExtCtrls, PropEdits, RTTICtrls,
   WrapperPanel, LazsUtils,XScrollBox;
@@ -21,8 +21,8 @@ uses
   HTMLUtils;
   {$endif}
 
-procedure ShowXForm(XFormID:String; modal:Boolean);
-procedure CloseXForm(XFormID:String);
+procedure ShowXForm(XFormID:String; modal:Boolean;Namespace:String='');
+procedure CloseXForm(XFormID:String;Namespace:String='');
 
 {$ifndef JScript}
 
@@ -36,7 +36,9 @@ private
   fIsContainer:Boolean;
   {$ifndef JScript}
   fMyNode:TDataNode;
+  fHandleClosure:TEventHandler;
   {$endif}
+
 
   function getHeight:integer;
   function getWidth:integer;
@@ -52,10 +54,12 @@ private
   procedure SetShowing(AValue:string);
 public
   {$ifndef JScript}
+  myEventTypes:TStringList;
   procedure FormClose(Sender: TObject; var CloseAction: TCloseAction);  virtual;
   {$else}
-  constructor Create(NodeName:String);
+  constructor Create(NodeName,NameSpace:String);
   {$endif}
+  procedure SetFormEventTypes;
 published
   {$ifndef JScript}
   property myNode:TDataNode read FmyNode write FmyNode;
@@ -68,28 +72,84 @@ published
   property Left:Integer read getLeft write SetLeft;
   property Caption:String read getCaption write SetCaption;
   property Showing:String read getShowing write SetShowing;
+
+  {$ifndef JScript}
+  // Events to be visible in Lazarus IDE    **** not working (TXForm as Lazarus component???) ....tbd ****
+  property HandleClosure: TEventHandler read FHandleClosure write FHandleClosure;
+  {$endif}
 end;
 
   {$ifndef JScript}
   {$else}
-procedure OpenModal(WindowId:string);
-procedure CloseModal(WindowId:string);
-procedure addTheModalBackground(ParentName,WindowId:string);
+procedure OpenModal(NodeName:string;NameSpace:String='');
+procedure CloseModal(NodeName:string;NameSpace:String='');
+procedure addTheModalBackground(ParentName,WindowId,NodeName,NameSpace:string);
 procedure addaModalContentItem(MyName:string);
 procedure InitialiseXFormStyles();
 {$endif}
+function InOpenXForms(NodeName,NameSpace:String):integer;
+procedure AddOpenXForm(NodeName,NameSpace:String);
+procedure DeleteOpenXForm (NodeName,NameSpace:String);
 
-var OpenXForms:TStringList;
+type TOpenXForm = record
+  NodeName:String;
+  NameSpace:String;
+end;
+var OpenXForms : array of TOpenXForm;
+//var OpenXForms:TStringList;
 
 implementation
 
 var
   myDefaultAttribs:TDefaultAttributesArray;
 
+procedure TXForm.SetFormEventTypes;
+begin
+  {$ifndef JScript}
+  MyEventTypes:=TStringList.Create;
+  MyEventTypes.Add('Closure');
+  {$endif}
+  myNode.MyEventTypes:=TStringList.Create;
+  myNode.myEventTypes.Add('Closure');
+  SetLength(myNode.myEventHandlers,myNode.myEventTypes.Count);
+end;
+
+function InOpenXForms(NodeName,NameSpace:String):integer;
+var
+  i:integer;
+begin
+  result:=-1;
+  for i:=0 to length(OpenXForms)-1 do
+    if (OpenXForms[i].NodeName = Nodename)
+    and (OpenXForms[i].Namespace = NameSpace) then
+      result:=i;
+end;
+procedure AddOpenXForm(NodeName,NameSpace:String);
+var
+  newrec:TOpenXForm;
+begin
+  SetLength(OpenXForms,length(OpenXForms)+1);
+  newrec.nodeName:=NodeName;
+  newrec.NameSpace:=NameSpace;
+  OpenXForms[length(OpenXForms)-1]:=newrec;
+end;
+procedure DeleteOpenXForm (NodeName,NameSpace:String);
+var
+  i,j:integer;
+begin
+  for i:=length(OpenXForms)-1 downto 0 do
+    if (OpenXForms[i].NodeName = Nodename)
+    and (OpenXForms[i].Namespace = NameSpace) then
+    begin
+      for j:=i+1 to length(OpenXForms)-1 do
+        OpenXForms[j-1]:=OpenXForms[j];
+      SetLength(OpenXForms,length(OpenXForms)-1);
+    end;
+end;
 
 {$ifndef JScript}
 
-function FindFormByName(const AName: string): TForm;
+function FindFormByName(const AName: string): TForm;      //!!!!namespace??
 var
   i: Integer;
 begin
@@ -102,24 +162,23 @@ begin
   Result := nil;
 end;
 
-
-function CreateForm(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateForm(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 // for dynamic creation of a XForm (Windows) at runtime.
 var
   NewForm:TXForm;
   NewNode,PanelNode:TDataNode;
   TmpPanel:TXScrollBox;
-  dummyEventsList:TStringList;
 begin
-  dummyEventsList:=TStringList.Create;
 
   NewForm :=  TXForm.CreateNew(Application);
   NewForm.name:=ScreenObjectName;
   NewForm.OnClose:=@NewForm.FormClose;
 
-  CreateComponentDataNode2(NewForm,'TXForm',myDefaultAttribs, dummyEventsList, NewForm,true);
+  CreateComponentDataNode2(NewForm,'TXForm',myDefaultAttribs, NewForm.MyEventTypes, NewForm,true);
   NewNode:=NewForm.myNode;
   NewNode.NodeName:=ScreenObjectName;
+  NewNode.NameSpace:=NameSpace;
+  NewForm.SetFormEventTypes;
   AddChildToParentNode(ParentNode,NewNode,position);
 
   NewForm.IsContainer:=true;
@@ -128,7 +187,7 @@ begin
 end;
 
 
-procedure ShowXForm(XFormID:String; modal:Boolean);
+procedure ShowXForm(XFormID:String; modal:Boolean;Namespace:String='');
 var OldParent:TComponent;
   FormToShow:TXForm;
 begin
@@ -137,7 +196,7 @@ begin
   begin
     if (FormToShow<>MainForm) then
     begin
-      FormToShow.BorderStyle:=bsSingle;
+      //FormToShow.BorderStyle:=bsSingle;
       if modal then
         FormToShow.Showing:='Modal'
       else
@@ -206,28 +265,31 @@ end;
 
 //===========================================================================================
 //-------------------------- declaration of a Modal Window -----------------------------
-procedure addTheModalBackground(ParentName,WindowId:string);
+procedure addTheModalBackground(ParentName,WindowId,NodeName,NameSpace:string);
 var
   OnClickString:String;
 begin
   if WindowId = MainForm.Name then
     EXIT;  //wrapper for main form already exists
 
-  OnClickString:='pas.XForm.CloseModal(event.target.id); event.stopPropagation();';
+  OnClickString:='if (event.target == this) {pas.XForm.CloseModal(event.target.id,'''+NameSpace+''');} event.stopPropagation();';
   asm
   try{
-  //alert('addTheModalBackground '+WindowId);
+  //alert('addTheModalBackground '+WindowId+' '+NodeName+' '+NameSpace);
     $mod.InitialiseXFormStyles()
     var HTMLString = ''
-    +'<div id='+WindowId+' class="modal-background" '
-    +'onclick="'+OnClickString+'">'
+    +'<div id='+WindowId+' class="modal-background '+NameSpace+WindowId+'" '
+    +'onmousedown="'+OnClickString+'">'
     +'</div>';
 
     //----- now append the declarations to the Parent -------------------------------------------
-    var ParentItem=document.getElementById(ParentName);
+    //alert('looking for parent '+NameSpace+ParentName);
+    var ParentItem=document.getElementById(NameSpace+ParentName);
+    if (ParentItem==null) {
+      ParentItem=document.getElementById(ParentName);
+      }
     ParentItem.insertAdjacentHTML('beforeend', HTMLString);
 
-    //alert('addTheModalBackground done');
   }catch(err) {alert('Error in XForm.addTheModalBackground '+ err.message);}
   end;
 
@@ -241,9 +303,10 @@ begin
   ContentName:=MyName+'Contents';
   asm
   try{
+  //alert('adding contentitem to '+MyName);
       var HTMLString = ''
       +'  <!-- Form '+MyName+' content -->'
-      +'  <div id="'+ContentName+'" class="modal-content" > '
+      +'  <div id="'+ContentName+'" class="modal-content '+MyName+'" > '
       +'    <div id="'+MyName+'Caption" ></div> '
       +'  </div>';
 
@@ -256,43 +319,47 @@ begin
 end;
 
 
-procedure OpenModal(WindowId:string);
+procedure OpenModal(NodeName:string;NameSpace:String='');
 begin
   asm
   try{
-     var modalwindowid= WindowId;
-      var modal = document.getElementById(modalwindowid);
-      modal.style.display = 'block';
+      var modal = document.getElementById(NameSpace+NodeName);
+      if (modal!=null) {
+      modal.style.display = 'block';  }
   }catch(err){alert('Error in XForm.OpenModal '+ err.message);}
   end;
-  if WindowId<>MainForm.Name then
-    if OpenXForms.IndexOf(WindowId)<0 then
-      OpenXForms.Add(WindowId);
+  if (NodeName<>MainForm.Name) or (NameSpace<>'') then
+    if InOpenXForms(NodeName,NameSpace)<0 then
+      AddOpenXForm(NodeName,NameSpace);
 end;
 
-procedure CloseModal(WindowId:string);
+procedure CloseModal(NodeName:string;NameSpace:String='');
 var
   formNode:TDataNode;
 begin
-  formNode:=FindDataNodeById(SystemNodeTree,WindowId,false);
+//  showmessage('CloseModal '+NameSpace+NodeName);
+  formNode:=FindDataNodeById(SystemNodeTree,NodeName,NameSpace,false);
   if formNode<>nil then
     formNode.SetAttributeValue('Showing','No');
   asm
-    var modal = document.getElementById(WindowId);
+    var modal = document.getElementById(NameSpace+NodeName);
     if (modal!=null) {
       modal.style.display = "none";   }
   end;
 
-  if OpenXForms.IndexOf(WindowId)>-1 then
-    OpenXForms.delete(OpenXForms.IndexOf(WindowId));
+  if InOpenXForms(NodeName,NameSpace)>-1 then
+    DeleteOpenXForm(NodeName,NameSpace);
+
+  if formNode<>nil then
+    HandleEvent(nil,'Closure',NodeName,NameSpace,'');
 end;
 
-procedure ShowXForm(XFormID:String; modal:Boolean);
+procedure ShowXForm(XFormID:String; modal:Boolean;Namespace:String='');
 var
   XFormNode:TDataNode;
   XFormObj:TXForm;
 begin
-  XFormNode:=FindDataNodeById(SystemNodeTree,XFormID,true);
+  XFormNode:=FindDataNodeById(SystemNodeTree,XFormID,Namespace,true);
   //showmessage('ShowXForm. XFormNode is '+XFormNode.NodeName);
   if XFormNode<>nil then
   begin
@@ -302,20 +369,21 @@ begin
   end;
 end;
 
-constructor TXForm.Create(NodeName:String);
+constructor TXForm.Create(NodeName,NameSpace:String);
 begin
-  inherited Create('UI',NodeName,'TXForm',true);
+  inherited Create('UI',NodeName,NameSpace,'TXForm',true);
   myNode:=TDataNode(self);
+  self.SetFormEventTypes;
 
   IsContainer:=true;
   SetNodePropDefaults(self,myDefaultAttribs);
 end;
 
-function CreateinterfaceObj(MyForm:TForm;Nodename:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;Nodename,NameSpace:String):TObject;
 var newobj:TObject;
 begin
-  //showmessage('createinterfaceobj for XForm '+NodeName);
-  newObj:=TObject(TXForm.Create(Nodename));
+  //showmessage('createinterfaceobj for XForm '+NameSpace+'.'+NodeName);
+  newObj:=TObject(TXForm.Create(Nodename,NameSpace));
   if MyForm<>nil then
     TInterfaceObject(newObj).myForm:=MyForm
   else
@@ -327,23 +395,25 @@ begin
   end;
   TInterfaceObject(newObj).myNode:=TDataNode(newObj);
 
+ // showmessage('createinterfaceobj for XForm done');
   result:=newObj;
 end;
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
    ParentName:string;
 begin
- // showmessage('createWidget XForm.  Node type is '+MyNode.ClassName);
+  //showmessage('createWidget XForm.  Node type is '+MyNode.ClassName);
   if ParentNode<>nil then
     ParentName:=ParentNode.NodeName
   else
     Parentname:=TXForm(MainForm).myNode.NodeName;
-
+  //showmessage('creating form widget '+ScreenObjectname+' parentName='+ParentName);
   asm
   try{
-    $mod.addTheModalBackground(ParentName,ScreenObjectName);
-    $mod.addaModalContentItem(ScreenObjectName);
+    var wrapperid =  NameSpace+ScreenObjectName;
+    $mod.addTheModalBackground(ParentName,wrapperid,ScreenObjectName,NameSpace);
+    $mod.addaModalContentItem(wrapperid);
 
     }catch(err) { alert(err.message+' in XForm.CreateWidget');}
   end;
@@ -364,6 +434,7 @@ begin
     RefreshComponentProps(myNode);
     TXForm(myNode).IsContainer := true;
   end;
+  //showmessage('createWidget XForm.  done');
   result:=myNode;
 end;
 {$endif}
@@ -447,12 +518,12 @@ begin
     {$endif}
 end;
 
-procedure  CloseXForm(XFormID:String);
+procedure  CloseXForm(XFormID:String;NameSpace:String='');
 var
   FormToClose:TForm;
   formNode:TdataNode;
 begin
-  formNode:=FindDataNodeByid(SystemNodeTree,XFormID,false);
+  formNode:=FindDataNodeByid(SystemNodeTree,XFormID,NameSpace,false);
   if formNode<>nil then
   begin
     TXForm(formNode.ScreenObject).Showing:='No';
@@ -460,11 +531,12 @@ begin
   else
   begin
     {$ifndef JScript}
-    FormToClose:=TForm(Application.FindComponent(XFormID));
+    FormToClose:=TForm(Application.FindComponent(XFormID));  //!!!! does this ever happen?
      if FormToClose<>nil then
          FormToClose.Close;
     {$else}
-    CloseModal(XFormID);
+    showmessage('problem closing '+XFormID);
+    CloseModal(XFormID,NameSpace);
     {$endif}
   end;
 end;
@@ -489,8 +561,8 @@ begin
     begin
       // close the form
       self.Close;
-      if OpenXForms.IndexOf(self.Name)>-1 then
-        OpenXForms.delete(OpenXForms.IndexOf(self.Name));
+      DeleteOpenXForm(self.myNode.NodeName,self.myNode.NameSpace);
+      HandleEvent(nil,'Closure',myNode.NodeName,myNode.NameSpace,'');
     end
     else
     begin
@@ -500,9 +572,9 @@ begin
           self.showmodal
         else if AValue='Normal' then
           self.Show;
-      if self.Name<>MainForm.Name then
-        if OpenXForms.IndexOf(self.Name)<0 then
-          OpenXForms.Add(self.Name);
+      if (self.myNode.NodeName<>MainForm.Name) or (self.myNode.NameSpace<>'') then
+        if InOpenXForms(self.myNode.NodeName,self.myNode.NameSpace)<0 then
+          AddOpenXForm(self.myNode.NodeName,self.myNode.NameSpace);
     end;
     {$else}
     if self.NodeName<>'' then
@@ -510,7 +582,7 @@ begin
       //showmessage('TXForm SetShowing '+AValue+' for node '+self.NodeName);
       if AValue='No' then
       begin
-        CloseModal(self.NodeName);
+        CloseModal(self.NodeName,self.NameSpace);
       end
       else
       begin
@@ -520,19 +592,40 @@ begin
         asm
         try{
            var modalwindowid= this.NodeName;
-           //alert('open windowid='+modalwindowid);
-           var modal = document.getElementById(modalwindowid);
+           var NameSpace=this.NameSpace;
+           //alert('open windowid='+NameSpace+modalwindowid);
+           var modal = document.getElementById(NameSpace+modalwindowid);
            // alert('found '+modal);
            modal.style.display = 'block';
         }catch(err){alert('Error in XForm.SetShowing '+ err.message);}
         end;
-        if self.NodeName<>MainForm.Name then
-          if OpenXForms.IndexOf(self.NodeName)<0 then
-            OpenXForms.Add(self.NodeName);
+        if (self.NodeName<>MainForm.Name) or (self.NameSpace<>'') then
+          if InOpenXForms(self.NodeName,self.NameSpace)<0 then
+            AddOpenXForm(self.NodeName,self.NameSpace);
       end;
     end;
     {$endif}
   end;
+end;
+
+
+procedure TXForm.SetHeight(AValue:integer);
+begin
+  //showmessage('TXForm SetHeight '+inttostr(AValue));
+  if myNode<>nil then
+    myNode.SetAttributeValue('Height',intToStr(AValue));
+  {$ifndef JScript}
+  inherited Height := AValue;
+  {$else}
+  asm
+    var ob=document.getElementById(this.NameSpace+this.NodeName+'Contents');
+    if (ob!=null) {
+      var str=AValue;
+      if (AValue==0) str='100%';
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',str);
+    }
+  end;
+  {$endif}
 end;
 
 procedure TXForm.SetWidth(AValue:integer);
@@ -544,7 +637,7 @@ begin
   inherited width:=AValue;
   {$else}
   asm
-    var ob=document.getElementById(this.NodeName+'Contents');
+    var ob=document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       var str=AValue;
       if (AValue==0) str='100%';
@@ -566,7 +659,7 @@ begin
   {$else}
   t:=inttostr(AValue)+'px';
   asm
-    var ob=document.getElementById(this.NodeName+'Contents');
+    var ob=document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       ob.style.top=t;
 
@@ -598,7 +691,7 @@ begin
   {$else}
   l:=inttostr(AValue)+'px';
   asm
-    var ob=document.getElementById(this.NodeName+'Contents');
+    var ob=document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       ob.style.left=l;
 
@@ -617,25 +710,6 @@ begin
 end;
 
 
-procedure TXForm.SetHeight(AValue:integer);
-begin
-  //showmessage('TXForm SetHeight '+inttostr(AValue));
-  if myNode<>nil then
-    myNode.SetAttributeValue('Height',intToStr(AValue));
-  {$ifndef JScript}
-  inherited Height := AValue;
-  {$else}
-  asm
-    var ob=document.getElementById(this.NodeName+'Contents');
-    if (ob!=null) {
-      var str=AValue;
-      if (AValue==0) str='100%';
-      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',str);
-    }
-  end;
-  {$endif}
-end;
-
 procedure TXForm.SetCaption(AValue:string);
 begin
   //showmessage('TXForm SetCaption');
@@ -645,7 +719,7 @@ begin
   inherited Caption:=AValue;
   {$else}
   asm
-    var ob=document.getElementById(this.NodeName+'Caption');
+    var ob=document.getElementById(this.NameSpace+this.NodeName+'Caption');
     if (ob!=null) {
       ob.innerHTML=AValue;
     }
@@ -662,7 +736,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'Left','Integer','50','',false);
   AddDefaultAttribute(myDefaultAttribs,'Caption','String','My Title','',false);
 
-  OpenXForms:=TStringList.Create;
+  setLength(OpenXForms,0);
   {$ifndef JScript}
   RegisterClass(TXForm);
   AddNodeFuncLookup('TXForm',@CreateForm);

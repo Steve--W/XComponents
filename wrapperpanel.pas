@@ -82,6 +82,7 @@ type TWrapperPanel=Class(TInterfaceObject)
    function GetAlignment:String;
    function GetSpacingAround:integer;
    function GetBorder:Boolean;
+   function GetHTMLClasses:String;
 
    procedure SetIsVisible(AValue:Boolean);
    procedure SetMyName(AValue:string);
@@ -90,6 +91,7 @@ type TWrapperPanel=Class(TInterfaceObject)
    procedure SetAlignment(AValue:string);
    procedure SetSpacingAround(AValue:integer);
    procedure SetBorder(AValue:Boolean);
+   procedure SetHTMLClasses(AValue:string);
 
    {$ifndef JScript}
 //   procedure SetLink(const AValue: TXPropertyLink);
@@ -115,13 +117,13 @@ type TWrapperPanel=Class(TInterfaceObject)
     procedure EditingDone; override;
     procedure MyEditingDone(Sender:TObject);
     {$else}
-    constructor Create(NodeName:String);
+    constructor Create(NodeName,NameSpace:String);
     procedure SortOutAlignment;
     {$endif}
 
     procedure SetLabelPos(AValue:String);    virtual;
     procedure SetIsSelected(AValue: Boolean);   virtual;
-    procedure SetBgColor(AValue:TColor);
+    procedure SetBgColor(AValue:TColor);       virtual;
     procedure SetContainerHeight(AValue:string); virtual;
     procedure SetContainerWidth(AValue:string); virtual;
     procedure SortOutMyAlignmentAndLabelPos;
@@ -129,8 +131,6 @@ type TWrapperPanel=Class(TInterfaceObject)
 protected
   {$ifndef JScript}
     procedure DoConstructor(TheOwner:TComponent;IsDynamic:Boolean);
-//    procedure LinkLoadFromProperty(Sender: TObject); virtual;
-//    procedure LinkSaveToProperty(Sender: TObject); virtual;
     procedure Paint;override;
     procedure Loaded; override;
     {$endif}
@@ -162,17 +162,18 @@ published
   property BgColor: TColor read GetBgColor write SetBgColor;
   property SpacingAround:integer read GetSpacingAround write SetSpacingAround;
   property Border: Boolean read GetBorder write SetBorder;
+  property HTMLClasses: String read GetHTMLClasses write SetHTMLClasses;
 
-//  property Link: TXPropertyLink read FLink write SetLink;
 end;
 
 {$ifndef JScript}
 procedure SuppressWrapperDesignerProperties;
 {$endif}
 procedure SuppressDesignerProperty(Classname:String; pName:String);
-function AddDynamicWidget(TypeName:String;ParentForm:TForm;ParentNode:TDataNode;NodeName,Alignment:String;position:integer):TdataNode;
-procedure SetCommonWrapperProperties(myWrapper:TWrapperPanel);
-procedure SetCommonWrapperPropDefaults(myWrapper:TWrapperPanel);
+function AddDynamicWidget(TypeName:String;ParentForm:TForm;ParentNode:TDataNode;NodeName,NameSpace,Alignment:String;position:integer):TdataNode;
+//procedure SetCommonWrapperProperties(myWrapper:TWrapperPanel);
+//procedure SetCommonWrapperPropDefaults(myWrapper:TWrapperPanel);
+procedure AddWrapperDefaultAttribs(var myDefaultAttribs:TDefaultAttributesArray);
 
 
 type TSuppressedDesignerProperty = record
@@ -439,13 +440,14 @@ end;
 
 {$else}
 
-constructor TWrapperPanel.Create(NodeName:String);
+constructor TWrapperPanel.Create(NodeName,NameSpace:String);
 begin
-  inherited Create('UI',NodeName,'',false);
+  inherited Create('UI',NodeName,'','',false);       //!!!!namespace???
 
   AlignChildrenVertical:=true;
 
   self.NodeName:=NodeName;
+  self.Namespace:=NameSpace;
   self.IsContainer:=true;
   self.IsVisible:=true;
   myNode:=TDataNode(self);
@@ -471,7 +473,7 @@ end;
 
 
 
-function AddDynamicWidget(TypeName:String;ParentForm:TForm;ParentNode:TDataNode;NodeName,Alignment:String;position:integer):TdataNode;
+function AddDynamicWidget(TypeName:String;ParentForm:TForm;ParentNode:TDataNode;NodeName,NameSpace,Alignment:String;position:integer):TdataNode;
 var
   NewNode:TDataNode;
   fn:TAddComponentFunc;
@@ -487,16 +489,17 @@ begin
     StartingUp:=true;
     {$ifndef JScript}
     //Create Widget (also creates datanode)
-    NewNode:=fn(parentNode,NodeName,position,Alignment);
+    NewNode:=fn(parentNode,NodeName,NameSpace,position,Alignment);
     {$else}
-    NewWidget:=TInterfaceObject(CreateInterfaceObject(nil,TypeName,NodeName));
+ //   NewWidget:=TInterfaceObject(CreateInterfaceObject(nil,TypeName,NodeName,NameSpace));
+    NewWidget:=TInterfaceObject(CreateInterfaceObject(ParentForm,TypeName,NodeName,NameSpace));
     if IsPublishedProp(NewWidget,'Alignment') then
       SetStringProp(NewWidget,'Alignment',Alignment);
     NewNode:=TdataNode(NewWidget);
     NewWidget.myNode:=NewNode;
     if ParentNode<>nil then
       AddChildToParentNode(ParentNode,NewNode,position);
-    fn(NewNode,ParentNode,NodeName,position,Alignment);
+    fn(NewNode,ParentNode,NodeName,NameSpace,position,Alignment);
     {$endif}
     StartingUp:=Starting;
     NewNode.IsDynamic:=true;
@@ -510,25 +513,34 @@ begin
   end;
 end;
 
-procedure SetCommonWrapperProperties(myWrapper:TWrapperPanel);
+//procedure SetCommonWrapperProperties(myWrapper:TWrapperPanel);
+//begin
+//  myWrapper.Alignment:=myWrapper.Alignment;
+//  myWrapper.Hint:=myWrapper.Hint;
+//  myWrapper.IsVisible:=myWrapper.IsVisible;
+//  myWrapper.SpacingAround:=myWrapper.SpacingAround;
+//  myWrapper.Border:=myWrapper.Border;
+//  if FindSuppressedProperty(myWrapper.myNode.NodeType,'BgColor')<0 then
+//    myWrapper.BgColor:=myWrapper.BgColor;
+//end;
+
+//procedure SetCommonWrapperPropDefaults(myWrapper:TWrapperPanel);
+//begin
+//  myWrapper.Alignment:='Left';
+//  myWrapper.Hint:='';
+//  myWrapper.IsVisible:=true;
+//  myWrapper.SpacingAround:=0;
+//  myWrapper.Border:=false;
+//end;
+
+procedure AddWrapperDefaultAttribs(var myDefaultAttribs:TDefaultAttributesArray);
 begin
-  myWrapper.Alignment:=myWrapper.Alignment;
-  myWrapper.Hint:=myWrapper.Hint;
-  myWrapper.IsVisible:=myWrapper.IsVisible;
-  myWrapper.SpacingAround:=myWrapper.SpacingAround;
-  myWrapper.Border:=myWrapper.Border;
-  if FindSuppressedProperty(myWrapper.myNode.NodeType,'BgColor')<0 then
-    myWrapper.BgColor:=myWrapper.BgColor;
+  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
+  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
+  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddDefaultAttribute(myDefaultAttribs,'HTMLClasses','String','','',false);
 end;
 
-procedure SetCommonWrapperPropDefaults(myWrapper:TWrapperPanel);
-begin
-  myWrapper.Alignment:='Left';
-  myWrapper.Hint:='';
-  myWrapper.IsVisible:=true;
-  myWrapper.SpacingAround:=0;
-  myWrapper.Border:=false;
-end;
 
 function FindSuppressedProperty(Classname,pName:string):integer;
 var
@@ -597,6 +609,10 @@ function TWrapperPanel.GetBorder:Boolean;
 begin
   result:=myStrToBool(myNode.GetAttribute('Border',true).AttribValue);
 end;
+function TWrapperPanel.GetHTMLClasses:string;
+begin
+  result:=myNode.GetAttribute('HTMLClasses',true).AttribValue;
+end;
 
 {$ifndef JScript}
 // Name is the first property loaded from .lfm.
@@ -634,18 +650,21 @@ begin
   self.Name:=AValue;
 
   asm
-     var ob = document.getElementById(this.NodeName);
+     var ob = document.getElementById(this.NameSpace+this.NodeName);
      inner = pas.HTMLUtils.ScreenObjectInnerComponent(this);
-     if (inner.id == this.NodeName+'Contents') {
-       inner.id = AValue+'Contents';
+     if (inner.id == this.NameSpace+this.NodeName+'Contents') {
+       inner.id = this.NameSpace+AValue+'Contents';
        }
         //!!!! issue here with naming of html components / references within event handlers / inner components / etc
-     ob.id = AValue;
+     ob.id = this.NameSpace+AValue;
   end;
   {$endif}
 
-  if myNode<>nil then
-     myNode.NodeName:=AValue;
+  {$ifndef JScript}
+  if  (csLoading in componentState) then
+    if myNode<>nil then
+      myNode.NodeName:=AValue;
+  {$endif}
 end;
 
 {$ifndef JScript}
@@ -683,8 +702,9 @@ begin
   SetHeightWidth(self.myNode,TControl(self),'ContainerWidth','ContainerHeight');
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName);
-    pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    var ob = document.getElementById(this.NameSpace+this.NodeName);
+    if (ob==null) {alert('cannot find object '+this.NameSpace+this.NodeName+' for width set');}
+    else {pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue); }
   end;
 
   {$endif}
@@ -697,8 +717,9 @@ begin
   SetHeightWidth(self.myNode,TControl(self),'ContainerWidth','ContainerHeight');
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName);
-    pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
+    var ob = document.getElementById(this.NameSpace+this.NodeName);
+    if (ob==null) {alert('cannot find object '+this.NameSpace+this.NodeName+' for height set');}
+    else {pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);}
   end;
 
   {$endif}
@@ -715,7 +736,7 @@ begin
 
     {$else}
     asm
-      var ob = document.getElementById(this.NodeName);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
       if (ob!=null)  {
         if (AValue==true) {
           if (this.NodeType != 'TXMenuItem') {
@@ -727,7 +748,9 @@ begin
             {self.SortOutAlignment;}
           }
           else
-          { //!!!!! for a menu item ?????
+          { //!! for a menu item
+          // delete the 'display' attribute
+          ob.removeAttribute("style");
           }
         }
         else  {
@@ -752,13 +775,44 @@ begin
   {$else}
 
   asm
-    var ob = document.getElementById(this.NodeName);
+    var ob = document.getElementById(this.NameSpace+this.NodeName);
     if (ob!=null)  {
     ob.title=AValue; }
   end;
 
   {$endif}
 end;
+
+procedure TWrapperPanel.SetHTMLClasses(AValue:string);
+begin
+  myNode.SetAttributeValue('HTMLClasses',AValue);
+
+  {$ifndef JScript}
+  {$else}
+  if myNode.IsDynamic then
+  begin
+    asm
+
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      if (ob==null) {alert('cannot find object '+this.NameSpace+this.NodeName+' for HTMLClasses set');}
+      else {
+        pas.HTMLUtils.ApplyClasses(ob,AValue,this);
+
+       // var elems=ob.getElementsByTagName("*");
+        var elems=ob.getElementsByClassName(ob.id);
+        for (var i=0; i<elems.length; i++)
+          //if ((elems[i].id!=undefined)&&(elems[i].id.indexOf(ob.id)==0))
+          {
+          if (elems[i].id!=undefined) {
+            pas.HTMLUtils.ApplyClasses(elems[i],AValue,this);
+          }
+        }
+      }
+    end;
+  end;
+  {$endif}
+end;
+
 
 function TWrapperPanel.GetAlignment:String;
 begin
@@ -801,7 +855,7 @@ begin
      self.myLbl.Caption:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'ContentsLbl');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsLbl');
     if (ob!=null) {
       ob.innerHTML=AValue;   }
   end;
@@ -885,7 +939,7 @@ begin
   ContainerType := self.IsContainer;
   MyAlignment:=self.Alignment;
   MyLabelPos:=self.LabelPos;
-  ParentNode:=FindParentOfNodeByName(SystemNodeTree,self.NodeName,false,pos);
+  ParentNode:=FindParentOfNodeByName(SystemNodeTree,self.NodeName,self.NameSpace,false,pos);
   //ParentNode:=FindParentOfNode(SystemNodeTree,self);        //!!!! doesn't work....why not???
 
   ParentAlignChildrenVertical:=true;
@@ -908,9 +962,9 @@ begin
       typ:=self.NodeType;
       asm
         try {
-           var ob = document.getElementById(this.NodeName+'Contents');
-           var lbl = document.getElementById(this.NodeName+'ContentsLbl');
-           var wrapper = document.getElementById(this.NodeName);
+           var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+           var lbl = document.getElementById(this.NameSpace+this.NodeName+'ContentsLbl');
+           var wrapper = document.getElementById(this.NameSpace+this.NodeName);
            var lp = MyLabelPos;
 
            if ((ob!=null) && (wrapper!=null)) {
@@ -1040,15 +1094,8 @@ begin
   typ:=self.NodeType;
   MyAlignment:=self.Alignment;
   MyLabelPos:=self.LabelPos;
-  ParentNode:=FindParentOfNodeByName(SystemNodeTree,self.NodeName,false,pos);
+  ParentNode:=FindParentOfNodeByName(SystemNodeTree,self.NodeName,self.NameSpace,false,pos);
 
-//  if ParentNode=nil then
-//  // is this within the GPU Editor form (special case - not held in the node tree)?
-//  begin
-//    //showmessage('look for '+nm+' in GPUEditorForm');
-//    if GPUEditorForm<>nil then
-//      ParentNode:=FindParentOfNodeByName(TDataNode(GPUEditorForm),self.NodeName,false,pos);
-//  end;
 
   if ParentNode<>nil then
   begin
@@ -1068,8 +1115,8 @@ begin
 
     asm
     try {
-           var wrapper = document.getElementById(this.NodeName);
-           var ob = document.getElementById(this.NodeName+'Contents');
+           var wrapper = document.getElementById(this.NameSpace+this.NodeName);
+           var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
 
            if ((ob!=null)  && (wrapper!=null)) {
              wrapper.classList.remove('hboxNoStretch');
@@ -1152,7 +1199,7 @@ begin
   self.BorderSpacing.Around:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName);
+    var ob = document.getElementById(this.NameSpace+this.NodeName);
     if (ob!=null) {
       ob.style.margin=str+'px';
     }
@@ -1178,7 +1225,7 @@ begin
   end;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName);
+    var ob = document.getElementById(this.NameSpace+this.NodeName);
     if (ob!=null) {
     if (AValue==true ) {
        ob.classList.add("normal-border");
@@ -1220,7 +1267,7 @@ begin
 
   asm
   try {
-    var ob = document.getElementById(this.NodeName);
+    var ob = document.getElementById(this.NameSpace+this.NodeName);
     if (ob!=null) {
     ob.style.backgroundColor = AValue;  }
     } catch(err) { alert(err.message+'  in WrapperPanel.SetBgColor'); }

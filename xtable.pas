@@ -28,8 +28,9 @@ uses
 
 {$ifdef JScript}
 procedure AddTableStyles(dummy:string);
-procedure TableChange(Sender:TObject;NodeName:String) ;
-procedure CellClick(target:TObject; NodeName:String);
+procedure TableChange(Sender:TObject;NodeName,NameSpace:String) ;
+function CellClick(target:TObject; NodeName,NameSpace:String):String;
+function KeyDown(target:TObject; NodeName,NameSpace:String):Boolean;
 {$endif}
 
 type TTableCellsArray = Array of Array of String;
@@ -90,7 +91,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
 
     {$ifndef JScript}
@@ -152,12 +153,6 @@ begin
   {$I xtable_icon.lrs}
   RegisterComponents('XComponents',[TXTable]);
 
-  // inherited from TWrapperPanel, not required here
-
-  // suppress some of the link properties
-//  RegisterPropertyEditor(TypeInfo(TAliasStrings), TXPropertyLink, 'AliasValues', THiddenPropertyEditor);
-//  RegisterPropertyEditor(TypeInfo(String), TXPropertyLink, 'TIElementName', THiddenPropertyEditor);
-//  RegisterPropertyEditor(TypeInfo(TPropertyLinkOptions), TXPropertyLink, 'Options', THiddenPropertyEditor);
 end;
 
 constructor TXTable.Create(TheOwner:TComponent);
@@ -208,11 +203,11 @@ begin
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXTable',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXTable',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -267,25 +262,9 @@ end;
 procedure TXTable.TableClick(Sender: TObject) ;
 begin
   if not (csDesigning in componentState) then
-    CallHandleEvent('Click',self.myNode.NodeName,self);
+    //CallHandleEvent('Click',self.myNode.NodeName,self);
+    CallHandleEvent('Click',intToStr(self.SelectedRow)+','+intToStr(self.SelectedCol),self);
 end;
-
-//procedure TXTable.LinkLoadFromProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if (Link.Editor=nil) then exit;
-//  inherited  LinkLoadFromProperty(Sender);
-//
-//end;
-//
-//procedure TXTable.LinkSaveToProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if Link.Editor=nil then exit;
-// // !!!! sort this out
-// // Link.SetAsText(myBoolToStr(TCheckBox(myControl).Checked));
-//
-//end;
 
 procedure TXTable.SetTableWidth(AValue:string);
 var
@@ -341,8 +320,18 @@ var
    i,j,RowCount,cw:integer;
 begin
   cw:=self.ColWidth;
-  jData := GetJSON(GridString);
-  TStringGrid(myControl).ColCount:=1;
+  try
+    jData := GetJSON(GridString);
+  except
+    on E: Exception do
+    begin
+      showmessage('JSON error: '+e.Message);
+      jData := nil;
+    end;
+  end;
+  if jData<>nil then
+  begin
+    TStringGrid(myControl).ColCount:=1;
     rowcount:=jData.Count;
     TStringGrid(myControl).RowCount:= rowcount;
     for i :=0 to rowcount-1 do
@@ -352,12 +341,15 @@ begin
         for j:=0 to TStringGrid(myControl).ColCount-1 do
           TStringGrid(myControl).ColWidths[j]:=cw;
     end;
-
     if self.HasHeaderRow then
       TStringGrid(myControl).FixedRows:=1
     else
       TStringGrid(myControl).FixedRows:=0;
-    TStringGrid(myControl).FixedCols:=0;
+  end
+  else
+    TStringGrid(myControl).ColCount:=0;
+
+  TStringGrid(myControl).FixedCols:=0;
 end;
 
 
@@ -431,10 +423,10 @@ begin
 end;
 
 {$else}
-constructor TXTable.Create(MyForm:TForm;NodeName:String);
+constructor TXTable.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
   //showmessage('create table node');
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -445,20 +437,22 @@ begin
 end;
 
 
-procedure TableChange(Sender:TObject; NodeName:String) ;
+procedure TableChange(Sender:TObject; NodeName,NameSpace:String) ;
 var
-  newData:String;
+  newData,olddata:String;
   myNode:TDataNode;
 begin
-  //showmessage('tablechange event');
-  myNode:=FindDataNodeById(SystemNodeTree,NodeName,true);
+  //showmessage('tablechange event. NodeName='+NodeName);
+  myNode:=FindDataNodeById(SystemNodeTree,NodeName,NameSpace,true);
   // get the table data contents
   newData:=TXTable(myNode).ConstructDataString;
-  //showmessage('newdata='+newData);
+//  showmessage('newdata='+newData);
+//  olddata:=TXTable(myNode).TableData;
   // update the node attribute value
+//  showmessage('olddata='+olddata);
   if newData<>TXTable(myNode).TableData then
   begin
-    //showmessage('tablechange event Set TableData '+newData);
+//    showmessage('tablechange event Set TableData '+newData);
     myNode.SetAttributeValue('TableData',newData);
     // adjust the selected cell...
     if (TXTable(myNode).SelectedCol>-1)
@@ -470,18 +464,35 @@ begin
         TXTable(myNode).SelectedRow:=TXTable(myNode).GetNumRows-1;
      TXTable(myNode).SelectedValue:=TXTable(myNode).GetCellValue(TXTable(myNode).SelectedRow,TXTable(myNode).SelectedCol);
     end;
-    HandleEvent('Change',myNode.NodeName,newData);
+    HandleEvent('Change',myNode.NodeName,NameSpace,newData);
   end;
 end;
 
-procedure CellClick(target:TObject; NodeName:String);
+function CellClick(target:TObject; NodeName,NameSpace:String):String;
 var
   TargetNode:TXTable;
   col,row:integer;
+  ok:boolean;
 begin
   //showmessage('cellclick. node='+NodeName);
-  TargetNode:=TXTable(FindDataNodeByid(SystemNodeTree,NodeName,true));
+  TargetNode:=TXTable(FindDataNodeByid(SystemNodeTree,NodeName,NameSpace,true));
+  row:=-1;
+  col:=-1;
+  ok:=true;
+
   asm
+  //console.log('cellclick. node='+NodeName);
+  var sel = window.getSelection();
+  //console.log('selection='+sel.toString() + ' type:'+ sel.type);
+  if (sel.type=='Range') {
+    var anch=sel.anchorNode;
+    var a1 = anch.parentNode;
+    var foc =sel.focusNode;
+    var f1 = foc.parentNode;
+    //console.log('Range:  '+(a1==f1));
+    if (a1!=f1) {ok=false;}
+    };
+
   var closestByTag = function(el, clazz) {
       // Traverse the DOM up with a while loop
       while (el.tagName != clazz) {
@@ -497,44 +508,102 @@ begin
       // Then return the matched element
       return el;
   }
-  var tr = closestByTag(target,'TR');
-  var td = closestByTag(target,'TD');
-  //alert('rowindex is '+tr.rowIndex);
-  if (tr!=null) {row=tr.rowIndex;}  else {row=0;}
-  //alert('cellindex is '+td.cellIndex);
-  if (tr!=null) {col=td.cellIndex;} else {col=0;}
-  //alert('click at row='+row+' col='+col);
+
+  if (ok==true) {
+    // if the user has slid the mouse to select text, and mouseup is in a different cell from the selected text, then
+    // td returns null below.  In this case, set the cell selection to -1,-1 so we can prevent new text from appearing
+    // in the wrong cell.
+    var tr = closestByTag(target,'TR');
+//    if (tr!=null) {
+//      console.log('rowindex is '+tr.rowIndex);  }
+    var td = closestByTag(target,'TD');
+//    if (td!=null) {
+//      console.log('cellindex is '+td.cellIndex);  }
+    if ((tr!=null)&&(td!=null)) {
+      if (tr!=null) {row=tr.rowIndex;}  else {row=-1;}
+      if (td!=null) {col=td.cellIndex;} else {col=-1;}
+//      console.log('click at row='+row+' col='+col);
+    }
+  }
+  else
+  {
+    //!! change the range selection here, to limit to one cell....
+    document.getSelection().removeAllRanges();
+    var range = new Range();
+    range.setStart(a1,0);
+    range.setEnd(a1,1);
+    document.getSelection().addRange(range);
+
+    a1.focus();
+    var tr = closestByTag(a1,'TR');
+//    if (tr!=null) {
+//      console.log('rowindex is '+tr.rowIndex);  }
+    td = closestByTag(a1,'TD');
+//    if (td!=null) {
+//      console.log('cellindex is '+td.cellIndex);  }
+    if ((tr!=null)&&(td!=null)) {
+      if (tr!=null) {row=tr.rowIndex;}  else {row=-1;}
+      if (td!=null) {col=td.cellIndex;} else {col=-1;}
+//      console.log('click at row='+row+' col='+col);
+    }
+  }
   end;
+
   TargetNode.SelectedRow:=row;
   TargetNode.SelectedCol:=col;
-  TargetNode.SelectedValue:=TargetNode.GetCellValue(row,col);
+  if (row>-1) and (col>-1) then
+  begin
+    TargetNode.SelectedValue:=TargetNode.GetCellValue(row,col);
+    result:=inttostr(row)+','+inttostr(col);
+  end
+  else
+  begin
+    TargetNode.SelectedValue:='';
+    result:='';
+  end;
 end;
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function KeyDown(target:TObject; NodeName,NameSpace:String):Boolean;
+var
+  TargetNode:TXTable;
+  col,row:integer;
+begin
+  //showmessage('keydown. node='+NodeName);
+  TargetNode:=TXTable(FindDataNodeByid(SystemNodeTree,NodeName,NameSpace,true));
+  if (TargetNode.SelectedRow>-1)
+  and (TargetNode.SelectedCol>-1)  then
+    result:=true
+  else
+    result:=false;
+end;
+
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   Checked,ReadOnly,LabelText,LabelPos:string;
-  OnChangeString, OnFocusOutString, OnClickString:String;
+  OnChangeString, OnFocusOutString, OnClickString, OnKeyString:String;
 begin
   //showmessage('create table widget');
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
   ReadOnly:= MyNode.getAttribute('ReadOnly',true).AttribValue;
 
-  //OnClickString:='onclick="event.stopPropagation();pas.XTable.CellClick($(event.target),'''+ScreenObjectName+''');'+
-  OnClickString:='onclick="event.stopPropagation();pas.XTable.CellClick(event.target,'''+ScreenObjectName+''');'+
-                          'pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', '''');' +
+  OnClickString:='onclick="event.stopPropagation();var rc=pas.XTable.CellClick(event.target,'''+ScreenObjectName+''','''+NameSpace+''');'+
+                          'if (rc!='''') { '+
+                          'pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', rc); }' +
                           '" ';
-  OnFocusOutString:='onfocusout="pas.XTable.TableChange(this,'''+ScreenObjectName+''');"';
+  OnFocusOutString:='onfocusout="pas.XTable.TableChange(this,'''+ScreenObjectName+''','''+NameSpace+''');"';
+  OnKeyString:='onkeydown="if (!pas.XTable.KeyDown(event.target,'''+ScreenObjectName+''','''+NameSpace+''')) {return false;}"';
   asm
     try{
     pas.XTable.AddTableStyles('');
 
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
     wrapper.style.display = 'flex';
     var goright =  'flex-e'+'nd';
 
     var HTMLString='';
     var NodeIDString = "'"+ScreenObjectName+"'";
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid = NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
 
     var ReadOnlyString = '';
     if (ReadOnly=='False') { ReadOnlyString = ' contenteditable ';}
@@ -542,7 +611,8 @@ begin
     var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
 
     var TableString = '<table id='+MyObjectName+ ' '+
-                       OnClickString +
+                      OnClickString +
+                      OnKeyString +
                        OnFocusOutString +
                        ' style="display:inline-block; overflow:scroll; width:100%; height:100%;" '+
                        ReadOnlyString+' >' +
@@ -551,11 +621,12 @@ begin
                            '<th>2</th>'+
                            '<th>3</th>'+
                          '</tr>'+
+                         '<tbody></tbody>'+
                        '</table> ';
 
     HTMLString = labelstring+TableString;
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
   }
   catch(err) { alert(err.message+'  in XCheckBox.CreateXCheckBox');}
@@ -568,32 +639,17 @@ end;
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXTable.Create(MyForm,NodeName));
+  result:=TObject(TXTable.Create(MyForm,NodeName,NameSpace));
 end;
-
-//procedure TXTable.LinkLoadFromProperty(Sender: TObject);
-//begin
-//  inherited  LinkLoadFromProperty(Sender);
-//end;
-//
-//procedure TXTable.LinkSaveToProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if Link=nil then exit;
-//  if Link.TIObject=nil then exit;
-////  showmessage('linksavetoproperty. '+Link.TIPropertyName+' '));
-//
-//  SetStringProp(Link.TIObject,Link.TIPropertyName,self.TableData);
-//end;
 
 procedure TXTable.SetTableWidth(AValue:string);
 begin
   //showmessage('Table width='+AValue);
   myNode.SetAttributeValue('TableWidth',AValue);
   asm
-  var ob = document.getElementById(this.NodeName);
+  var ob = document.getElementById(this.NameSpace+this.NodeName);
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
 end;
@@ -602,7 +658,7 @@ procedure TXTable.SetTableHeight(AValue:string);
 begin
   myNode.SetAttributeValue('TableHeight',AValue);
   asm
-  var ob = document.getElementById(this.NodeName);
+  var ob = document.getElementById(this.NameSpace+this.NodeName);
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
   end;
 end;
@@ -621,7 +677,7 @@ var
   myArray:TTableCellsArray;
 begin
     asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
     for (var i = 0, row; row = ob.rows[i]; i++) {
        myArray[i] = [];
@@ -642,7 +698,7 @@ var
 begin
   dataStr:='[';
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       //alert('ob is '+ob.id);
       for (var i = 0, row; row = ob.rows[i]; i++) {
@@ -667,7 +723,7 @@ var
     num:integer;
 begin
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       if (ob.rows.length > 0) {
         num=ob.rows[0].cells.length;
@@ -683,7 +739,7 @@ var
     num:integer;
 begin
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
     num=ob.rows.length;
     }
@@ -696,7 +752,7 @@ var
   myval:string;
 begin
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       if (ob.rows.length > row) {
         if (ob.rows[row].cells.length > col) {
@@ -763,13 +819,13 @@ begin
     end;
   {$else}
     asm
-      var ob = document.getElementById(this.NodeName+'Contents');
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
       if (ob!=null) {
         if (ob.rows.length > row) {
           if (ob.rows[row].cells.length > col) {
             if (ob.rows[row].cells[col].innerText != AValue) {
               ob.rows[row].cells[col].innerText = AValue;
-              pas.XTable.TableChange(ob,this.NodeName);
+              pas.XTable.TableChange(ob,this.NodeName,this.NameSpace);
             }
           }
         }
@@ -949,7 +1005,7 @@ begin
     {$else}
     asm
       //alert('deleting row '+r);
-        var ob = document.getElementById(this.NodeName+'Contents');
+        var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
         ob.deleteRow(r);
     end;
     {$endif}
@@ -971,7 +1027,7 @@ begin
     TStringGridAccess(TStringGrid(self.myControl)).DeleteCol(c);
     {$else}
     asm
-        var ob = document.getElementById(this.NodeName+'Contents');
+        var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
         if (ob!=null) {
         for (var i = 0, row; row = ob.rows[i]; i++) {
                 row.deleteCell(c);
@@ -1053,7 +1109,7 @@ begin
   TStringGrid(myControl).Enabled:=not AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName);
+    var ob = document.getElementById(this.NameSpace+this.NodeName);
     if (ob!=null) {
     if (AValue==true) {ob.disabled = true}
     else {ob.disabled = false }
@@ -1078,7 +1134,8 @@ begin
   cw:=myNode.GetAttribute('ColWidth',true).AttribValue;
   //showmessage('settabledata with colwidth '+cw);
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    try {
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if ((ob!=null)&&(AValue!='')) {
       var localtestdata=JSON.parse(AValue);
       var RowCount =localtestdata.length;
@@ -1095,7 +1152,8 @@ begin
         var toprow=document.createElement("tr");
         for (var j=0; j<ColCount; j++) {
           if (hasHeaders==true) {
-            var hdr=document.createElement("th"); }
+            var hdr=document.createElement("th");
+            }
           else {
             var hdr=document.createElement("td");}
           hdr.style.width=cw+'px';
@@ -1105,6 +1163,8 @@ begin
         }
         ob.appendChild(toprow);
 
+        var bdy=document.createElement("tbody");
+        ob.appendChild(bdy);
         for (i = 1; i < RowCount; i++ ) {
            var row=document.createElement("tr");
            for (j=0; j<ColCount; j++) {
@@ -1114,10 +1174,12 @@ begin
              cell.appendChild(textnode);
              row.appendChild(cell);
            }
-           ob.appendChild(row);
+           bdy.appendChild(row);
         }
       }
     }
+    }
+    catch(err) {  alert("Error in TXTable.SetTableData: "+ err.message); };
 
   end;
   {$endif}
@@ -1128,11 +1190,9 @@ end;
 
 begin
   // this is the set of node attributes that each TXTable instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'TableWidth','String','150','',false);
-  AddDefaultAttribute(myDefaultAttribs,'TableHeight','String','200','',false);
+  AddDefaultAttribute(myDefaultAttribs,'TableHeight','String','100','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Top','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Table','',false);

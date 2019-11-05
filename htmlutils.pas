@@ -22,22 +22,23 @@ uses Classes, SysUtils, StringUtils, NodeUtils
 procedure removeClassName(el:TObject; ClassName:String);
 procedure StopBubbling(event:TObject);
 function addHandVBoxStyles():string;
+procedure addWidgetInnerStyles;
 //procedure ClearAllScreenObjects;
 function getAncestorWithTagAndClass(node:TObject; tagName, className:String):TObject;
 function getPageOffsetLeft(el:TObject):Integer;
 function getPageOffsetTop(el:TObject):Integer;
 function hasClassName(el:TObject; name:String):Boolean;
-function PrepareHeightWidthHTML(var HW,StrVal,StyleVal:string):Boolean;
+//function PrepareHeightWidthHTML(var HW,StrVal,StyleVal:string):Boolean;
 procedure SetHeightWidthHTML(MyNode:TDataNode; ob:TObject; HW,AttrValue:string);
 function DeleteScreenObject(MyNode:TDataNode):string;
-function CreateWrapperHtml(NewNode,ParentNode:TDataNode;ClassName,ScreenObjectName,ScreenObjectType:string):string;
-function CreateWrapperDiv(MyNode,ParentNode:TDataNode;NodeClass,ScreenObjectName,ScreenObjectType:string;position:integer ):TObject;
+function CreateWrapperHtml(NewNode,ParentNode:TDataNode;ScreenObjectName,NameSpace,ScreenObjectType:string):string;
+function CreateWrapperDiv(MyNode,ParentNode:TDataNode;NodeClass,ScreenObjectName,NameSpace,ScreenObjectType:string;position:integer ):TObject;
 procedure AddObjectToParentObject(ParentNode:TDataNode;ParentId,myId:String;position:integer;HTMLString:string);
 function ScreenObjectInnerComponent(SystemNode:TDataNode):TObject;
 procedure UnHighlight(ObjID:string; HadBorder:boolean);
 procedure Highlight(ObjID:string);
 procedure ShowHideSelectedBorder(myNode:TDataNode;showborder:Boolean);
-function GetDataNodeFromTreeNode(nodeID:string):TDataNode;
+function GetDataNodeFromTreeNode(nodeID,NameSpace:string):TDataNode;
 function getParentByTagName(topname:String;node:TObject;tagname:String):TObject;
 function ContainsChildWithTag(node:TObject;tagname:String):Boolean;
 procedure WriteToLocalStore(KeyName,TheData:String);
@@ -47,6 +48,8 @@ function GetCurrentHeight(ObjectName:String):integer;
 function GetCurrentWidth(ObjectName:String):integer;
 procedure ShowGreyOverlay(ParentName,WindowId:String);
 procedure DeleteGreyOverlay(DivId:String);
+procedure ApplyClasses(ob:TObject;AValue:String;myNode:TdataNode);
+procedure SyncTimeout(msec:integer);
 
 
 const
@@ -59,6 +62,14 @@ var browser:TObject;
 
 implementation
 uses XForm ,XIframe, XSVGContainer ;
+
+procedure SyncTimeout(msec:integer);
+begin
+asm
+mysleep(msec);
+end;
+end;
+
 
 procedure IdentifyBrowser;
 begin
@@ -256,6 +267,38 @@ asm
 
 end;
 
+procedure addWidgetInnerStyles;
+var dummy:integer;
+begin
+  dummy:=0;
+
+  asm
+   // ----------------------------------------check if the style has already been set
+    var x = document.getElementsByTagName("STYLE");
+    var StyleIsSet = false;
+    if (x.length>0){
+      for (var i=0; i<x.length; i++){
+        var y= x[i].innerHTML;
+        if (y.indexOf(".widgetinner") !=-1) { StyleIsSet =true}
+      }
+    }
+
+    if (StyleIsSet == false){
+        var StyleString = '<style>'
+        +'.widgetinner { '
+            +' font-size: inherit;'
+            +' color: inherit;'
+            +' font-style: inherit;'
+            +' font-family: inherit;'
+            +' }'
+         +' </style>';
+
+      //----------------------------- now append the style declarations to the head of the HTML page
+      document.head.innerHTML = document.head.innerHTML+StyleString;
+     }
+  end;
+
+end;
 
 function hasClassName(el:TObject; name:String):Boolean;
 begin
@@ -369,7 +412,7 @@ begin
    end;
    result := match;
 end;
-
+(*
 function PrepareHeightWidthHTML(var HW,StrVal,StyleVal:string):Boolean;
 var
   hw1:string;
@@ -401,16 +444,36 @@ begin
   end;
   result:=pct;
 end;
+*)
+function PrepareHeightWidthHTML(var HW,StrVal:string):Boolean;
+var
+  hw1:string;
+  pct:Boolean;
+begin
+  // prepare height and width for html
+  pct:=false;
+  if (FoundString(StrVal,'%')>0) then
+    pct:=true;
+  if (FoundString(StrVal,'px')>0) or (pct=true) then
+    hw1:=StrVal
+  else if StrVal<>'' then
+    hw1:=StrVal+'px'
+  else
+     hw1:='';
+  StrVal:=hw1;
+
+  result:=pct;
+end;
+
 
 procedure SetHeightWidthHTML(MyNode:TDataNode; ob:TObject; HW,AttrValue:string);
 var
   hwStr:string;
-  StyleHW,StyleHW0:string;
+  StyleHW:string;
   pct:Boolean;
 begin
-  pct:=PrepareHeightWidthHTML(HW,AttrValue,StyleHW0);
   hwStr:=AttrValue;
- // StyleHW:=StyleHW0;
+  pct:=PrepareHeightWidthHTML(HW,hwStr);
   asm
     if (ob!=null) {
       if (HW=='H') {
@@ -446,7 +509,7 @@ function DeleteScreenObject(MyNode:TDataNode):string;
 var
     ObjName:string;
 begin
-   ObjName:=MyNode.NodeName;
+   ObjName:=MyNode.NameSpace+MyNode.NodeName;
 
   asm
     try{
@@ -466,7 +529,7 @@ var
     SystemRootNameVar:string;
 begin
   SystemRootNameVar:=SystemRootName;
-  showmessage('ClearAllScreenObjects');
+//  showmessage('ClearAllScreenObjects');
   asm
 try{
        var self=document.getElementById(SystemRootNameVar);
@@ -518,7 +581,7 @@ begin
            myParent.insertAdjacentHTML('afterbegin', HTMLString);
            }
            else {
-             var mySibling=document.getElementById(mysib.NodeName);
+             var mySibling=document.getElementById(mysib.NameSpace+mysib.NodeName);
              if (mySibling!=null) {
                mySibling.insertAdjacentHTML('beforebegin', HTMLString);
              }
@@ -540,48 +603,47 @@ end;
 
 function ScreenObjectInnerComponent(SystemNode:TDataNode):TObject;
 var
-  innername:string;
+  wrappername,innername:string;
 begin
    begin
-     innername:=SystemNode.NodeName+'Contents';
+     wrappername:=SystemNode.NameSpace+SystemNode.NodeName;
+     innername:=wrappername+'Contents';
      asm
        Result=document.getElementById(innername);
      end;
      if Result=nil then
      asm
-       Result=document.getElementById(SystemNode.NodeName);
+       Result=document.getElementById(wrappername);
      end;
      if Result=nil then
-       ShowMessage('object '+ SystemNode.NodeName + ' not found in HTMLUtils.ScreenObjectInnerComponent') ;
+       ShowMessage('object '+ wrappername + ' not found in HTMLUtils.ScreenObjectInnerComponent') ;
    end;
 end;
 
 
-function CreateWrapperHtml(NewNode,ParentNode:TDataNode;ClassName,ScreenObjectName,ScreenObjectType:string):string;
+function CreateWrapperHtml(NewNode,ParentNode:TDataNode;ScreenObjectName,NameSpace,ScreenObjectType:string):string;
 var
-  Border:String;
+//  Border,
+  ClassString:String;
 begin
-  Border:=NewNode.GetAttribute('Border',true).AttribValue;
+  ClassString :=' class="'+NameSpace+ScreenObjectName;
+  ClassString := ClassString+' no-border ';
+  ClassString := ClassString + '" ';
 
 asm
 try{
 
-    // note tabindex=0 allows a div to be focused.  Only the focused element will listen to keyboard events.
-
-    var ClassString =' class="';
-    if (Border=='True') {ClassString = ClassString+' normal-border '+ClassName;}
-    else  {ClassString = ClassString+' no-border '+ClassName;}
-
-    ClassString= ClassString + '" ';
-
     var ComponentHTML='';
     var NodeIDString = "'"+ScreenObjectName+"'";
+    var NameSpaceString = "'"+NameSpace+"'";
     var componentClick="'Click'";
 
     var WrapperStyle = ' background-color:inherit; white-space:nowrap; ';
 
-    var FullHTMLString='<div '+ClassString+' style="'+WrapperStyle+'" tabindex="0" id='+ScreenObjectName+
-                ' onclick="event.stopPropagation(); pas.Events.handleEvent(null,'+componentClick+','+NodeIDString+', this.value);" '+
+    // note tabindex=0 allows a div to be focused.  Only the focused element will listen to keyboard events.
+
+    var FullHTMLString='<div '+ClassString+' style="'+WrapperStyle+'" tabindex="0" id='+NameSpace+ScreenObjectName+
+                ' onclick="event.stopPropagation(); pas.Events.handleEvent(null,'+componentClick+','+NodeIDString+','+NameSpaceString+', this.value);" '+
                    ' </div> ';
 
   }catch(err) { alert(err.message+'  in HTMLUtils.CreateWrapperHtml');}
@@ -591,11 +653,14 @@ end;
 
 end;
 
-function CreateWrapperDiv(MyNode,ParentNode:TDataNode;NodeClass,ScreenObjectName,ScreenObjectType:string;position:integer ):TObject;
+function CreateWrapperDiv(MyNode,ParentNode:TDataNode;NodeClass,ScreenObjectName,NameSpace,ScreenObjectType:string;position:integer ):TObject;
 var
   bdr:string;
   ShowBorder:boolean;
 begin
+  //showmessage('CreateWrapperDiv '+MyNode.NodeName);
+
+
   Bdr:= MyNode.getAttribute('Border',true).AttribValue;
   if Bdr<>'' then
     ShowBorder:=MyStrToBool(Bdr)
@@ -604,11 +669,13 @@ begin
 
   asm
     try {
+       var wrappername = NameSpace+ScreenObjectName;
        var MyParent = pas.HTMLUtils.ScreenObjectInnerComponent(ParentNode);
- //      alert('adding '+MyNode.NodeName+' to '+MyParent.id);
-       var HTMLImplementation = pas.HTMLUtils.CreateWrapperHtml(MyNode,ParentNode,'',ScreenObjectName,ScreenObjectType);
-       pas.HTMLUtils.AddObjectToParentObject(ParentNode,MyParent.id,ScreenObjectName,position,HTMLImplementation);
-       var wrapper=document.getElementById(ScreenObjectName);
+       //alert('adding '+wrappername+' to '+MyParent.id);
+       var HTMLImplementation = pas.HTMLUtils.CreateWrapperHtml(MyNode,ParentNode,ScreenObjectName,NameSpace,ScreenObjectType);
+       pas.HTMLUtils.AddObjectToParentObject(ParentNode,MyParent.id,wrappername,position,HTMLImplementation);
+       var wrapper=document.getElementById(wrappername);
+       if (wrapper==null) {alert('wrapper '+wrappername+' not found');}
        if ((wrapper.style.overflow!='scroll') && (ScreenObjectType!='TXMainMenu')  && (ScreenObjectType!='TXMenuItem'))
        {
           wrapper.style.overflow = 'hidden';
@@ -634,7 +701,7 @@ begin
       if (ob!=null) {
         ob.classList.remove("highlight-border");
 
-        if (HadBorder=='True') {
+        if (HadBorder==true) {
            ob.classList.add("normal-border");
            }
       }
@@ -664,19 +731,20 @@ procedure ShowHideSelectedBorder(myNode:TDataNode;showborder:Boolean);
 var
   HadBorder:Boolean;
 begin
-  //showmessage('ShowHideSelectedBorder '+myNode.NodeType+'  '+myBoolToStr(showborder));
+  showmessage('ShowHideSelectedBorder '+myNode.NodeType+'  '+myBoolToStr(showborder));
   if myNode.GetAttribute('Border',true).AttribValue <> '' then
      HadBorder:=myStrToBool(myNode.GetAttribute('Border',true).AttribValue)
   else
      HadBorder:=false;
 
   asm
-    var ob = document.getElementById(this.NodeName);
+    var ob = document.getElementById(this.NameSpace+this.NodeName);
     if (ob!=null) {
     if (showborder==true) {
        pas.HTMLUtils.Highlight(ob.id);
     }
     else {
+    alert('call UnHighlight for '+ob.id+' HadBorder='+HadBorder);
        pas.HTMLUtils.UnHighlight(ob.id, HadBorder);
     }      }
   end;
@@ -689,12 +757,19 @@ begin
 
 end;
 
-function GetDataNodeFromTreeNode(nodeID:string):TDataNode;
+function GetDataNodeFromTreeNode(nodeID,NameSpace:string):TDataNode;
 var
   bits:TStringList;
 begin
-  bits:=stringsplit(nodeID,'Contents');
-  result:=FindDataNodeById(SystemNodeTree,bits[0],true);
+  if NameSpace<>'' then
+  //namespace should prefix the nodeid - chop it off
+  begin
+    if FoundString(nodeID,NameSpace)=1 then
+      nodeID:=myStringReplace(nodeID,NameSpace,'',1,-1);
+  end;
+  bits:=stringsplit(nodeID,'Node');
+ // showmessage('GetDataNodeFromTreeNode looking for '+bits[0]+' from '+nodeID);
+  result:=FindDataNodeById(SystemNodeTree,bits[0],NameSpace,true);
 end;
 
 function getParentByTagName(topname:String;node:TObject;tagname:String):TObject;
@@ -872,6 +947,68 @@ begin
 
     arr = archive;
   end;
+end;
+
+procedure ApplyClasses(ob:TObject;AValue:String;myNode:TdataNode);
+begin
+  asm
+  try{
+    //!! must also preserve any additional dynamic classes that have been set, such as border styles etc !!
+    // First, delete all prior classes except for the built-in ones
+    for(var i=ob.classList.length-1; i>=0; i--)  {
+      if ((ob.classList[i]!='modal-background')
+        &&(ob.classList[i]!='modal-content')
+        &&(ob.classList[i]!='widgetinner')
+        &&(ob.classList[i]!='vbox')
+        &&(ob.classList[i]!='vboxNoStretch')
+        &&(ob.classList[i]!='vboxNoFlex')
+        &&(ob.classList[i]!='hbox')
+        &&(ob.classList[i]!='hboxNoStretch')
+        &&(ob.classList[i]!='AlignmentCentre')
+        &&(ob.classList[i]!='AlignmentRight')
+        &&(ob.classList[i]!='AlignmentLeft')
+        &&(ob.classList[i]!='AlignmentLeftContainer')
+        &&(ob.classList[i]!='AlignmentTop')
+        &&(ob.classList[i]!='AlignmentBottom')
+        &&(ob.classList[i]!='menu')
+        &&(ob.classList[i]!='menuItem')
+        &&(ob.classList[i]!='menuBar')
+        &&(ob.classList[i]!='highlight-border')
+        &&(ob.classList[i]!='normal-border')
+        &&(ob.classList[i]!='no-border')
+        &&(ob.classList[i]!='textAreaBorder')
+        &&(ob.classList[i]!='TabPage')
+        &&(ob.classList[i]!='TabButton')
+        &&(ob.classList[i]!='TabButtonDiv')
+        &&(ob.classList[i]!='hasChildren')
+        &&(ob.classList[i]!='noChildren'))
+      {
+        ob.classList.remove(ob.classList[i]);
+      }
+    }
+
+    var newList = AValue.split(" ");
+    for (i=0; i<newList.length; i++) {
+      if (newList[i]!="") {
+      ob.classList.add(newList[i]);
+      }
+    }
+
+    if (myNode.NameSpace+myNode.NodeName==ob.id) {
+      // Classes list should always include 'UI', '(widget type)', '(node name)'
+      if (!(ob.classList.contains(myNode.NodeName))) {
+        ob.className = myNode.NodeName + " " + ob.className;
+      }
+      if (!(ob.classList.contains(myNode.NodeType))) {
+        ob.className = myNode.NodeType + " " + ob.className;
+      }
+      if (!(ob.classList.contains("UI"))) {
+        ob.className = "UI " + ob.className;
+      }
+      }
+    }
+  catch(err) {alert('Error in HTMLUtils.ApplyClasses '+ err.message);}
+end;
 end;
 
 begin

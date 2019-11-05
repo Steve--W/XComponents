@@ -12,16 +12,16 @@
         <OtherUnitFiles Value="$(XComponents_Pas2JSPaths);$(XComponents_cefPaths)"/>
         <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
       </SearchPaths>
-      <Conditionals Value="if ((TargetOS='win32') or (TargetOS='win64')) then
+      <Conditionals Value="if ((TargetOS=&apos;win32&apos;) or (TargetOS=&apos;win64&apos;)) then
  begin
-   //XComponents_Pas2JSPaths :=  'C:\pas2jsnew\compiler\packages\fcl-js\src\;C:\pas2jsnew\compiler\packages\fcl-json\src\;C:\pas2jsnew\compiler\packages\fcl-passrc\src\;C:\pas2jsnew\compiler\packages\pastojs\src\';
-   XComponents_Pas2JSPaths :=  'pas2js0\';
-   XComponents_cefPaths :=  'C:\cef4Master\CEF4Delphi-master\packages\lib\i386-win32\';
+   //XComponents_Pas2JSPaths :=  &apos;C:\pas2jsnew\compiler\packages\fcl-js\src\;C:\pas2jsnew\compiler\packages\fcl-json\src\;C:\pas2jsnew\compiler\packages\fcl-passrc\src\;C:\pas2jsnew\compiler\packages\pastojs\src\&apos;;
+   XComponents_Pas2JSPaths :=  &apos;pas2js0\&apos;;
+   XComponents_cefPaths :=  &apos;C:\cef4Master\CEF4Delphi-master\packages\lib\i386-win32\&apos;;
  end
- else if (TargetOS='linux') then
+ else if (TargetOS=&apos;linux&apos;) then
  begin
-   XComponents_Pas2JSPaths :=  './pas2js0/';
-   XComponents_cefPaths :=  '';
+   XComponents_Pas2JSPaths :=  &apos;./pas2js0/&apos;;
+   XComponents_cefPaths :=  &apos;&apos;;
  end;"/>
       <BuildMacros>
         <Count Value="2"/>

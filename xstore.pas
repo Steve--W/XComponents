@@ -55,7 +55,7 @@ type
     constructor Create(TheOwner: TComponent);  override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean);
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
     destructor Destroy; override;
 
@@ -93,8 +93,8 @@ procedure TXStore.DoConstructor(TheOwner:TComponent;IsDynamic:Boolean);
 var
   NewNode:TDataNode;
 begin
-    //self.myNode:=CreateComponentDataNode(self.Name,MyNodeType, self.myEventTypes, self,TheOwner,IsDynamic);
-    NewNode:=TDataNode.Create('NV',self.Name,'TXStore',false);
+
+    NewNode:=TDataNode.Create('NV',self.Name,'','TXStore',false);
     NewNode.ScreenObject:=self;
     NewNode.MyEventTypes:=TStringList.Create;
     SetLength(NewNode.myEventHandlers,0);
@@ -131,23 +131,24 @@ procedure TXStore.SetMyName(AValue:string);
 begin
   inherited Name:=AValue;
 
-  if myNode<>nil then
-     myNode.NodeName:=AValue;
+  if  (csLoading in componentState) then
+    if myNode<>nil then
+      myNode.NodeName:=AValue;
 end;
 
-function CreateStore(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateStore(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXStore',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXStore',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
 {$else}
 
-constructor TXStore.Create(MyForm:TForm;NodeName:String);
+constructor TXStore.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeClass:='NV';
   self.NodeType:='TXStore';
   self.MyForm:=MyForm;
@@ -158,7 +159,7 @@ begin
 
 end;
 
-function CreateStore(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateStore(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 begin
 //showmessage('Create Store widget');
 
@@ -167,9 +168,9 @@ MyNode.ScreenObject:=MyNode;
 result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXStore.Create(MyForm,NodeName));
+  result:=TObject(TXStore.Create(MyForm,NodeName,NameSpace));
 end;
 
 {$endif}

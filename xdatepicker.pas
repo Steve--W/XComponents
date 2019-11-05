@@ -61,7 +61,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
 
   published
@@ -153,11 +153,11 @@ begin
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXDatePicker',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXDatePicker',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -207,9 +207,9 @@ end;
 
 
 {$else}
-constructor TXDatePicker.Create(MyForm:TForm;NodeName:String);
+constructor TXDatePicker.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -220,7 +220,7 @@ begin
 end;
 
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   ItemValue,LabelText,LabelPos:string;
   ReadOnly:Boolean;
@@ -230,30 +230,32 @@ begin
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
   ReadOnly:= StrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
 
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', this.value.toString());" ';
-  OnChangeString:= 'onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''',''ItemValue'',this.value.toString()); '+
-                             'pas.Events.handleEvent(null,''Change'','''+ScreenObjectName+''', this.value.toString(), ''ItemValue'');" ';
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value.toString());" ';
+  OnChangeString:= 'onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''','''+NameSpace+''',''ItemValue'',this.value.toString()); '+
+                             'pas.Events.handleEvent(null,''Change'','''+ScreenObjectName+''','''+NameSpace+''', this.value.toString(), ''ItemValue'');" ';
 
   asm
     try{
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
     var HTMLString='';
     var NodeIDString = "'"+ScreenObjectName+"'";
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid =  NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
 
     var ReadOnlyString = '';
     if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
 
     var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
     var PickerString = '<input type="date" id='+MyObjectName+' '+
+                       ' class="widgetinner '+wrapperid+'" ' +
                         OnClickString +
                         OnChangeString +
                         ' style="display: inline-block;"   '+ReadOnlyString+'> ';
 
     HTMLString = labelstring+PickerString;
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
   }
@@ -269,9 +271,9 @@ end;
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXDatePicker.Create(MyForm,NodeName));
+  result:=TObject(TXDatePicker.Create(MyForm,NodeName,NameSpace));
 end;
 
 //procedure TXDatePicker.LinkLoadFromProperty(Sender: TObject);
@@ -293,7 +295,7 @@ procedure TXDatePicker.SetBoxWidth(AValue:string);
 begin
   myNode.SetAttributeValue('BoxWidth',AValue);
   asm
-  var ob = document.getElementById(this.NodeName+'Contents');
+  var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
 end;
@@ -321,7 +323,7 @@ begin
   TDateTimePicker(myControl).Date:=StrToDate(AValue);
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
         //alert('set '+AValue);
         // format is DD/MM/YYYY from the property editor, OR YYYY-MM-DD from the picker widget
@@ -364,7 +366,7 @@ begin
   TDateTimePicker(myControl).ReadOnly:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       ob.readOnly = AValue  }
   end;
@@ -374,9 +376,7 @@ end;
 
 begin
   // this is the set of node attributes that each XHBox instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'BoxWidth','String','200','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);

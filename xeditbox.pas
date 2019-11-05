@@ -65,7 +65,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
 
   published
@@ -160,14 +160,13 @@ begin
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXEditBox',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXEditBox',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
-
 
 procedure TXEditBox.EditBoxClick(Sender: TObject) ;
 begin
@@ -187,25 +186,6 @@ procedure TXEditBox.EditBoxChange(Sender: TObject) ;
     end;
  end;
 
-
-//procedure TXEditBox.LinkLoadFromProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if (Link.Editor=nil) then exit;
-//  inherited  LinkLoadFromProperty(Sender);
-//
-//  self.ItemValue:=Link.GetAsText;
-//
-//end;
-//
-//procedure TXEditBox.LinkSaveToProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if Link.Editor=nil then exit;
-//  Link.SetAsText(TEdit(myControl).Text);
-//
-//end;
-
 procedure TXEditBox.SetBoxWidth(AValue:string);
  var
    tc:TControl;
@@ -217,9 +197,9 @@ end;
 
 {$else}
 
-constructor TXEditBox.Create(MyForm:TForm;NodeName:String);
+constructor TXEditBox.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -230,7 +210,7 @@ begin
 end;
 
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   ItemValue,LabelText,LabelPos:string;
   ReadOnly,PasswordBox:Boolean;
@@ -241,19 +221,20 @@ begin
   ReadOnly:= StrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
   PasswordBox:= StrToBool(MyNode.getAttribute('PasswordBox',true).AttribValue);
 
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', this.value);" ';
-  OnChangeString:= 'onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''',''ItemValue'',this.value); '+
-                             'pas.Events.handleEvent(null,''Change'','''+ScreenObjectName+''', this.value, ''ItemValue'');" ';
-  OnPasteString:= 'onpaste="pas.Events.handleEvent(null,''EditBoxPaste'','''+ScreenObjectName+''', this.value);" ';
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
+  OnChangeString:= 'onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''','''+NameSpace+''',''ItemValue'',this.value); '+
+                             'pas.Events.handleEvent(null,''Change'','''+ScreenObjectName+''','''+NameSpace+''', this.value, ''ItemValue'');" ';
+  OnPasteString:= 'onpaste="pas.Events.handleEvent(null,''EditBoxPaste'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
 
   asm
     try{
 
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
     var HTMLString='';
     var NodeIDString = "'"+ScreenObjectName+"'";
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid =  NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
 
     var ReadOnlyString = '';
     if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
@@ -264,6 +245,7 @@ begin
     var inputtext= ItemValue;
     var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
     var EBoxString = '<input type="'+TypeString+'"  id='+MyObjectName+' ' +
+                     ' class="widgetinner '+wrapperid+'" ' +
                           OnPasteString +
                           OnClickString +
                           OnChangeString +
@@ -272,7 +254,7 @@ begin
 
     HTMLString = labelstring+EBoxString;
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
     // fix the height for an edit box to one line-height...
@@ -293,9 +275,9 @@ end;
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXEditBox.Create(MyForm,NodeName));
+  result:=TObject(TXEditBox.Create(MyForm,NodeName,NameSpace));
 end;
 
 //procedure TXEditBox.LinkLoadFromProperty(Sender: TObject);
@@ -319,7 +301,7 @@ begin
   //showmessage('memo width='+AValue);
   myNode.SetAttributeValue('BoxWidth',AValue);
   asm
-  var ob = document.getElementById(this.NodeName+'Contents');
+  var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
   //  if (ob==null) {alert(this.NodeName+'Contents'+'  not found');}
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
@@ -356,11 +338,8 @@ begin
 end;
 
 procedure TXEditBox.SetItemValue(AValue:string);
-//var
-//  m:LongInt;
 begin
   myNode.SetAttributeValue('ItemValue',AValue);
-  //m:=TEdit(myControl).MaxLength;
   {$ifndef JScript}
   if length(AValue) < 37440 then             //!!!! arbitrary test....things fall over if text is too long
   begin
@@ -372,14 +351,12 @@ begin
     TEdit(myControl).Text:='...';
     TEdit(myControl).Enabled:=false;
   end;
-  //TEdit(myControl).Text:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
        ob.value=AValue;  }
   end;
-  //LinkSaveToProperty(self);
   {$endif}
 end;
 
@@ -390,7 +367,7 @@ begin
   TEdit(myControl).ReadOnly:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       ob.readOnly = AValue  }
   end;
@@ -407,7 +384,7 @@ begin
     TEdit(myControl).PasswordChar:=#0;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       if (AValue) {
          ob.type = 'password'  }
@@ -420,9 +397,7 @@ end;
 
 begin
   // this is the set of node attributes that each TXEditBox instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'BoxWidth','String','200','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);

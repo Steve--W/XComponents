@@ -54,7 +54,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
   published
     property ItemValue: integer read GetItemValue write SetItemValue;
@@ -131,11 +131,11 @@ begin
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXProgressBar',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXProgressBar',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -156,9 +156,9 @@ end;
 
 {$else}
 
-constructor TXProgressBar.Create(MyForm:TForm;NodeName:String);
+constructor TXProgressBar.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -170,7 +170,7 @@ begin
 end;
 
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   ItemValue,MaxVal,LabelText,LabelPos:string;
   ReadOnly:Boolean;
@@ -180,15 +180,16 @@ begin
   MaxVal:= MyNode.getAttribute('MaxVal',true).AttribValue;
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
 
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', this.value);" ';
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
 
   asm
     try{
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
     var HTMLString='';
     var NodeIDString = "'"+ScreenObjectName+"'";
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid = NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
 
     var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
 
@@ -198,7 +199,7 @@ begin
 
     HTMLString = labelstring+BarString;
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
   }
@@ -214,9 +215,9 @@ end;
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXProgressBar.Create(MyForm,NodeName));
+  result:=TObject(TXProgressBar.Create(MyForm,NodeName,NameSpace));
 end;
 
 
@@ -224,7 +225,7 @@ procedure TXProgressBar.SetBarWidth(AValue:string);
 begin
   myNode.SetAttributeValue('BarWidth',AValue);
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
 end;
@@ -252,7 +253,7 @@ begin
   TProgressBar(myControl).Position:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
        ob.value=AValue;  }
   end;
@@ -266,7 +267,7 @@ begin
   TProgressBar(myControl).Max:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
        ob.max=AValue;  }
   end;
@@ -275,9 +276,7 @@ end;
 
 begin
   // this is the set of node attributes that each TXNumberSpinner instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'BarWidth','String','200','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Right','',false);

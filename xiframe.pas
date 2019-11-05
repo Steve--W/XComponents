@@ -55,8 +55,11 @@ uses
   function EnumWindowsProc(WHandle: HWND; LParM: LParam): LongBool;StdCall;
   function GetTitleOfSelectedWindow(AHandle: HWND): string;
   {$endif}
+//  {$ifdef Chromium}
+//  procedure CloseActiveChromiumBrowsers(StartNode:TDataNode);
+//  {$endif}
 {$else}
-function CreateBasicIFrame(ParentName,MyObjectName:String):TObject;
+function CreateBasicIFrame(NameSpace,NodeName,MyObjectName:String):TObject;
 procedure DoCreateFrameWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer);
 var dummyvar:integer;
 {$endif}
@@ -89,6 +92,7 @@ type
     {$endif}
    procedure Loaded; override;
     procedure ParentWindowClick(Sender:TObject);
+    procedure ApplyHTMLSource(AValue:String);
 
 
   protected
@@ -121,14 +125,24 @@ type
       {$ifdef Chromium}
       procedure myChromiumAfterCreated(Sender: TObject; const browser: ICefBrowser);  virtual;
       procedure myChromiumBeforeClose(Sender: TObject; const browser: ICefBrowser);
-      procedure myChromiumBeforePopup(Sender: TObject;
+      //TOnBeforePopup = procedure(Sender: TObject; const browser: ICefBrowser; const frame: ICefFrame; const targetUrl, targetFrameName: ustring; targetDisposition: TCefWindowOpenDisposition; userGesture: Boolean; const popupFeatures: TCefPopupFeatures; var windowInfo: TCefWindowInfo; var client: ICefClient; var settings: TCefBrowserSettings; var extra_info: ICefDictionaryValue; var noJavascriptAccess: Boolean; var Result: Boolean) of object;
+        procedure myChromiumBeforePopup(Sender: TObject;
           const browser: ICefBrowser; const frame: ICefFrame; const targetUrl,
           targetFrameName: ustring; targetDisposition: TCefWindowOpenDisposition;
           userGesture: Boolean; const popupFeatures: TCefPopupFeatures;
           var windowInfo: TCefWindowInfo; var client: ICefClient;
-          var settings: TCefBrowserSettings; var noJavascriptAccess: Boolean;
+          var settings: TCefBrowserSettings; var extra_info: ICefDictionaryValue; var noJavascriptAccess: Boolean;
           var Result: Boolean);
-      procedure myChromiumClose(Sender: TObject; const browser: ICefBrowser; out Result: Boolean);
+//        procedure myChromiumBeforePopup(Sender: TObject;
+//          const browser: ICefBrowser; const frame: ICefFrame; const targetUrl,
+//          targetFrameName: ustring; targetDisposition: TCefWindowOpenDisposition;
+//          userGesture: Boolean; const popupFeatures: TCefPopupFeatures;
+//          var windowInfo: TCefWindowInfo; var client: ICefClient;
+//          var settings: TCefBrowserSettings; var noJavascriptAccess: Boolean;
+//          var Result: Boolean);
+        procedure myChromiumClose(Sender: TObject; const browser: ICefBrowser; var aAction : TCefCloseBrowserAction);
+//        procedure myChromiumClose(Sender: TObject; const browser: ICefBrowser; out Result: Boolean);
+//      TOnClose                        = procedure(Sender: TObject; const browser: ICefBrowser; var aAction : TCefCloseBrowserAction) of object;
       procedure CEFLoaded(Sender: TObject; const browser: ICefBrowser; const TheFrame:ICefFrame; z:Longint);
       procedure TitleChange(Sender: TObject;const cefBrowser:ICefBrowser;const NewTitle:UString) ;  virtual;
 
@@ -202,7 +216,7 @@ type
     BrowserHandle:longWord;
     BrowserPage:TObject;
 
-    constructor Create(MyForm:TForm;NodeName:String); virtual;
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String); virtual;
 
     procedure SetSuspendRefresh(AValue: Boolean); virtual;
     procedure SetMyEventTypes;  virtual;
@@ -211,6 +225,7 @@ type
     procedure RedisplayFrame;
     procedure LaunchHTML(URLType,myURL,title:String);
     procedure CloseBrowserWindow;
+    procedure ApplyHTMLSource(AValue:String);
 
   published
     { Published declarations }
@@ -306,7 +321,7 @@ begin
      myChromium.OnBeforeClose:=@self.myChromiumBeforeClose;
      myChromium.OnBeforePopup:=@self.myChromiumBeforePopup;
      myChromium.OnClose:=@self.myChromiumClose;
-//     myChromium.OnTitleChange:=@self.TitleChange;
+ //    myChromium.OnTitleChange:=@self.TitleChange;
      myChromium.OnLoadEnd:=@self.CEFLoaded;
 
 
@@ -367,11 +382,11 @@ begin
   CallHandleEvent('Click','',self);
 end;
 
-function CreateIFWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateIFWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXIFrame',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXIFrame',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -394,7 +409,8 @@ procedure TXIFrame.myChromiumBeforePopup(Sender: TObject;
   targetFrameName: ustring; targetDisposition: TCefWindowOpenDisposition;
   userGesture: Boolean; const popupFeatures: TCefPopupFeatures;
   var windowInfo: TCefWindowInfo; var client: ICefClient;
-  var settings: TCefBrowserSettings; var noJavascriptAccess: Boolean;
+  var settings: TCefBrowserSettings; var extra_info: ICefDictionaryValue; var noJavascriptAccess: Boolean;
+//  var settings: TCefBrowserSettings; var noJavascriptAccess: Boolean;
   var Result: Boolean);
 begin
   // For simplicity, this demo blocks all popup windows and new tabs
@@ -406,11 +422,12 @@ begin
 end;
 
 
-procedure TXIFrame.myChromiumClose(Sender: TObject; const browser: ICefBrowser; out Result: Boolean);
+procedure TXIFrame.myChromiumClose(Sender: TObject; const browser: ICefBrowser; var aAction : TCefCloseBrowserAction);
 begin
   if not (csDesigning in componentState) then
     PostMessage(Handle, CEF_DESTROY, 0, 0);
-  Result := True;
+  //Result := True;
+  aAction:=cbaClose;
 end;
 procedure TXIFrame.BrowserCreatedMsg(var aMessage: TMessage);
 var
@@ -774,6 +791,7 @@ end;
 procedure TXIFrame.ReLoadURL;
 begin
 //  myChromium.Reload;     //this makes it go blank!!!!
+  ApplyHTMLSource(self.HTMLSource);
 end;
 
 {$ifdef Chromium}
@@ -864,7 +882,7 @@ end;
 end;
 *)
 
-function CreateBasicIFrame(ParentName,MyObjectName:String):TObject;
+function CreateBasicIFrame(NameSpace,NodeName,MyObjectName:String):TObject;
 var
   ob:TObject;
 begin
@@ -876,12 +894,11 @@ asm
   var w=ob.ActualWidth;
   }
   ob=null;
-  var labelstring='<label for="'+ParentName+'Contents" id="'+ParentName+'ContentsLbl'+'"></label>';
-  //var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'"></label>';
+  var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'"></label>';
   var FrameString = '<iframe  id='+MyObjectName+' name="'+MyObjectName+ '" '+
                           'src="" '+
                           'title="" '+
-                          'style="height:100%;width:100%;border: 1px solid #444444;" '+
+                          'style="height:100%;width:100%;border: 1px solid %23444444;" '+
                           'onresize="resized(this);" '+
                           '>'+
                           '</iframe>';
@@ -889,7 +906,7 @@ asm
 
 
 
-  var wrapper=document.getElementById(ParentName);
+  var wrapper=document.getElementById(NameSpace+NodeName);
   wrapper.innerHTML= HTMLString;
 
   //............ Set an event for title change ...................
@@ -902,7 +919,7 @@ asm
 //        if ((mutation.type == "attributes")
 //        && (mutation.attributeName == "title")) {
 //           alert('title mutation detected');
-//           pas.Events.handleEvent(null,'Click',ParentName, mutation.oldValue);
+//           pas.Events.handleEvent(null,'Click',NodeName, mutation.oldValue);
 //         }
 //      }
 //   });
@@ -935,17 +952,17 @@ end;
 
 procedure DoCreateFrameWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer);
 var
-  NodeType:String;
+  NodeType,NameSpace:String;
   ht,wd:integer;
 begin
-    NodeType:=MyNode.NodeType;
+  NodeType:=MyNode.NodeType;
+  NameSpace:=MyNode.NameSpace;
     asm
       try{
 
-      var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NodeType,position);
+      var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,NodeType,position);
 
-      var MyObjectName=ScreenObjectName+'Contents';
-      var Iframe = pas.XIFrame.CreateBasicIFrame(ScreenObjectName,MyObjectName);
+      var Iframe = pas.XIFrame.CreateBasicIFrame(NameSpace,ScreenObjectName,NameSpace+ScreenObjectName+'Contents');
 
       }
       catch(err) { alert(err.message+'  in XIFrame.DoCreateFrameWidget');}
@@ -961,9 +978,9 @@ begin
     wd:=TXIFrame(myNode).ActualWidth;
 end;
 
-  constructor TXIFrame.Create(MyForm:TForm;NodeName:String);
+  constructor TXIFrame.Create(MyForm:TForm;NodeName,NameSpace:String);
   begin
-    inherited Create(NodeName);
+    inherited Create(NodeName,NameSpace);
     self.NodeType:='TXIFrame';
     self.MyForm:=MyForm;
 
@@ -974,7 +991,7 @@ end;
   end;
 
 
-  function CreateIFWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+  function CreateIFWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
   begin
     DoCreateFrameWidget(MyNode, ParentNode,ScreenObjectName,position);
     TXIFrame(myNode).HTMLSource:=TXIFrame(myNode).HTMLSource;
@@ -982,9 +999,9 @@ end;
     result:=myNode;
   end;
 
-  function CreateinterfaceObjIF(MyForm:TForm;NodeName:String):TObject;
+  function CreateinterfaceObjIF(MyForm:TForm;NodeName,NameSpace:String):TObject;
   begin
-    result:=TObject(TXIFrame.Create(MyForm,NodeName));
+    result:=TObject(TXIFrame.Create(MyForm,NodeName,NameSpace));
   end;
 
 {$endif}
@@ -1008,6 +1025,23 @@ begin
   {$endif}
 end;
 
+//{$ifdef Chromium}
+//procedure CloseActiveChromiumBrowsers(StartNode:TDataNode);
+//var
+//  i:integer;
+//begin
+//  if (StartNode.NodeClass='UI')
+//  and (StartNode.ScreenObject<>nil)
+//  and ((StartNode.NodeType='TXIFrame')
+//    or (StartNode.NodeType='TXSVGContainer')
+//    or (StartNode.NodeType='TXHTMLEditor'))
+//  and (TXIFrame(StartNode.ScreenObject).myChromium<>nil) then
+//      TXIFrame(StartNode.ScreenObject).myChromium.CloseBrowser(true)
+//  else
+//    for i:=0 to length(StartNode.ChildNodes)-1 do
+//      CloseActiveChromiumBrowsers(StartNode.ChildNodes[i]);
+//end;
+//{$endif}
 
   procedure TXIFrame.LoadDataURL(DataString:String);
   var
@@ -1030,6 +1064,7 @@ end;
       {$endif}
       {$else}
       myNode.SetAttributeValue('HTMLSource',DataString);
+      //showmessage('calling RedisplayFrame');
       RedisplayFrame;
       {$endif}
     end;
@@ -1050,7 +1085,7 @@ end;
     {$endif}
     {$else}
     asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
     alert('!!!! need to write code to handle this in TXIFrame.RunJavaScript (send message into iframe???)');
     }
@@ -1076,6 +1111,55 @@ begin
   result:=MyNode.getAttribute('HTMLSource',true).AttribValue;
 end;
 
+procedure TXIFrame.ApplyHTMLSource(AValue:String);
+begin
+  if ((FoundString(AValue,'://') > 0) and (FoundString(AValue,'http') = 1))
+  or (FoundString(AValue,'//') = 1)
+  or (FoundString(AValue,'about:') = 1) then
+  // eg. URL is absolute; either "http://example.com" or "//example.com"
+  begin
+    //showmessage('found absolute url '+AValue);
+    {$IFndef JScript}
+    {$ifdef Chromium}
+    if myChromium<>nil then
+    begin
+      myChromium.LoadURL(UTF8Decode(AValue));
+    end;
+    {$else}
+    //if IsChanged then
+    begin
+      ClosebrowserWindow;
+      LaunchBrowserAbs(AValue);
+    end;
+    {$endif}
+    {$else}
+    asm
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        ob.src = AValue;
+      }
+    end;
+    {$endif}
+
+  end
+  else
+  begin
+    //alert('setting data URL');
+    // data url
+    {$ifndef JScript}
+    //if (IsChanged)
+    {$ifdef windows}
+    if (self.BrowserHandle<1)
+    {$else}
+    if (self.BrowserHandle='')
+    {$endif}
+    then
+    {$endif}
+      self.LoadDataURL(AValue);
+  end;
+
+end;
+
 procedure TXIFrame.SetHTMLSource(AValue:string);
 var
   IsChanged:Boolean;
@@ -1096,50 +1180,14 @@ begin
   then
     EXIT;
 
-  if ((FoundString(AValue,'://') > 0) and (FoundString(AValue,'http') = 1))
-  or (FoundString(AValue,'//') = 1)
-  or (FoundString(AValue,'about:') = 1) then
-  // eg. URL is absolute; either "http://example.com" or "//example.com"
-  begin
-    //showmessage('found absolute url '+AValue);
-    {$IFndef JScript}
-    {$ifdef Chromium}
-    if myChromium<>nil then
-    begin
-      myChromium.LoadURL(UTF8Decode(AValue));
-    end;
-    {$else}
-    if IsChanged then
-    begin
-      ClosebrowserWindow;
-      LaunchBrowserAbs(AValue);
-    end;
-    {$endif}
-    {$else}
-    asm
-      var ob = document.getElementById(this.NodeName+'Contents');
-      if (ob!=null) {
-        ob.src = AValue;
-      }
-    end;
-    {$endif}
+  if IsChanged then
+    ApplyHTMLSource(AValue);
 
-  end
-  else
-  begin
-    // data url
-    {$ifndef JScript}
-    if (IsChanged)
-    {$ifdef windows}
-    or (self.BrowserHandle<1)
-    {$else}
-    or (self.BrowserHandle='')
-    {$endif}
-    then
-    {$endif}
-      self.LoadDataURL(AValue);
-  end;
-
+// example of 'embedded' URL's that work inside a browser iframe element.
+// https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d37273.69524119164!2d-0.4477915275058492!3d54.275548127073684!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x487f254b19e38abb%3A0x69546c0179a47ac7!2sScarborough!5e0!3m2!1sen!2suk!4v1557476265485!5m2!1sen!2suk
+// https://www.google.com/maps/embed
+// http://www.bbc.co.uk/news/technology-35731734/embed
+// http://www.bbc.co.uk/news/embed/
 end;
 procedure TXIFrame.SetSuspendRefresh(AValue: Boolean);
 begin
@@ -1171,7 +1219,7 @@ begin
   SetHeightWidth(self.myNode,tc,'FrameWidth','FrameHeight');
   {$else}
   asm
-  var ob = document.getElementById(this.NodeName);
+  var ob = document.getElementById(this.NameSpace+this.NodeName);
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
   {$endif}
@@ -1189,7 +1237,7 @@ begin
   SetHeightWidth(self.myNode,tc,'FrameWidth','FrameHeight');
   {$else}
   asm
-  var ob = document.getElementById(this.NodeName);
+  var ob = document.getElementById(this.NameSpace+this.NodeName);
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
   end;
   {$endif}
@@ -1230,22 +1278,24 @@ begin
   {$else}
   sup:=StartingUp;
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
        // SADLY.....Once instantiated, the frame will not refresh when the src attribute is changed.
       // So, we will have to delete the frame object and re-create with its new src.
       var myFrame = ob; // get frame
       var originalId = myFrame.id; // retain the original id of the frame
       var newFrameId = myFrame.id + new Date().getTime(); // create a new temporary id
-      var newIframe = pas.XIFrame.CreateBasicIFrame(this.NodeName,newFrameId);
+      var newIframe = pas.XIFrame.CreateBasicIFrame(this.NameSpace,this.NodeName,newFrameId);
       newIframe.id = originalId; // change id back
       ob = document.getElementById(originalId);
+
       var uri='data:text/html,   ' + encodeURIComponent(SourceString);
       ob.src=uri;
 
     }
-    else {if (sup==false) {alert('cannot find object '+this.NodeName+'Contents');}}
+    //else {if (sup==false) {alert('cannot find object '+this.NodeName+'Contents');}}
   end;
+  //self.ApplyHTMLSource(SourceString);
   self.LabelText:=self.LabelText;
 
   {$endif}
@@ -1283,8 +1333,9 @@ var
   filename:String;
 begin
     {$ifndef JScript}
-    filename:='file://'+ProjectDirectory+MainUnitName+myNode.NodeName+'.html';
+    filename:=ProjectDirectory+MainUnitName+myNode.NodeName+'.html';
     LazsUtils.WriteToFile(filename,myURL);
+    filename:='file://'+filename;
     // open in the default browser.
     if URLType='Data' then
     begin
@@ -1309,7 +1360,7 @@ begin
     var win=window.open("",objid,"");                  // third (blank) parameter makes a new window
     win.document.write(myURL);
     this.BrowserPage=win;
-    win.onunload = function(event) {win.opener.postMessage({"objid":win.name, "mtype":"titleChange", "mdata":""},"*"); };
+    win.onunload = function(event) {win.opener.postMessage({"objid":win.name, "NameSpace":"", "mtype":"titleChange", "mdata":""},"*"); };
     end;
     {$endif}
 
@@ -1331,12 +1382,10 @@ begin
   GlobalSuppressFrameDisplay:=true;
   {$endif}
   // this is the set of node attributes that each XIFrame instance will have.
-  AddDefaultAttribute(IFrameDefaultAttribs,'SuspendRefresh','Boolean','True','',false);
+  AddWrapperDefaultAttribs(IFrameDefaultAttribs);
+  AddDefaultAttribute(IFrameDefaultAttribs,'SuspendRefresh','Boolean','False','',false);
   AddDefaultAttribute(IFrameDefaultAttribs,'ActualHeight','Integer','','',true,false);
   AddDefaultAttribute(IFrameDefaultAttribs,'ActualWidth','Integer','','',true,false);
-  AddDefaultAttribute(IFrameDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(IFrameDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(IFrameDefaultAttribs,'IsVisible','Boolean','True','',false);
   AddDefaultAttribute(IFrameDefaultAttribs,'FrameWidth','String','300','',false);
   AddDefaultAttribute(IFrameDefaultAttribs,'FrameHeight','String','300','',false);
   AddDefaultAttribute(IFrameDefaultAttribs,'Border','Boolean','True','',false);
@@ -1360,6 +1409,8 @@ begin
 
   SuppressDesignerProperty('TXIFrame','ContainerHeight');
   SuppressDesignerProperty('TXIFrame','ContainerWidth');
+
+
 
 end.
 

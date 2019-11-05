@@ -71,7 +71,7 @@ var myProjectEvents:TMyProjectEvents;
     destructor Destroy; override;
   end;
 
-function FindObjectByID(WithinForm:TForm;ScreenObjectID:String):TControl;
+//function FindObjectByID(WithinForm:TForm;ScreenObjectID:String):TControl;
 function HasProperty(aObject:TObject; aProperty:string):boolean;
 function GetBooleanProperty(aObject:TObject; aProperty:string):Boolean;
 Procedure SetBooleanProperty(aObject:TObject; aProperty:string; AValue : Boolean);
@@ -192,53 +192,53 @@ begin
   Result:=true;
 end;
 
-function ScanChildrenForControl(CurrentItem:TControl;ScreenObjectID:String):TControl;
-var FoundItem,TempItem:TControl;
-    TempControl :TControl;
-    i:integer;
-begin
-   FoundItem:= nil;
-   if CurrentItem is TWinControl then
-   begin
-     for i:=0 to TWinControl(CurrentItem).ControlCount - 1 do
-     begin
-        if FoundItem = nil then  // object has not been found so keep looking
-        begin
-          TempControl:= TWinControl(CurrentItem).Controls[i];
-          begin
-            if TempControl is TControl then   // it might be the control we are looking for..... or it may have children so search them for the object
-            begin
-              TempItem := TControl(TempControl);
-              if Trim(Uppercase(TempItem.name)) = Trim(Uppercase(ScreenObjectID))
-              then  FoundItem:= TempItem
-              else  TempItem:= ScanChildrenForControl(TempItem,ScreenObjectID);
-              if  TempItem<>nil
-              then begin if TempItem.name = ScreenObjectID then  FoundItem:= TempItem; end;
-            end;
-          end ;
-        end;
-     end;
-   end;
-   result:= FoundItem;
-end;
+//function ScanChildrenForControl(CurrentItem:TControl;ScreenObjectID:String):TControl;
+//var FoundItem,TempItem:TControl;
+//    TempControl :TControl;
+//    i:integer;
+//begin
+//   FoundItem:= nil;
+//   if CurrentItem is TWinControl then
+//   begin
+//     for i:=0 to TWinControl(CurrentItem).ControlCount - 1 do
+//     begin
+//        if FoundItem = nil then  // object has not been found so keep looking
+//        begin
+//          TempControl:= TWinControl(CurrentItem).Controls[i];
+//          begin
+//            if TempControl is TControl then   // it might be the control we are looking for..... or it may have children so search them for the object
+//            begin
+//              TempItem := TControl(TempControl);
+//              if Trim(Uppercase(TempItem.name)) = Trim(Uppercase(ScreenObjectID))
+//              then  FoundItem:= TempItem
+//              else  TempItem:= ScanChildrenForControl(TempItem,ScreenObjectID);
+//              if  TempItem<>nil
+//              then begin if TempItem.name = ScreenObjectID then  FoundItem:= TempItem; end;
+//            end;
+//          end ;
+//        end;
+//     end;
+//   end;
+//   result:= FoundItem;
+//end;
 
-function FindObjectByID(WithinForm:TForm;ScreenObjectID:String):TControl;
-var FoundItem, TempItem :TControl;
-    i:integer;
-begin
-   FoundItem:= nil;
-   TempItem:=ScanChildrenForControl(WithinForm,ScreenObjectID);
-   if TempItem <> nil
-   then
-   begin
-       FoundItem:= TempItem ;
-       //showmessage('Success .........>'+ScreenObjectID+'< has been found');
-   end
-   else
-     showmessage('Error in Utilities.FindObjectByID >'+ScreenObjectID+'< not found');
-
-   FindObjectByID:=FoundItem;
-end;
+//function FindObjectByID(WithinForm:TForm;ScreenObjectID:String):TControl;
+//var FoundItem, TempItem :TControl;
+//    i:integer;
+//begin
+//   FoundItem:= nil;
+//   TempItem:=ScanChildrenForControl(WithinForm,ScreenObjectID);
+//   if TempItem <> nil
+//   then
+//   begin
+//       FoundItem:= TempItem ;
+//       //showmessage('Success .........>'+ScreenObjectID+'< has been found');
+//   end
+//   else
+//     showmessage('Error in Utilities.FindObjectByID >'+ScreenObjectID+'< not found');
+//
+//   FindObjectByID:=FoundItem;
+//end;
 
 procedure InsertUnderParent(var MyComponent:TControl;MyParent:TWinControl;position:integer);
 var
@@ -291,42 +291,6 @@ begin
      FreeAndNil(ThisObject);
    end;
 end;
-
-(*
-procedure ClearAllScreenObjects;
-// Delete all the screen objects, in all the forms, and delete dynamic xforms
-var temp:TControl;
-  i,j,n:integer;
-  fm:TForm;
-  tempstr:string;
-begin
-  for j := Screen.FormCount - 1 downto 0 do
-  begin
-    fm := Screen.Forms[j];
-    if fm = MainForm then
-    begin
-      n:=fm.ControlCount;
-      for i := n-1 downto 0 do
-      begin
-         temp:=TControl(fm.Controls[i]);
-         tempstr:=fm.Controls[i].Name;
-         DeleteScreenObject(fm.Controls[i]);
-      end;
-    end
-    else
-    begin
-      n:=fm.ControlCount;
-      for i := n-1 downto 0 do
-      begin
-         temp:=TControl(fm.Controls[i]);
-         tempstr:=fm.Controls[i].Name;
-         DeleteScreenObject(fm.Controls[i]);
-      end;
-      fm.Destroy;
-    end;
-  end;
-end;
-*)
 
 procedure CheckParentIsXContainer(AControl:TControl);
 // In Lazarus IDE, user can drag/drop a component in the design tree such that it becomes a child
@@ -534,14 +498,15 @@ var
   i:integer;
   childcontrol:TControl;
   FormMainMenu:TMainMenu;
+  tmp:string;
 begin
     FormMainMenu:=nil;
     if ParentControl is TForm then
     begin
-      parentnode:=FindDataNodeById(UIRootNode,ParentControl.Name,true);
+    //  parentnode:=FindDataNodeById(UIRootNode,ParentControl.Name,true);
       FormMainMenu:=TForm(ParentControl).Menu;
-    end
-    else if IsPublishedProp(ParentControl,'myNode') then
+    end;
+    if IsPublishedProp(ParentControl,'myNode') then
     begin
       parentnode:= TDataNode(GetObjectProp(ParentControl,'myNode'));
     end;
@@ -568,6 +533,8 @@ begin
           begin
             childcontrol:=TWinControl(ParentControl).Controls[i];
             childnode:= TDataNode(GetObjectProp(childcontrol,'myNode'));
+            if childnode.NodeClass='NV' then
+              tmp:='xxx';
 
             AddChildToParentNode(parentnode,childnode,-1);
             //showmessage(parentnode.NodeName+' has child '+childnode.NodeName);
@@ -602,18 +569,38 @@ begin
       parentFound:=false
     else
     begin
-      if (hw='h')
-      and ((pr.ClassName='TXVBox') or (pr.ClassName='TXTabControl')) then
+      //if (hw='h')
+      // bypass an unsized VBox for a height change
+      // bypass an unsized HBox for a width change
+      //and ((pr.ClassName='TXVBox') or (pr.ClassName='TXTabControl')) then
+      //begin
+      //  chw:=GetStrProp(pr,'ContainerHeight');
+      //  if chw='' then parentFound:=false;
+      //end
+      //else if (hw='w')
+      //and ((pr.ClassName='TXHBox') or (pr.ClassName='TXTabControl')) then
+      //begin
+      //  chw:=GetStrProp(pr,'ContainerWidth');
+      //  if chw='' then parentFound:=false;
+      //end;
+
+      // try bypassing ANY unsized container
+      if (hw='h') then
       begin
-        chw:=GetStrProp(pr,'ContainerHeight');
-        if chw='' then parentFound:=false;
+        if HasProperty(pr,'ContainerHeight') then
+        begin
+          chw:= GetStrProp(pr,'ContainerHeight');
+          if chw='' then parentFound:=false;
+        end;
       end
-      else if (hw='w')
-      and ((pr.ClassName='TXHBox')or (pr.ClassName='TXTabControl')) then
+      else if (hw='w') then
       begin
-        chw:=GetStrProp(pr,'ContainerWidth');
-        if chw='' then parentFound:=false;
-      end
+        if HasProperty(pr,'ContainerWidth') then
+        begin
+          chw:= GetStrProp(pr,'ContainerWidth');
+          if chw='' then parentFound:=false;
+        end;
+      end;
     end;
     if parentFound=false then
       pr:=pr.Parent;
@@ -651,6 +638,9 @@ if (myComponent<>nil)
 and (myComponent.Align<>alClient)
 then
 begin
+  str:=myComponent.ClassName;
+  if myComponent.ClassName = 'TStringGrid' then
+    h:=0;
    myComponent.DisableAutoSizing;
    myTag:=nil;
    if myComponent.Tag>0 then
@@ -673,8 +663,6 @@ begin
 //                tmp:=prh.ClientHeight;
 //                tmp2:=prh.Height;
                 if hh='' then h:=-1 else h:=strtoint(hh);
-//                if prh.ClassName='TXTabControl' then
-//                  pad:=TXTabControl(prh).GetHeightOfTabs;
                 if prh.ClientHeight>0 then
                 begin
                   if h>0 then
@@ -769,8 +757,12 @@ function DoXFormCreated(myForm:TForm):TDataNode;
 begin
   TXForm(myForm).IsContainer:=true;
   result:=AddFormToNodetree(myForm);
+  TXForm(myForm).myNode.IsDynamic:=false;
   // Go through the controls created at design time, and set up the data node parent/child links
   IdentifyChildNodes(myForm);
+  // adjust the child order under UIRootNode so that any NV (non-visual) components are listed AFTER the form node.
+  ResequenceNVNodes;
+
 
   // this bit sorts out alignment properties for everything after starting up project
   if myForm.ControlCount>0 then
@@ -1104,10 +1096,12 @@ function SortOutAlignmentAndLabelPos(myself,myLbl,myControl:TControl; MyAlignmen
 var
     ParentAlignChildrenVertical:Boolean;
     TheControl,TheAnchorTarget,myParent:TControl;
+    myNode:TDataNode;
 begin
   myParent:=myself.Parent;
   if (myself.Parent<>nil) and (myself.Name<>'') then
   begin
+    myNode:=TDataNode(GetObjectProp(myself,'MyNode'));
 
     ParentAlignChildrenVertical := GetBooleanProperty(myself.Parent, 'AlignChildrenVertical');
 
@@ -1123,7 +1117,7 @@ begin
       TheAnchorTarget:=myParent;
     end;
 
-    MyAlignment:=AlignmentResetInvalidCombinations(MyAlignment,myself.Name,myself.ClassName,ParentAlignChildrenVertical,(myself=TheControl),(myself.parent.ControlCount>1));
+    MyAlignment:=AlignmentResetInvalidCombinations(MyAlignment,myNode.NodeName,myself.ClassName,ParentAlignChildrenVertical,(myself=TheControl),(myself.parent.ControlCount>1));
 
     TheControl.DisableAutoSizing;
     ClearAllAlignment(myLbl,TheControl);

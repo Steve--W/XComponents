@@ -45,7 +45,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
   published
     { Published declarations }
@@ -112,18 +112,18 @@ begin
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXVBox',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXVBox',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
 {$else}
-constructor TXVBox.Create(MyForm:TForm;NodeName:String);
+constructor TXVBox.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -132,28 +132,29 @@ begin
   SetNodePropDefaults(self,myDefaultAttribs);
 end;
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   ShowBorder:boolean;
   myObj:TXVBox;
   OnClickString:String;
 begin
 
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', '''');" ';
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', '''');" ';
 
   asm
   try{
-      var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+      var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
       var HTMLString='';
-      var MyObjectName=ScreenObjectName+'Contents';
+      var wrapperid = NameSpace+ScreenObjectName;
+      var MyObjectName=wrapperid+'Contents';
 
-      HTMLString = '<div  id="'+MyObjectName+'" class="vboxNoStretch" '  +
+      HTMLString = '<div  id="'+MyObjectName+'" class="vboxNoStretch '+NameSpace+ScreenObjectName+'" '  +
                      ' style="height:100%;width:100%; "' +
                      OnClickString +
                      '></div>  ';
 
-      var wrapper=document.getElementById(ScreenObjectName);
+      var wrapper=document.getElementById(wrapperid);
       wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
   }catch(err) { alert(err.message+'  in XVBox.CreateVHBox');}
@@ -165,9 +166,9 @@ begin
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;Nodename:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;Nodename,NameSpace:String):TObject;
 begin
-result:=TObject(TXVBox.Create(MyForm,NodeName));
+result:=TObject(TXVBox.Create(MyForm,NodeName,NameSpace));
 end;
 
 {$endif}
@@ -196,7 +197,7 @@ begin
         self.ParentColor:=true;
         {$else}
         asm
-          var ob = document.getElementById(this.NodeName);
+          var ob = document.getElementById(this.NameSpace+this.NodeName);
           if (ob!=null) {
             if (AValue==true ) {
                ob.style.backgroundColor='inherit';
@@ -212,7 +213,7 @@ begin
         self.Color:=HexRGBToColor(clr);
         {$else}
         asm
-          var ob = document.getElementById(this.NodeName);
+          var ob = document.getElementById(this.NameSpace+this.NodeName);
           if (ob!=null) {
             if (AValue==true ) {
                ob.style.backgroundColor=clr;
@@ -226,9 +227,7 @@ end;
 
 begin
   // this is the set of node attributes that each XVBox instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'ContainerWidth','String','','',false);
   AddDefaultAttribute(myDefaultAttribs,'ContainerHeight','String','','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);

@@ -57,6 +57,7 @@ end;
 {$endif}
 var
   RequiredFolders:TStringList;
+  AdditionalScript:String;
 
 
 implementation
@@ -176,7 +177,7 @@ begin
   ResourceToFile('xsvgcontainer',ProgPath+'resources/xcomponents/xsvgcontainer.pas');
   ResourceToFile('xbitmap',ProgPath+'resources/xcomponents/xbitmap.pas');
   ResourceToFile('xtrapevents',ProgPath+'resources/xcomponents/xtrapevents.pas');
-//  ResourceToFile('xhtmltext',ProgPath+'resources/xcomponents/xhtmltext.pas');
+  ResourceToFile('xhtmltext',ProgPath+'resources/xcomponents/xhtmltext.pas');
   ResourceToFile('xhtmleditor',ProgPath+'resources/xcomponents/xhtmleditor.pas');
   ResourceToFile('utilsjscompile',ProgPath+'resources/xcomponents/utilsjscompile.pas');
   ResourceToFile('lazsutils',ProgPath+'resources/xcomponents/lazsutils.pas');
@@ -271,6 +272,7 @@ begin
   myParams.Add('-Fu'+ProgPath+'tempinc');
   myParams.Add('-Fi'+ProgPath+'tempinc');
   myParams.Add('-FU'+ProgPath);
+//  myParams.Add('-iW');   // show full version
   myParams.Add(ProgPath+ProjectPath+ProgramName+'.pas');
 
   DeleteFile(ProgPath+ProgramName+'.js');
@@ -336,6 +338,23 @@ begin
 //                  + '  } '
                   + '} });'  +LineEnding;
 
+//  AsyncDelayFunc:=
+//  'function asyncDelay(fn,msec,...args) {  '  +LineEnding
+//  +'  async function dodelay(fn1,ms,...args) {  '  +LineEnding
+//  +'    let promise = new Promise((resolve, reject) => { '  +LineEnding
+//  +'      setTimeout(() => resolve("done!"), ms) '  +LineEnding
+//  +'    }); '  +LineEnding
+//  +'    fn(...args); '  +LineEnding
+//  +'    let result = await promise; // wait till the promise resolves (*) '  +LineEnding
+//  +'  '  +LineEnding
+////  +'    alert(result); // "done!" '  +LineEnding
+//  +'} '  +LineEnding
+////  +'alert(fn); '  +LineEnding
+////  +'alert(...args); '  +LineEnding
+//  +'dodelay(fn,msec,...args); '  +LineEnding
+//  +'}';
+
+
   docTitle:=UIRootNode.GetAttribute('SystemName',true).AttribValue;
   if docTitle='' then
     docTitle:=ProgramName;
@@ -361,10 +380,11 @@ begin
     +'    </Style>' +LineEnding
     +'    <Style>  '  +LineEnding
     +'       @keyframes fadeIn { from { opacity: 0; }}  '  +LineEnding
-    +'       .highlight-border { border:dashed 3px green; outline:none;}'  +LineEnding
+    +'       .highlight-border { border:dashed 3px green !important; outline:none !important;}'  +LineEnding
     +'       .normal-border { border:solid 1px gray; outline:none;}'  +LineEnding
     +'       .no-border { border:none 1px gray; outline:none;}'  +LineEnding
     +'    </Style>  '  +LineEnding
+    +AdditionalScript
     +'    <script > '  +LineEnding
     +'  var testnum = 666; ' + LineEnding
     +'          function  StartupCode(){ ' +LineEnding
@@ -388,6 +408,7 @@ begin
 
   result:=batchstring;
 end;
+
 
 procedure CompileJSandExecute(ProjectPath:String);
 var

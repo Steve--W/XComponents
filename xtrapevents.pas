@@ -52,7 +52,7 @@ type
     constructor Create(TheOwner: TComponent);  override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean);
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
     destructor Destroy; override;
     procedure SetMyEventTypes;
@@ -97,8 +97,8 @@ procedure TXTrapEvents.DoConstructor(TheOwner:TComponent;IsDynamic:Boolean);
 var
   NewNode:TDataNode;
 begin
-    //self.myNode:=CreateComponentDataNode(self.Name,MyNodeType, self.myEventTypes, self,TheOwner,IsDynamic);
-    NewNode:=TDataNode.Create('NV',self.Name,'TXTrapEvents',false);
+
+    NewNode:=TDataNode.Create('NV','','','TXTrapEvents',false);
     NewNode.ScreenObject:=self;
     NewNode.MyEventTypes:=TStringList.Create;
     NewNode.MyForm:=TForm(TheOwner);
@@ -111,7 +111,8 @@ begin
     NewNode.myEventTypes:=self.myEventTypes;
 
 
-    AddChildToParentNode(SystemNodetree,NewNode,-1);
+    //AddChildToParentNode(SystemNodetree,NewNode,-1);
+    AddChildToParentNode(UIRootNode,NewNode,-1);
 
     self.myNode:=NewNode;
 end;
@@ -139,23 +140,24 @@ procedure TXTrapEvents.SetMyName(AValue:string);
 begin
   inherited Name:=AValue;
 
-  if myNode<>nil then
-     myNode.NodeName:=AValue;
+  if  (csLoading in componentState) then
+    if myNode<>nil then
+       myNode.NodeName:=AValue;
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXTrapEvents',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXTrapEvents',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
 {$else}
 
-constructor TXTrapEvents.Create(MyForm:TForm;NodeName:String);
+constructor TXTrapEvents.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeClass:='NV';
   self.NodeType:='TXTrapEvents';
   self.MyForm:=MyForm;
@@ -166,7 +168,7 @@ begin
 
 end;
 
-function CreateTrapper(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateTrapper(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 begin
 //showmessage('Create Store widget');
 
@@ -175,9 +177,9 @@ MyNode.ScreenObject:=MyNode;
 result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXTrapEvents.Create(MyForm,NodeName));
+  result:=TObject(TXTrapEvents.Create(MyForm,NodeName,NameSpace));
 end;
 
 {$endif}

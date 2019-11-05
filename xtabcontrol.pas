@@ -28,7 +28,7 @@ uses
   WrapperPanel;
 
 {$ifdef JScript}
-function ChangeTabPage(nodeId,parentNodeId:string):string;
+procedure ChangeTabPage(nodeId,parentNodeId,NameSpace:string);
 {$endif}
 
 {$ifndef JScript}
@@ -54,6 +54,7 @@ type
   function GetBgColor:TColor;
   function GetCaption:string;
   function GetIsVisible:Boolean;
+  function GetHTMLClasses:String;
 
   procedure SetMyName(AValue:string);
   procedure SetIsSelected(AValue: Boolean);
@@ -62,6 +63,7 @@ type
   procedure SetBgColor(AValue:TColor);
   procedure SetCaption(AValue:string);
   procedure SetIsVisible(AValue:Boolean);
+  procedure SetHTMLClasses(AValue:string);
 
   procedure SetName(const NewName: TComponentName); override;
   function DoAlignChildControls(TheAlign: TAlign; AControl: TControl;
@@ -81,6 +83,7 @@ type
     property IsSelected: Boolean read FIsSelected write SetIsSelected default false;
     property SelectionBorderColor: TColor read FSelectionBorderColor write SetSelectionBorderColor default clGreen;
     property IsVisible:Boolean read GetIsVisible write SetIsVisible;
+    property HTMLClasses: String read GetHTMLClasses write SetHTMLClasses;
 
     property Hint: String read GetHint write SetHint;
     property Name: String read GetName write SetMyName;
@@ -116,6 +119,7 @@ end;
     function GetBgColor:TColor;
     function GetAlignment:String;
     function GetIsVisible:Boolean;
+    function GetHTMLClasses:String;
 
     procedure SetMyName(AValue:string);
     procedure SetIsSelected(AValue: Boolean);
@@ -126,6 +130,7 @@ end;
     procedure SetBgColor(AValue:TColor);
     procedure SetAlignment(AValue:string);
     procedure SetIsVisible(AValue:Boolean);
+    procedure SetHTMLClasses(AValue:string);
 
     function AddTabSheet:TXTabSheet;
     function GetActiveTabSheet: TXTabSheet;
@@ -147,6 +152,7 @@ end;
 
      procedure SortOutAlignment;
      function GetHeightOfTabs:integer;
+     function IndexOfPage(PageId:String):integer;
      property Pages[Index: Integer]: TXTabSheet read GetTabSheet;
 
  published
@@ -168,6 +174,7 @@ end;
    property ContainerHeight: String read GetContainerHeight write SetContainerHeight;
    property BgColor: TColor read GetBgColor write SetBgColor;
    property Alignment:String read GetAlignment write SetAlignment;
+   property HTMLClasses: String read GetHTMLClasses write SetHTMLClasses;
 
    // Events to be visible in Lazarus IDE
    property HandleClick: TEventHandler read FHandleClick write FHandleClick;
@@ -203,7 +210,8 @@ type
     function GetmyTabIndex: longint;
     procedure SetmyTabIndex(const AValue: longint);
  public
-     constructor Create(MyForm:TForm;NodeName:String);
+     function IndexOfPage(PageId:String):integer;
+     constructor Create(MyForm:TForm;NodeName,NameSpace:String);
  published
    property TabIndex: longint read GetmyTabIndex write SetmyTabIndex;
 
@@ -221,7 +229,7 @@ type
     { Protected declarations }
   public
     { Public declarations }
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
 
   published
     { Published declarations }
@@ -482,7 +490,7 @@ begin
   MyEventTypes:=TStringList.Create;
   self.OnClick:=@self.TabSheetClick;
 
-  self.myNode:=TDataNode.Create('UI',self.Name,'TXTabSheet',false);
+  self.myNode:=TDataNode.Create('UI','','','TXTabSheet',false);     //self.name....always blank here?
   self.myNode.ScreenObject:=self;
   if (TheOwner is TXTabControl)
   and (TXTabControl(TheOwner).myNode<>nil) then
@@ -499,14 +507,14 @@ begin
 end;
 
 
-function CreateTCWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateTCWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXTabControl',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXTabControl',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
-function CreateTSWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateTSWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewWidget:TXTabSheet;
   NewNode:TDataNode;
@@ -515,8 +523,10 @@ begin
   tc:=TXTabControl(ParentNode.ScreenObject);
   NewWidget:=tc.AddTabSheet;
   tc.PageIndex:=tc.PageCount-1;
-  NewWidget.Name:=ScreenObjectName;
+  NewWidget.Name:=Namespace+ScreenObjectName;
   NewNode:=NewWidget.myNode;
+  NewNode.NodeName:=ScreenObjectName;
+  NewNode.NameSpace:=NameSpace;
   AddChildToParentNode(ParentNode,NewNode,position);
   result:=NewNode;
 end;
@@ -554,11 +564,13 @@ begin
        exit;
      end;
      MyTabControl:=TPageControl(Sender);
-     CallHandleEvent('Change',IntToStr(MyTabControl.TabIndex),Sender);
-
-     // do a Component Click event as well
+     //CallHandleEvent('Change',IntToStr(MyTabControl.TabIndex),Sender);
      TabID:=MyTabControl.ActivePage.Name;
-     CallHandleEvent('Click',TabID,Sender);
+     //CallHandleEvent('Change',IntToStr(MyTabControl.TabIndex),Sender);
+     CallHandleEvent('Change',TabID,Sender);
+
+     // do a Component Click event as well        //!!!! why?
+     CallHandleEvent('Click',TabID,Sender);       //!!!!namespace???
   end;
 
 end;
@@ -571,6 +583,15 @@ begin
   p1:=self.Pages[0];
   ch:=self.Height;
   result:= ch - p1.height - p1.borderwidth;
+end;
+
+function TXTabControl.GetHTMLClasses:string;
+begin
+  result:=myNode.GetAttribute('HTMLClasses',true).AttribValue;
+end;
+procedure TXTabControl.SetHTMLClasses(AValue:string);
+begin
+  myNode.SetAttributeValue('HTMLClasses',AValue);
 end;
 
 function TXTabControl.GetIsVisible:Boolean;
@@ -699,16 +720,17 @@ procedure TXTabControl.SetMyName(AValue:string);
 begin
   inherited Name:=AValue;
 
-  if myNode<>nil then
-     myNode.NodeName:=AValue;
-  // also rename any associated event code ???
+  if  (csLoading in componentState) then
+    if myNode<>nil then
+      myNode.NodeName:=AValue;
 end;
 procedure TXTabSheet.SetMyName(AValue:string);
 begin
   inherited Name:=AValue;
 
-  if myNode<>nil then
-     myNode.NodeName:=AValue;
+  if  (csLoading in componentState) then
+    if myNode<>nil then
+       myNode.NodeName:=AValue;
   // what else might need renaming ???
 end;
 
@@ -753,7 +775,6 @@ begin
   if myNode<>nil then
     myNode.SetAttributeValue('IsVisible',myBoolToStr(AValue),'Boolean');
   self.TabVisible:=AValue;
-  //self.Visible:=AValue;
 end;
 
 
@@ -953,11 +974,20 @@ begin
   end;
 end;
 
+function TXTabSheet.GetHTMLClasses:string;
+begin
+  result:=myNode.GetAttribute('HTMLClasses',true).AttribValue;
+end;
+procedure TXTabSheet.SetHTMLClasses(AValue:string);
+begin
+  myNode.SetAttributeValue('HTMLClasses',AValue);
+end;
+
 
 {$else}
-constructor TXTabControl.Create(MyForm:TForm;NodeName:String);
+constructor TXTabControl.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -969,9 +999,9 @@ begin
   SetNodePropDefaults(self,ControlDefaultAttribs);
 
 end;
-constructor TXTabSheet.Create(MyForm:TForm;NodeName:String);
+constructor TXTabSheet.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:='TXTabSheet';
   self.MyForm:=MyForm;
 
@@ -981,7 +1011,7 @@ begin
   SetNodePropDefaults(self,PageDefaultAttribs);
 end;
 
-function CreateTabControl(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateTabControl(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   OnChangeString, OnClickString, OnPasteString, BgColor:String;
 begin
@@ -989,8 +1019,8 @@ begin
   BgColor:=MyNode.GetAttribute('BgColor',true).AttribValue;
   if BgColor='' then BgColor:='#FFFFFF';
 
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', this.value);" ';
-  //showmessage('tabcontrol createwidget '+ScreenObjectName);
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
+  //showmessage('tabcontrol createwidget '+NameSpace+'.'+ScreenObjectName);
 
   asm
     try{
@@ -1017,30 +1047,32 @@ begin
     }
 
 
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
     //localcontainer is an inner div.  Its id is  ScreenObjectName+'Contents'
     // It is a child of the outer container div (wrapper)
     //
      var localcontainer = document.createElement("div");
-     localcontainer.id = ScreenObjectName+'Contents';
+     var wrapperid = NameSpace+ScreenObjectName;
+     localcontainer.id = wrapperid+'Contents';
+     localcontainer.className = wrapperid;
      localcontainer.style.display="inline-block;";
      localcontainer.style.height="100%";
      localcontainer.style.width="100%";
-     document.getElementById(ScreenObjectName).appendChild(localcontainer);
+     document.getElementById(wrapperid).appendChild(localcontainer);
 
   // -----------------------------Define the HTML to be used to create the Tab control
   // NB --- "TabButton" and "TabPage" are the classnames used for styling the tab controls
   // -------"TabButtonDiv" is the classname used for styling the div containing the tab buttons
 
-    var TabButtonsDef = '<div id="'+ScreenObjectName+'ContentsButtons'+'" class="TabButtonDiv"'+
+    var TabButtonsDef = '<div id="'+wrapperid+'ContentsButtons'+'" class="TabButtonDiv '+NameSpace+ScreenObjectName+'"'+
                         '>'+
                         '</div>';
 
   //------------------------------------ now append the declarations to the Parent
      localcontainer.innerHTML = localcontainer.innerHTML + TabButtonsDef;
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
   }
   catch(err) { alert(err.message+'  in XTabControl.CreateTabControl');}
 
@@ -1053,46 +1085,57 @@ begin
   result:=myNode;
 end;
 
-procedure openTab(TabName,TabControlName:string);
+procedure openTab(TabName,TabControlName,NameSpace:string);
 var
   myNode, ControlNode:TdataNode;
   siblingpos:Integer;
+  tabId,tcId:String;
 begin
-
+  tabId:=NameSpace+TabName;
+  tcId:=NameSpace+TabControlName;
   asm
   try{
+      //alert('openTab. tabid='+tabId);
+      var butsdiv=document.getElementById(tcId+'ContentsButtons');
+      //alert('butsdiv='+butsdiv);
+      var tabsdiv=document.getElementById(tcId+'Contents');
+      //alert('tabsdiv='+tabsdiv);
+
       var i;
-   //alert('OpenTab  TabControl='+TabControlName+' TabName='+TabName);
-      var x = document.getElementsByClassName(TabControlName);
-      if (x==null) {alert('cannot find element by class name '+TabControlName);}
+      //alert('OpenTab  TabControl='+NameSpace+TabControlName+' tabId='+tabId);
+
+      var x = tabsdiv.getElementsByClassName('TabPage');
+      if (x==null) {alert('cannot find element by class name TabPage');}
       for (i = 0; i < x.length; i++) {
+         //alert('hiding '+x[i].id);
          x[i].style.display = "none";
       }
 
-     var y = document.getElementsByClassName(TabControlName+'TabButton');
-     if (y==null) {alert('cannot find element by class name '+TabControlName+'TabButton');}
+      var y = butsdiv.getElementsByClassName('TabButton');
+
+      if (y==null) {alert('cannot find element by class name TabButton');}
       for (i = 0; i <y.length; i++) {
          y[i].style.background ='#d1d0ce';// dark background when not selected
          y[i].style.border= 'none';
       }
 
-      var selectedTab = document.getElementById(TabName);
+      //alert('showing '+tabId);
+      var selectedTab = document.getElementById(tabId);
       selectedTab.style.display = "block";
-      var selectedTab = document.getElementById(TabName+'Contents');
+      var selectedTab = document.getElementById(tabId+'Contents');
       selectedTab.style.display = "flex";
 
-      var selectedTabButton = document.getElementById(TabName+'Button');
+      var selectedTabButton = document.getElementById(tabId+'Button');
       if (selectedTabButton==null) {alert('cannot find element by name '+TabName+'Button');}
       selectedTabButton.style.background = '#f1f0ee'; // Same background color as the tab page when selected
 
       } catch(err) {alert('Error in XTabControl.OpenTab '+ err.message);}
   end;
 
-  myNode:=findDataNodeById(SystemNodetree,TabName,true);
+  myNode:=findDataNodeById(SystemNodetree,TabName,NameSpace,true);
   if myNode<>nil then
   begin
-    ControlNode:=FindParentOfNodeByName(SystemNodeTree,TabName,true,siblingpos);
-    //ControlNode:=FindParentOfNode(SystemNodeTree,TabName,true,siblingpos);
+    ControlNode:=FindParentOfNodeByName(SystemNodeTree,TabName,NameSpace,true,siblingpos);
     if (siblingpos>-1)
     and (TXTabControl(ControlNode).TabIndex<>siblingpos) then
       TXTabControl(ControlNode).TabIndex:=siblingpos;
@@ -1100,55 +1143,58 @@ begin
   end;
 end;
 
-function ChangeTabPage(nodeId,parentNodeId:string):string;
-var
-  ParentNode:TDataNode;
+procedure ChangeTabPage(nodeId,parentNodeId,NameSpace:string);
 begin
- //   showmessage('calling openTab('+NodeId+','+parentNodeId+'Contents)');
-    openTab(NodeId,parentNodeId+'Contents');
+ //   showmessage('calling openTab('+NodeId+','+parentNodeId+')'+','+NameSpace);
+    openTab(NodeId,parentNodeId,NameSpace);
 end;
 
-function CreateTabSheet(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String): TDataNode;
+
+function CreateTabSheet(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String): TDataNode;
 var
   ParentName,PageCaption,NodeID,ControlName:string;
   OnClickString:String;
 begin
   //showmessage('tabsheet createwidget');
   ControlName:=ParentNode.NodeName;
-  ParentName:=MyNode.GetAttribute('ParentName',false).AttribValue+'Contents';
+  ParentName:=NameSpace+MyNode.GetAttribute('ParentName',false).AttribValue+'Contents';
   //showmessage('parentname='+ParentName);
   PageCaption:=MyNode.GetAttribute('Caption',false).AttribValue;
   //showmessage('caption='+PageCaption);
   NodeID:=MyNode.NodeName;
   //showmessage('NodeId='+NodeId);
 
-  OnClickString:='onclick="event.stopPropagation();pas.XTabControl.ChangeTabPage('''+NodeID+''','''+ParentNode.NodeName+'''); '+
-                         'pas.Events.handleEvent(null,''Change'','''+ControlName+''','''+ScreenObjectName+''');' +
-                         'pas.Events.handleEvent(null,''Click'','''+NodeID+''', ''''); '+
+  OnClickString:='onclick="event.stopPropagation();pas.XTabControl.ChangeTabPage('''+NodeID+''','''+ParentNode.NodeName+''','''+MyNode.NameSpace+'''); '+
+                         'pas.Events.handleEvent(null,''Change'','''+ControlName+''','''+NameSpace+''','''+ScreenObjectName+''');' +
+                         'pas.Events.handleEvent(null,''Click'','''+NodeID+''','''+NameSpace+''', ''''); '+
                          '" ';
 
   asm
     try{
     //alert('pagecaption='+PageCaption+' parent='+ParentName);
 
+    var wrapperid = NameSpace+ScreenObjectName;
     var ButtonsDiv = document.getElementById(ParentName+'Buttons');
 
-    var buttonstring ='<button id="'+ScreenObjectName+'Button" class="'+ParentName+'TabButton" ' +
+    //var buttonstring ='<button id="'+wrapperid+'Button" class="'+ParentName+'TabButton" ' +
+    var buttonstring ='<button id="'+wrapperid+'Button" class="TabButton '+NameSpace+ControlName+'" ' +
                              OnClickString +
+                             ' style="background:rgb(241, 240, 238);border:none" ' +
                           '>'+PageCaption+'</button>';
     ButtonsDiv.innerHTML = ButtonsDiv.innerHTML + buttonstring;
 
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,'TXTabSheet',position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,'TXTabSheet',position);
     wrapper.style.height = '100%';
     wrapper.style.width = '100%';
-    wrapper.className='TabPage  '+ ParentName;
+   // wrapper.className='TabPage  '+ ParentName;
+    wrapper.className='TabPage';
 
-    //var TabContentDef ="<div id='" +ScreenObjectName+"Contents'  class='TabPage  "+ ParentName+"' ></div>";
-    var TabContentDef ="<div id='" +ScreenObjectName+"Contents'  class='TabPage  vboxNoStretch ' ></div>";
+    //var TabContentDef ="<div id='" +wrapperid+"Contents'  class='TabPage  vboxNoStretch ' ></div>";
+    var TabContentDef ="<div id='" +wrapperid+"Contents'  class='vboxNoStretch "+NameSpace+ScreenObjectName+"' style='height:98%; width:100%' ></div>";
 
     wrapper.innerHTML = wrapper.innerHTML + TabContentDef;
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
   }
   catch(err) { alert(err.message+'  in XTabControl.CreateTabSheet');}
   end;
@@ -1156,16 +1202,18 @@ begin
   MyNode.ScreenObject:=MyNode;
   RefreshComponentProps(myNode);
 
+  TXTabControl(ParentNode).HTMLClasses := TXTabControl(ParentNode).HTMLClasses;
+
   result:=myNode;
 end;
 
-function CreateTabControlInterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateTabControlInterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXTabControl.Create(MyForm,NodeName));
+  result:=TObject(TXTabControl.Create(MyForm,NodeName,NameSpace));
 end;
-function CreateTabPageInterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateTabPageInterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXTabSheet.Create(MyForm,NodeName));
+  result:=TObject(TXTabSheet.Create(MyForm,NodeName,NameSpace));
 end;
 {$endif}
 
@@ -1182,26 +1230,30 @@ var
   myTabSheetNode:String;
   idx:longint;
 begin
-  idx := AValue;
-  if length(myNode.ChildNodes)>0 then
+  if myNode<>nil then
   begin
-    if (idx>=length(myNode.ChildNodes))
-    or (idx<0) then
-      idx:=0;
+    idx := AValue;
+    if length(myNode.ChildNodes)>0 then
+    begin
+      if (idx>=length(myNode.ChildNodes))
+      or (idx<0) then
+        idx:=0;
+    end;
+    myNode.SetAttributeValue('TabIndex',inttostr(idx));
+    {$ifndef JScript}
+    inherited TabIndex := idx;
+    {$else}
+    if (idx>-1)
+    and (length(myNode.ChildNodes)>idx) then
+    begin
+      //showmessage('calling openTab('+self.NodeName+','+intToStr(idx)+')');
+      // find the name of the required tab sheet...
+      myTabSheetNode:=myNode.ChildNodes[idx].NodeName;
+      openTab(myTabSheetNode,self.NodeName,self.NameSpace);
+    end;
+    {$endif}
+
   end;
-  myNode.SetAttributeValue('TabIndex',inttostr(idx));
-  {$ifndef JScript}
-  inherited TabIndex := idx;
-  {$else}
-  if (idx>-1)
-  and (length(myNode.ChildNodes)>idx) then
-  begin
-    //showmessage('calling openTab('+self.NodeName+','+intToStr(idx)+')');
-    // find the name of the required tab sheet...
-    myTabSheetNode:=myNode.ChildNodes[idx].NodeName;
-    openTab(myTabSheetNode,self.NodeName+'Contents');
-  end;
-  {$endif}
 end;
 
 function TXTabSheet.GetCaption:string;
@@ -1215,12 +1267,26 @@ begin
   inherited Caption:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Button');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Button');
     if (ob!=null) {
       ob.innerHTML=AValue;
     }
   end;
   {$endif}
+end;
+
+function TXTabControl.IndexOfPage(PageId:String):integer;
+var
+  myTabSheetNode:String;
+  i,idx:integer;
+begin
+  idx:=-1;
+  for i:=0 to length(myNode.ChildNodes)-1 do
+  begin
+    if (myNode.ChildNodes[i].NodeName=PageId) then
+      idx:=i;
+  end;
+  result:=idx;
 end;
 
 
@@ -1282,7 +1348,7 @@ end;
 
 
 
-procedure TXTabControlComponentEditor.DoAddPage;
+procedure TXTabControlComponentEditor.DoAddPage;       //!!!! Namespace???
 var
   Hook: TPropertyEditorHook;
   newPage:TXTabSheet;
@@ -1442,20 +1508,19 @@ end;
 
 begin
   // this is the set of node attributes that each TXTabControl instance will have.
-  AddDefaultAttribute(ControlDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(ControlDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(ControlDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(ControlDefaultAttribs);
   AddDefaultAttribute(ControlDefaultAttribs,'ContainerWidth','String','300px','',false);
   AddDefaultAttribute(ControlDefaultAttribs,'ContainerHeight','String','300px','',false);
   AddDefaultAttribute(ControlDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(ControlDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
   AddDefaultAttribute(ControlDefaultAttribs,'TabIndex','Integer','-1','',false);
-  AddDefaultAttribute(ControlDefaultAttribs,'Caption','String','','',false);
+  AddDefaultAttribute(ControlDefaultAttribs,'HTMLClasses','String','','',false);
   AddDefaultsToTable('TXTabControl',ControlDefaultAttribs);
 
   // this is the set of node attributes that each TXTabSheet instance will have.
   AddDefaultAttribute(PageDefaultAttribs,'Hint','String','','',false);
   AddDefaultAttribute(PageDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddDefaultAttribute(PageDefaultAttribs,'HTMLClasses','String','','',false);
   AddDefaultAttribute(PageDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
   AddDefaultAttribute(PageDefaultAttribs,'Caption','String','NewPage','',false);
   AddDefaultsToTable('TXTabSheet',PageDefaultAttribs);

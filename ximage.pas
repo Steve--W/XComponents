@@ -56,7 +56,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
 
   published
@@ -140,11 +140,11 @@ begin
 
  end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXImage',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXImage',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -174,9 +174,9 @@ end;
 
 {$else}
 
-constructor TXImage.Create(MyForm:TForm;NodeName:String);
+constructor TXImage.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -188,7 +188,7 @@ begin
 end;
 
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   Source,LabelText:string;
   OnClickString:String;
@@ -200,13 +200,14 @@ begin
                            +glbMarginSpacing+' '
                            +glbMarginSpacing+' '
                            +glbMarginSpacing+';';
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', '''');" ';
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', '''');" ';
 
   asm
     try{
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid = NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
 
     var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
 
@@ -216,7 +217,7 @@ begin
 
     var HTMLString = labelstring+ImageString;
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
     }
     catch(err) { alert(err.message+'  in XImage.CreateWidget');}
@@ -230,16 +231,16 @@ begin
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXImage.Create(MyForm,NodeName));
+  result:=TObject(TXImage.Create(MyForm,NodeName,NameSpace));
 end;
 
 procedure TXImage.SetImageWidth(AValue:string);
 begin
   myNode.SetAttributeValue('ImageWidth',AValue);
   asm
-  var ob = document.getElementById(this.NodeName+'Contents');
+  var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
 end;
@@ -248,7 +249,7 @@ procedure TXImage.SetImageHeight(AValue:string);
 begin
   myNode.SetAttributeValue('ImageHeight',AValue);
   asm
-  var ob = document.getElementById(this.NodeName+'Contents');
+  var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
   end;
 end;
@@ -293,7 +294,7 @@ begin
   end;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
        if (AValue=='') {
          ob.src='dfltImage.gif';
@@ -313,9 +314,7 @@ end;
 
 begin
   // this is the set of node attributes that each XHBox instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'ImageWidth','String','250','',false);
   AddDefaultAttribute(myDefaultAttribs,'ImageHeight','String','200','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);

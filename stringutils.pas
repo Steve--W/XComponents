@@ -30,6 +30,7 @@ type AnsiString = String;
 {$endif}
 
 function FoundString(inString,searchString:string):integer;  // find first occurrence of "searchString"
+function FoundStringCI(inString,searchString:string):integer;  // case-insensitive
 function myStringReplace(Instring,OldString,NewString:String;ReplaceNum,MaxStringLength:integer):String;
 function MyBoolToStr(inBool:boolean):string;
 function MyStrToBool(inStr:string):Boolean;
@@ -58,6 +59,7 @@ procedure ShowMessage(text:String);
 var MainUnitName:String;
 
 implementation
+uses Events;
 
 {$ifndef JScript}
 {$else}
@@ -180,6 +182,15 @@ function FoundString(inString,searchString:string):integer;  // find first occur
     end;
     result :=  tempresult;
 end;
+
+function FoundStringCI(inString,searchString:string):integer;  // case-insensitive
+  var
+    tempresult:integer;
+  begin
+    tempresult:=FoundString(upperCase(inString),upperCase(searchString));
+    result :=  tempresult;
+end;
+
 
 function DelChars(Instring,FilterChar:String):String;
 var i:integer;
@@ -312,12 +323,23 @@ var
   items : TStringList;
 begin
   items := TstringList.Create;
-  // create from string
-  jData := GetJSON(JSONString);
-  for i:=0 to jData.Count-1 do
-    items.Add(jData.Items[i].AsString);
   items.StrictDelimiter:=true;
   items.LineBreak:=',';
+  // create from string
+  try
+    jData := GetJSON(JSONString);
+  except
+    on E: Exception do
+    begin
+      showmessage('JSON error: '+e.Message);
+      jData := nil;
+    end;
+  end;
+  if jData<>nil then
+  begin
+    for i:=0 to jData.Count-1 do
+      items.Add(jData.Items[i].AsString);
+  end;
   result:=items;
 end;
 
@@ -381,7 +403,11 @@ begin
   if Color=clNone then
     begin Result:= ''; exit; end;
   N:= ColorToRGB(Color);
+//  {$ifndef JScript}
   Result:= '#'+
+//  {$else}
+//  Result:= '%23'+
+//  {$endif}
     IntToHex(Red(N), 2)+
     IntToHex(Green(N), 2)+
     IntToHex(Blue(N), 2);
@@ -400,6 +426,8 @@ begin
     result:=clNone
   else
   begin
+    // in case of escaped # char, switch to #
+    RGBString:=mystringreplace(RGBString,'%23','#',1,-1);
     bits := StringSplit(RGBString,'#');
     if bits.Count>1 then
     begin
@@ -487,6 +515,8 @@ begin
   a:=255;
   if RGBString<>'' then
   begin
+    // in case of escaped # char, switch to #
+    RGBString:=mystringreplace(RGBString,'%23','#',1,-1);
     bits := StringSplit(RGBString,'#');
     if bits.Count>1 then
     begin
@@ -506,25 +536,34 @@ begin
 end;
 {$endif}
 
-{$ifndef JScript}
 Function confirm(Textmessage:string):boolean;
+{$ifndef JScript}
 begin
    if MessageDlg('Confirm', Textmessage, mtConfirmation,
    [mbYes, mbNo],0) = mrYes
   then result:=true
   else result:=false;
-end;
+   //Following event handler being called due to requirement for
+   //event logging.
+   // Not available for capture by user-written code.
+   HandleEvent(nil,'UserConfirm','UIRootNode','',myBoolToStr(result));
 {$else}
-Function confirm(Textmessage:string):boolean;
 var
   conf:Boolean;
 begin
   asm
     conf=confirm(Textmessage);
+
+    //Following event handler being called due to requirement for
+    //event logging.
+    // Not available for capture by user-written code.
+    if (conf!=null) {
+      pas.Events.handleEvent(null,'UserConfirm','UIRootNode','',conf.toString());
+    }
   end;
   result:=conf;
-end;
 {$endif}
+end;
 
 {$ifndef JScript}
 Function prompt(TextMessage,promptString:string):string;
@@ -536,6 +575,10 @@ begin
      result:=promptstring
    else
      result:='';
+   //Following event handler being called due to requirement for
+   //event logging.
+   // Not available for capture by user-written code.
+   HandleEvent(nil,'UserInput','UIRootNode','',result);
 end;
 {$else}
 Function prompt(TextMessage,promptString:string):string;
@@ -545,6 +588,13 @@ begin
   asm
     var res=prompt(TextMessage,promptString);
     if (res==null) {str=''} else {str=res}
+
+      //Following event handler being called due to requirement for
+      //event logging.
+      // Not available for capture by user-written code.
+      if (res!=null) {
+        pas.Events.handleEvent(null,'UserInput','UIRootNode','',res);
+      }
   end;
   result:=str;
 end;

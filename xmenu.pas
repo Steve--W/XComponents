@@ -33,7 +33,7 @@ procedure resetButton(button:TObject);
 procedure closeSubMenu(menuName:String);
 procedure CloseAnyDropdown(menuName:String);
 procedure menuButtonClick(buttonName:String);
-procedure menuBarClick(menuName:String);
+//procedure menuBarClick(menuName:String);
 procedure buttonMouseover(buttonName:String);
 procedure menuItemMouseover(itemName:String);
 
@@ -61,6 +61,7 @@ type
   function GetHint:string;
   function GetCaption:string;
   function GetIsVisible:Boolean;
+  function GetIsEnabled:Boolean;
 
   procedure SetParentComponent(Value:TComponent);  override;
 
@@ -70,6 +71,7 @@ type
   procedure SetHint(AValue:string);
   procedure SetCaption(AValue:string);
   procedure SetIsVisible(AValue:Boolean);
+  procedure SetIsEnabled(AValue:Boolean);
 
   function AddMenuItem(NewName:String):TXMenuItem;
   procedure SetName(const NewName: TComponentName); override;
@@ -86,6 +88,7 @@ type
     property IsSelected: Boolean read FIsSelected write SetIsSelected default false;
     property SelectionBorderColor: TColor read FSelectionBorderColor write SetSelectionBorderColor default clGreen;
     property IsVisible:Boolean read GetIsVisible write SetIsVisible;
+    property IsEnabled:Boolean read GetIsEnabled write SetIsEnabled;
 
     property Hint: String read GetHint write SetHint;
     property Name: String read GetName write SetMyName;
@@ -163,7 +166,7 @@ type
     fActiveButton:TObject;
     procedure SetMyEventTypes;
   public
-     constructor Create(MyForm:TForm;NodeName:String);
+     constructor Create(MyForm:TForm;NodeName,NameSpace:String);
 
    property ActiveButton:TObject read fActiveButton write fActiveButton;
  published
@@ -173,7 +176,10 @@ type
   TXMenuItem = class(TWrapperPanel)
   private
     function GetCaption:string;
-    procedure SetCaption(AValue:string);
+    function GetIsEnabled:Boolean;
+
+     procedure SetCaption(AValue:string);
+     procedure SetIsEnabled(AValue:Boolean);
 
     procedure SetMyEventTypes;
 
@@ -181,11 +187,12 @@ type
     { Protected declarations }
   public
     { Public declarations }
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
 
   published
     { Published declarations }
     property Caption: String read GetCaption write SetCaption;
+    property IsEnabled:Boolean read GetIsEnabled write SetIsEnabled;
 
   end;
 
@@ -294,6 +301,7 @@ begin
       myExtension:=TXDesignerExtension.Create;
       myExtension.myWrapper:=TControl(self);
    end;
+
 end;
 
 constructor TXMenuItem.Create(TheOwner:TComponent);
@@ -319,7 +327,7 @@ begin
   MyEventTypes:=TStringList.Create;
   self.OnClick:=@self.MenuItemClick;
 
-  self.myNode:=TDataNode.Create('UI',self.Name,'TXMenuItem',false);
+  self.myNode:=TDataNode.Create('UI',self.Name,'','TXMenuItem',false);
   self.myNode.ScreenObject:=self;
 
   // Set the parent menu
@@ -361,19 +369,19 @@ begin
   inherited SetParentComponent(Value);
 end;
 
-function CreateMMWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateMMWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
   ParentForm:TForm;
 begin
-  NewNode:=CreateDynamicLazWidget('TXMainMenu',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXMainMenu',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   //!!!! the 'parent' for a menu node should be the form node for the relevant form
   AddChildToParentNode(ParentNode,NewNode,position);
   ParentForm:=TForm(ParentNode.ScreenObject);
   ParentForm.Menu:=TMainMenu(NewNode.ScreenObject);
   result:=NewNode;
 end;
-function CreateMIWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateMIWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewWidget:TXMenuItem;
   NewNode:TDataNode;
@@ -402,7 +410,9 @@ begin
   if not (csDesigning in componentState)
   then
      if self.Count=0 then
-       CallHandleEvent('Click',self.myNode.NodeName,self);
+       CallHandleEvent('Click',self.myNode.NodeName,self)
+     else
+       CallHandleEvent('OpenSubMenu',self.myNode.NodeName,self);
 end;
 
 function TXMainMenu.GetIsVisible:Boolean;
@@ -728,6 +738,10 @@ StyleText=StyleText + '  margin-right: -.75em;';
 StyleText=StyleText + '}';
 
 
+StyleText=StyleText + '.menuItemDisabled {';
+StyleText=StyleText + '  color: #aaaaaa !important;';
+StyleText=StyleText + '}';
+
 StyleText=StyleText + '</style>';
 
 //alert(StyleText);
@@ -739,9 +753,9 @@ document.head.innerHTML = document.head.innerHTML+StyleText;
 end;
 end;
 
-constructor TXMainMenu.Create(MyForm:TForm;NodeName:String);
+constructor TXMainMenu.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -751,9 +765,9 @@ begin
   SetNodePropDefaults(self,MenuDefaultAttribs);
 
 end;
-constructor TXMenuItem.Create(MyForm:TForm;NodeName:String);
+constructor TXMenuItem.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:='TXMenuItem';
   self.MyForm:=MyForm;
 
@@ -765,19 +779,18 @@ begin
 end;
 
 
-function CreateMainMenu(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateMainMenu(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
-  OnMouseOverString, BgColor:String;
+  BgColor:String;
 begin
   //showmessage('CreateMainMenu');
-  OnMouseOverString:='pas.XMenu.menuBarClick('''+ScreenObjectName+''');pas.HTMLUtils.StopBubbling(event);';
 
   asm
     try{
     pas.XMenu.addMenuBarStyles();
 
     //alert('add main menu to parent '+ParentNode.NodeName);
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,0);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,0);
     wrapper.position="";
 
 
@@ -789,7 +802,7 @@ begin
      localcontainer.classList.add('menuBar');
 
      //localcontainer.onmouseover = function(){pas.XMenu.menuMouseover(ScreenObjectName);pas.HTMLUtils.StopBubbling(event);}
-     localcontainer.onclick = function(){pas.XMenu.menuBarClick(ScreenObjectName);pas.HTMLUtils.StopBubbling(event);}
+     wrapper.onclick = function(){pas.XMenu.CloseAnyDropdown(ScreenObjectName);pas.HTMLUtils.StopBubbling(event);}
 
      wrapper.appendChild(localcontainer);
 
@@ -816,7 +829,7 @@ var
   ParentName:String;
 begin
 //showmessage('IdentifyMainMenu '+menuName);
-  StartNode:=findDataNodeById(SystemNodeTree,menuName,true);
+  StartNode:=findDataNodeById(SystemNodeTree,menuName,'',true);
   found:=false;
   while ((found=false) and (StartNode<>nil)) do
   begin
@@ -825,7 +838,8 @@ begin
     else
     begin
       ParentName:=StartNode.GetAttribute('ParentName',false).AttribValue;
-      StartNode:=findDataNodeById(SystemNodeTree,ParentName,true);
+      //showmessage('ParentName='+Parentname);
+      StartNode:=findDataNodeById(SystemNodeTree,ParentName,'',true);
     end;
   end;
   result:=TXMainMenu(StartNode.ScreenObject);
@@ -836,11 +850,11 @@ var
   StartNode:TDataNode;
   ParentName:String;
 begin
-  StartNode:=findDataNodeById(SystemNodeTree,itemName,true);
+  StartNode:=findDataNodeById(SystemNodeTree,itemName,'',true);
   if (StartNode<>nil) then
   begin
       ParentName:=StartNode.GetAttribute('ParentName',false).AttribValue;
-      StartNode:=findDataNodeById(SystemNodeTree,ParentName,true);
+      StartNode:=findDataNodeById(SystemNodeTree,ParentName,'',true);
       result:=TXMenuItem(StartNode.ScreenObject);
   end
   else
@@ -921,22 +935,23 @@ procedure resetButton(button:TObject);
 begin
 
 asm
-{
-  //alert('resetButton '+button.id);
 
-  // Restore the button's style class.
+  if (button!=null) {
+    //alert('resetButton '+button.id);
 
-  pas.HTMLUtils.removeClassName(button, "menuButtonActive");
+    // Restore the button's style class.
 
-  // Hide the button's menu, first closing any sub menus.
+    pas.HTMLUtils.removeClassName(button, "menuButtonActive");
 
-  if (button.menu != null) {
-    //alert('closing button menu '+ button.menu.id);
-    pas.XMenu.closeSubMenu(button.menu.id);
-    //alert('set hidden '+ button.menu.id);
-    button.menu.style.visibility = "hidden";
+    // Hide the button's menu, first closing any sub menus.
+
+    if (button.menu != null) {
+      //alert('closing button menu '+ button.menu.id);
+      pas.XMenu.closeSubMenu(button.menu.id);
+      //alert('set hidden '+ button.menu.id);
+      button.menu.style.visibility = "hidden";
+    }
   }
-}
 end;
 
 end;
@@ -950,7 +965,7 @@ begin
   mainmenu:=IdentifyMainMenu(buttonName);
   CloseAnyDropdown(mainmenu.NodeName);
 
-  ButtonNode:=FindDataNodeById(mainmenu,buttonName,true);
+  ButtonNode:=FindDataNodeById(mainmenu,buttonName,'',true);
   ParentNode:=FindParentOfNode(mainmenu,ButtonNode);
 
   //showmessage('parent for '+buttonName+' is '+ParentNode.NodeName);
@@ -1050,9 +1065,10 @@ end;
 
 
 
-function CreateMenuItem(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateMenuItem(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
-  OnChangeString, OnClickString, OnMouseOverString1, OnMouseOverString2, BgColor, Caption, ParentName:String;
+  OnChangeString, OnClickString, OnMouseOverString1, OnMouseOverString2,MouseOutString:String;
+  BgColor, Caption, ParentName:String;
   IsMainItem:Boolean;
 begin
   if ParentNode.NodeType = 'TXMainMenu' then
@@ -1067,12 +1083,17 @@ begin
 
   //showmessage('menuitem createwidget '+ScreenObjectName+' parent='+ParentName);
 
-  OnClickString:='onclick="event.stopPropagation();pas.XMenu.menuButtonClick('''+ScreenObjectName+'''); '+
-                            'pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''',''''); '+
+  OnClickString:='onclick="event.stopPropagation();'+
+                            'if (!(event.target.classList.contains(''menuItemDisabled''))) {' +
+                            'pas.XMenu.menuButtonClick('''+ScreenObjectName+'''); '+
+                            'pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''',''''); '+
+                            '}'+
                             '" ';
 
   OnMouseOverString1:='onmouseover="pas.XMenu.buttonMouseover('''+ScreenObjectName+''');pas.HTMLUtils.StopBubbling(event);" ';
   OnMouseOverString2:='onmouseover="pas.XMenu.menuItemMouseover('''+ScreenObjectName+''');pas.HTMLUtils.StopBubbling(event);" ';
+
+//  MouseOutString:=' onmouseout="pas.XMenu.closeSubMenu(event.target.parentNode.id);"';
 
   asm
     try{
@@ -1091,7 +1112,9 @@ begin
                      OnMouseOverString1 +
                      '>'+Caption+
                      '</a>'+
-                     '<div id="'+ScreenObjectName+'Box'+'" class="menu" visibility = "hidden" >';
+                     '<div id="'+ScreenObjectName+'Box'+'" class="menu" visibility = "hidden" '+
+ //                    MouseOutString +
+                     '></div>';
 
        pas.HTMLUtils.AddObjectToParentObject(ParentNode,MyParent.id,ScreenObjectName,position,MenuItemHTML);
        }
@@ -1124,8 +1147,9 @@ begin
                     ' >' +
                     '<span class="menuItemText">'+Caption+'</span>' +
                     '</a>' +
-                    '<div id="'+ScreenObjectName+'Box'+'" class="menu" >'+
-                    '</div>';
+                    '<div id="'+ScreenObjectName+'Box'+'" class="menu" '+
+  //                  MouseOutString +
+                    '></div>';
 
       pas.HTMLUtils.AddObjectToParentObject(ParentNode,MyParent.id,ScreenObjectName,position,MenuItemHTML);
 
@@ -1143,7 +1167,9 @@ end;
   MyNode.ScreenObject:=MyNode;
 
     // now that we have a datanode and a widget, cycle attribute settings
-    SetCommonWrapperProperties(TWrapperPanel(myNode));
+    //SetCommonWrapperProperties(TWrapperPanel(myNode));
+    RefreshComponentProps(myNode);
+    myNode.SetAttributeValue('ParentName',ParentName);
 
 result:=myNode;
 end;
@@ -1164,11 +1190,11 @@ try{
   if (menu.activeItem.subMenu != null) {
     //alert('menu.activeItem.subMenu is '+menu.activeItem.subMenu.id);
     pas.XMenu.closeSubMenu(menu.activeItem.subMenu.id);
-    //alert('hiding submenu '+menu.activeItem.subMenu.id);
+ //   alert('hiding submenu '+menu.activeItem.subMenu.id);
     menu.activeItem.subMenu.style.visibility = "hidden";
     menu.activeItem.subMenu = null;
   }
-  //alert(menuName+' removeClassName menuItemHighlight');
+ // alert(menuName+' removeClassName menuItemHighlight');
   pas.HTMLUtils.removeClassName(menu.activeItem, "menuItemHighlight");
   //alert('menu '+menu.id+' clear activeitem ');
   menu.activeItem = null;
@@ -1179,18 +1205,16 @@ end;
 
 end;
 
-
 procedure CloseAnyDropdown(menuName:String);
 var
   mainmenunode:TDataNode;
   mainmenu:TXMainMenu;
 begin
-  mainmenunode:=findDataNodeById(SystemNodeTree,menuName,true);
+  mainmenunode:=findDataNodeById(SystemNodeTree,menuName,'',true);
   mainmenu:=TXMainMenu(mainmenunode.ScreenObject);
 
 asm
 {
-//alert('menuBarClick '+menuName);
   // Close any active sub menu.
 
   if (mainmenu.ActiveButton != null) {
@@ -1201,11 +1225,6 @@ end;
 
 end;
 
-
-procedure menuBarClick(menuName:String);
-begin
-  CloseAnyDropdown(menuName);
-end;
 
 procedure menuItemMouseover(ItemName:String);
 var
@@ -1229,7 +1248,7 @@ asm
   // Close any active sub menu and mark this one as active.
   //alert('menu '+menu.id+' set activeitem '+item.id);
   if (menu.activeItem != null) {
-    //alert('close submenu '+menu.id);
+    //alert('menuItemMouseover close submenu '+menu.id);
     pas.XMenu.closeSubMenu(menu.id);
     }
   menu.activeItem = item;
@@ -1311,13 +1330,13 @@ end;
 
 
 
-function CreateMainMenuInterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateMainMenuInterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXMainMenu.Create(MyForm,NodeName));
+  result:=TObject(TXMainMenu.Create(MyForm,NodeName,NameSpace));
 end;
-function CreateMenuItemInterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateMenuItemInterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXMenuItem.Create(MyForm,NodeName));
+  result:=TObject(TXMenuItem.Create(MyForm,NodeName,NameSpace));
 end;
 {$endif}
 
@@ -1335,6 +1354,38 @@ begin
     var ob=document.getElementById(this.myNode.NodeName);
     if (ob!=null) {
       ob.innerHTML=AValue;
+    }
+  end;
+  {$endif}
+end;
+
+function TXMenuItem.GetIsEnabled:Boolean;
+var
+  tmp:String;
+begin
+  if myNode<>nil then
+  begin
+    tmp:=myNode.GetAttribute('IsEnabled',true).AttribValue;
+    if tmp='' then tmp:='True';
+    result:=myStrToBool(tmp);
+  end
+  else
+    result:=True;
+end;
+procedure TXMenuItem.SetIsEnabled(AValue:Boolean);
+begin
+  if myNode<>nil then
+    myNode.SetAttributeValue('IsEnabled',myBoolToStr(AValue),'Boolean');
+  {$ifndef JScript}
+  self.Enabled:=AValue;
+  {$else}
+  asm
+    var ob=document.getElementById(this.myNode.NodeName);
+    if (ob!=null) {
+      if (AValue==true) {
+      ob.classList.remove("menuItemDisabled"); }
+      else {
+      ob.classList.add("menuItemDisabled"); }
     }
   end;
   {$endif}
@@ -1371,7 +1422,7 @@ begin
 
   lItemName := Designer.CreateUniqueComponentName(TXMenuItem.ClassName);
   //showmessage('DoAddItem. menunode='+MenuNode.NodeType+' '+MenuNode.NodeName+' name='+lItemName);
-  ItemNode := CreateMIWidget(MenuNode,lItemName,-1,'');
+  ItemNode := CreateMIWidget(MenuNode,lItemName,'',-1,'');
   //showmessage('CreateMIWidget done.  ItemNode.Nodename='+ItemNode.Nodename);
   NewItem := TXMenuItem(ItemNode.ScreenObject);
 
@@ -1431,6 +1482,7 @@ begin
   AddDefaultAttribute(ItemDefaultAttribs,'Caption','String','New Item','',false);
   AddDefaultAttribute(ItemDefaultAttribs,'Hint','String','','',false);
   AddDefaultAttribute(ItemDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddDefaultAttribute(ItemDefaultAttribs,'IsEnabled','Boolean','True','',false);
   AddDefaultsToTable('TXMenuItem',ItemDefaultAttribs);
 
   {$ifndef JScript}

@@ -51,7 +51,7 @@ type
     { Protected declarations }
   public
     procedure SetSuspendRefresh(AValue: Boolean); override;
-    procedure ConstructXMLString(myName:String);
+    procedure ConstructXMLString(myName,NameSpace:String);
     function  SpliceSVGChildStrings(parentstring,childstring:string):string;
     function XMLWarnings(SVGString:String):String;
     function WarnAboutTTypeBezierCurves(instring:string):string;
@@ -66,7 +66,7 @@ type
       {$endif}
     //property myNode;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);  override;
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);  override;
     {$endif}
   published
     { Published declarations }
@@ -109,7 +109,7 @@ type
        procedure setRotate(AValue:string);
        procedure SetHint(AValue:String);
        {$ifndef JScript}
-       function CommonSetup(ParentNode:TdataNode;position:integer):TdataNode;
+       function CommonSetup(myNameSpace:String;ParentNode:TdataNode;position:integer):TdataNode;
        {$else}
        function SetupWidget(ParentNode:TDataNode;position:integer):TDataNode;
        procedure FinishSVGInObCreate;
@@ -280,13 +280,13 @@ begin
   MyEventTypes.Add('Click');
 end;
 
-procedure TXSVGContainer.ConstructXMLString(myName:String);
+procedure TXSVGContainer.ConstructXMLString(myName,NameSpace:String);
 // Construct the xml string, and set the attribute value in the data node.
 var
   JavascriptString,stylestring,SvgString:string;
 begin
     JavascriptString:='<script> '
-    +'  document.title = "'+myNode.NodeName+' '+myNode.NodeType+'"; '
+    +'  document.title = "'+myNode.NodeName+' '+myNode.NodeType+'"; '        //!!!!namespace
     +'  document.documentElement.addEventListener("click", function( event ) { event.stopPropagation();'
  //   +'    alert("click event on "+event.target.id); '
     +'    var x=event.clientX; '
@@ -321,7 +321,7 @@ begin
 //    {$else}
 //    asm
 //    //alert('looking for '+this.NodeName);
-//    var ob = document.getElementById(this.NodeName);
+//    var ob = document.getElementById(this.NameSpace+this.NodeName);
 //    if (ob!=null) {
 //      var style = window.getComputedStyle(ob);
 //      var hh = style.height;
@@ -333,7 +333,7 @@ begin
 //    end;
 //    {$endif}
 
-    SvgString:= '<svg id="'+myName+'" top="0" left="0" '
+    SvgString:= '<svg id="'+NameSpace+myName+'" top="0" left="0" '
               //+' width="'+IntToStr(FrameWidth)+'px" height="'+IntToStr(FrameHeight)+'px" overflow:"hidden" position:"fixed">'
               +' width="100%" height="92%" overflow:"hidden" position:"fixed">'
               +'</svg> ';
@@ -365,7 +365,7 @@ begin
       YStr:=items[3];
 
       if ItemId<>'' then
-        result:=FindDataNodeById(SystemNodeTree,ItemId,false)
+        result:=FindDataNodeById(SystemNodeTree,ItemId,'',false)     //!!!! deal with NameSpace
       else
         result:=nil;
     end
@@ -394,7 +394,7 @@ begin
   inherited Loaded;
   if not (csDesigning in componentState) then
   begin
-    self.ConstructXMLString(self.Name);
+    self.ConstructXMLString(self.Name,'');         //!!!!namespace??
     self.XMLString:=self.XMLString;    // load the string and refresh display
   end;
 end;
@@ -419,12 +419,12 @@ begin
   {$endif}
 end;
 
-function CreateSVGContainerWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateSVGContainerWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXSVGContainer',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
-  TXSVGContainer(NewNode.ScreenObject).constructXMLString(NewNode.NodeName);
+  NewNode:=CreateDynamicLazWidget('TXSVGContainer',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
+  TXSVGContainer(NewNode.ScreenObject).constructXMLString(NewNode.NodeName,NameSpace);
   result:=NewNode;
 end;
 
@@ -438,7 +438,7 @@ begin
   MyEventTypes.Add('MouseDown');
   self.myNode.NodeType:='TXSVGContainer';
   AddDefaultAttribs(self,self.myNode,SVGdefaultAttribs);
-  self.constructXMLString(self.myNode.NodeName);
+  self.constructXMLString(self.myNode.NodeName,self.myNode.NameSpace);
 end;
 
 constructor TXSVGContainer.Create(TheOwner:TComponent);
@@ -496,26 +496,26 @@ end;
 {$endif}
 
 {$else} //JScript
-constructor TXSVGContainer.Create(MyForm:TForm;NodeName:String);
+constructor TXSVGContainer.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(MyForm,NodeName);
+  inherited Create(MyForm,NodeName,NameSpace);
   self.NodeType:='TXSVGContainer';
   self.IsContainer:=true;
   SetNodePropDefaults(self,SVGDefaultAttribs);
 end;
 
-function CreateSVGContainerWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateSVGContainerWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 begin
-//       showmessage('CreateSVGContainerWidget 1');
+  //showmessage('CreateSVGContainerWidget');
 
   DoCreateFrameWidget(MyNode, ParentNode,ScreenObjectName,position);
-  TXSVGContainer(MyNode).ConstructXMLString(ScreenObjectName);
+  TXSVGContainer(MyNode).ConstructXMLString(ScreenObjectName,NameSpace);
   result:=myNode;
 end;
 
-function CreateinterfaceObjSVG(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObjSVG(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXSVGContainer.Create(MyForm,NodeName));
+  result:=TObject(TXSVGContainer.Create(MyForm,NodeName,NameSpace));
 end;
 
 
@@ -523,6 +523,7 @@ function TXSVGWidget.SetupWidget(ParentNode:TDataNode;position:integer):TDataNod
 var
   NewNode:TDataNode;
 begin
+//  showmessage('TXSVGWidget.SetupWidget 1');
   NewNode:=self.myNode;
   AddChildToParentNode(ParentNode,NewNode,position);
 
@@ -530,6 +531,7 @@ begin
 
   RefreshComponentProps(myNode);
 
+//  showmessage('TXSVGWidget.SetupWidget 2');
   result:=NewNode;
 end;
 
@@ -545,7 +547,7 @@ begin
      ItemNode:=SVGItemFromTitle(msg);
      if ItemNode<>nil then
      begin
-       handleEvent('Click',ItemNode.NodeName, msg);
+       handleEvent('Click',ItemNode.NodeName, ItemNode.NameSpace,msg);
      end;
   end;
 
@@ -633,7 +635,6 @@ begin
     myNode.SetAttributeValue('XMLString',SVGString);
 
     {$ifndef JScript}
-    //SVGString := FilteredSVGString;
     SVGString:='';
     {$else}
     SVGString:=self.FullXMLString; // adds in the child data
@@ -719,7 +720,7 @@ end;
 
 
 {$ifndef JScript}
-function TXSVGWidget.CommonSetup(ParentNode:TdataNode;position:integer):TdataNode;
+function TXSVGWidget.CommonSetup(myNameSpace:String;ParentNode:TdataNode;position:integer):TdataNode;
 var
   NewNode:TDataNode;
 begin
@@ -727,6 +728,7 @@ begin
   self.myNode:=TDataNode(self);
   NewNode:=self.myNode;
   NewNode.ScreenObject:=self;
+  NewNode.NameSpace:=myNameSpace;
   AddChildToParentNode(ParentNode,NewNode,position);
 
   result:=NewNode;
@@ -744,7 +746,7 @@ end;
 procedure TXSVGText.ConstructXMLString;
 begin
   //showmessage('setting text svg string');
-  self.XMLString:=' <text id="'+self.NodeName+'" x="'+XPos+'" y="'+YPos
+  self.XMLString:=' <text id="'+self.NameSpace+self.NodeName+'" x="'+XPos+'" y="'+YPos
               +'" transform="rotate('+rotate+','+XPos+','+YPos+')"'
               +' style="font-family: '+fontFamily+'; font-weight:'+fontWeight+';font-size:'+height+'; font-style: '+fontStyle+'" >'
               +TextString
@@ -767,29 +769,29 @@ begin
 end;
 
 {$ifndef JScript}
-function addSVGText(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function addSVGText(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
    NewWidget:TXSVGText;
    NewNode:TDataNode;
 begin
 
-   NewWidget:=TXSVGText.Create('SVG',ScreenObjectName,'TXSVGText',true);
-   NewNode:=NewWidget.CommonSetup(ParentNode,position);
+   NewWidget:=TXSVGText.Create('SVG',ScreenObjectName,NameSpace,'TXSVGText',true);
+   NewNode:=NewWidget.CommonSetup(NameSpace,ParentNode,position);
    NewWidget.SetDefaultAttribs;
 
    result:=NewNode;
 end;
 {$else}
-function CreateInObSVGText(MyForm:TForm;NodeName:String):TObject;
+function CreateInObSVGText(MyForm:TForm;NodeName,NameSpace:String):TObject;
 var
   NewObj:TXSVGText;
 begin
-  NewObj:=TXSVGText.Create('SVG',NodeName,'TXSVGText',true);
+  NewObj:=TXSVGText.Create('SVG',NodeName,NameSpace,'TXSVGText',true);
   NewObj.FinishSVGInObCreate;
   result:=NewObj;
 end;
 
-function CreateWidgetSVGText(myNode,ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidgetSVGText(myNode,ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
    var
      NewWidget:TXSVGText;
   begin
@@ -809,9 +811,16 @@ function CreateWidgetSVGText(myNode,ParentNode:TDataNode;ScreenObjectName:string
 {$endif}
 
 function ColorToStr(Clr:TColor):String;
+var
+  s:string;
 begin
     {$ifndef JScript}
-    result:=ColorToHexRGB(Clr);
+    s:=ColorToHexRGB(Clr);
+    {$ifdef Chromium}
+    result:=s.Replace('#','%23');
+    {$else}
+    result:=s;
+    {$endif}
     {$else}
     result:=Clr;
     {$endif}
@@ -829,7 +838,7 @@ end;
 
 procedure TXSVGRect.ConstructXMLString;
 begin
-    self.XMLString:='<rect id="'+self.NodeName+'" x="'+XPos+'" y="'+YPos
+    self.XMLString:='<rect id="'+self.NameSpace+self.NodeName+'" x="'+XPos+'" y="'+YPos
               +'" transform="rotate('+rotate+','+XPos+','+YPos+')" width="'+Width+'" height="'+Height
               +'" stroke="'+ColorToStr(StrokeColor)+'" fill="'+FillColorToStr(FillColor,FillTransparent)+'" stroke-width="'+StrokeWidth+'" >'
     +'<title>'+Hint+'</title>'
@@ -851,28 +860,28 @@ begin
 end;
 
 {$ifndef JScript}
-function addSVGRect(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function addSVGRect(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
    var
      NewWidget:TXSVGRect;
      NewNode:TDataNode;
   begin
-     NewWidget:=TXSVGRect.Create('SVG',ScreenObjectName,'TXSVGRect',true);
-     NewNode:=NewWidget.CommonSetup(ParentNode,position);
+     NewWidget:=TXSVGRect.Create('SVG',ScreenObjectName,NameSpace,'TXSVGRect',true);
+     NewNode:=NewWidget.CommonSetup(NameSpace,ParentNode,position);
      NewWidget.SetDefaultAttribs;
      result:=NewNode;
   end;
 {$else}
-function CreateInObSVGRect(MyForm:TForm;NodeName:String):TObject;
+function CreateInObSVGRect(MyForm:TForm;NodeName,NameSpace:String):TObject;
 var
   NewObj:TXSVGRect;
 begin
   //showmessage('CreateInObSVGRect '+NodeName);
-  NewObj:=TXSVGRect.Create('SVG',NodeName,'TXSVGRect',true);
+  NewObj:=TXSVGRect.Create('SVG',NodeName,NameSpace,'TXSVGRect',true);
   NewObj.FinishSVGInObCreate;
   result:=NewObj;
 end;
 
-function CreateWidgetSVGRect(myNode,ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidgetSVGRect(myNode,ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
    var
      NewWidget:TXSVGRect;
   begin
@@ -900,7 +909,7 @@ begin
   //{$ifdef JScript}
   //showmessage('TXSVGRoundedRect.ConstructXMLString. ');
   //{$endif}
-    self.XMLString:='<rect id="'+self.NodeName+'" x="'+XPos+'" y="'+YPos+'" rx="'+rx+'" ry="'+ry
+    self.XMLString:='<rect id="'+self.NameSpace+self.NodeName+'" x="'+XPos+'" y="'+YPos+'" rx="'+rx+'" ry="'+ry
               +'" title="'+Hint
               +'" transform="rotate('+Rotate+','+XPos+','+YPos+')" width="'+Width+'" height="'+Height
               +'" stroke="'+ColorToStr(StrokeColor)+'" fill="'+FillColorToStr(FillColor,FillTransparent)+'" stroke-width="'+StrokeWidth+'" >'
@@ -925,28 +934,28 @@ begin
 end;
 
 {$ifndef JScript}
-function addSVGRoundedRect(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function addSVGRoundedRect(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
    var
      NewWidget:TXSVGRoundedRect;
      NewNode:TDataNode;
   begin
-     NewWidget:=TXSVGRoundedRect.Create('SVG',ScreenObjectName,'TXSVGRoundedRect',true);
-     NewNode:=NewWidget.CommonSetup(ParentNode,position);
+     NewWidget:=TXSVGRoundedRect.Create('SVG',ScreenObjectName,NameSpace,'TXSVGRoundedRect',true);
+     NewNode:=NewWidget.CommonSetup(NameSpace,ParentNode,position);
      NewWidget.SetDefaultAttribs;
      result:=NewNode;
   end;
 {$else}
-function CreateInObSVGRoundedRect(MyForm:TForm;NodeName:String):TObject;
+function CreateInObSVGRoundedRect(MyForm:TForm;NodeName,NameSpace:String):TObject;
 var
   NewObj:TXSVGRoundedRect;
 begin
   //showmessage('CreateInObSVGRoundedRect '+NodeName);
-  NewObj:=TXSVGRoundedRect.Create('SVG',NodeName,'TXSVGRoundedRect',true);
+  NewObj:=TXSVGRoundedRect.Create('SVG',NodeName,NameSpace,'TXSVGRoundedRect',true);
   NewObj.FinishSVGInObCreate;
   result:=NewObj;
 end;
 
-function CreateWidgetSVGRoundedRect(myNode,ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidgetSVGRoundedRect(myNode,ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
  var
    NewWidget:TXSVGRoundedRect;
 begin
@@ -976,7 +985,7 @@ end;
 procedure TXSVGCircle.ConstructXMLString;
 begin
 //showmessage('ConstructXMLString '+NodeName);
-  self.XMLString:='<circle id="'+self.NodeName+'" cx="'+XPos+'" cy="'+YPos
+  self.XMLString:='<circle id="'+self.NameSpace+self.NodeName+'" cx="'+XPos+'" cy="'+YPos
            +'" transform="rotate('+rotate+','+XPos+','+YPos+')" r="'+Radius
            +'" stroke="'+ColorToStr(StrokeColor)+'" fill="'+FillColorToStr(FillColor,FillTransparent)
            +'" stroke-width="'+StrokeWidth+' "> '
@@ -999,28 +1008,28 @@ begin
 end;
 
 {$ifndef JScript}
-function addSVGCircle(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function addSVGCircle(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
    var
      NewWidget:TXSVGCircle;
      NewNode:TDataNode;
   begin
-     NewWidget:=TXSVGCircle.Create('SVG',ScreenObjectName,'TXSVGCircle',true);
-     NewNode:=NewWidget.CommonSetup(ParentNode,position);
+     NewWidget:=TXSVGCircle.Create('SVG',ScreenObjectName,NameSpace,'TXSVGCircle',true);
+     NewNode:=NewWidget.CommonSetup(NameSpace,ParentNode,position);
      NewWidget.SetDefaultAttribs;
      result:=NewNode;
  end;
 {$else}
-function CreateInObSVGCircle(MyForm:TForm;NodeName:String):TObject;
+function CreateInObSVGCircle(MyForm:TForm;NodeName,NameSpace:String):TObject;
 var
   NewObj:TXSVGCircle;
 begin
  // showmessage('CreateInObSVGCircle '+NodeName);
-  NewObj:=TXSVGCircle.Create('SVG',NodeName,'TXSVGCircle',true);
+  NewObj:=TXSVGCircle.Create('SVG',NodeName,NameSpace,'TXSVGCircle',true);
   NewObj.FinishSVGInObCreate;
   result:=NewObj;
 end;
 
-function CreateWidgetSVGCircle(myNode,ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidgetSVGCircle(myNode,ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
  var
    NewWidget:TXSVGCircle;
 begin
@@ -1047,7 +1056,7 @@ end;
 procedure TXSVGEllipse.ConstructXMLString;
 begin
 //showmessage('TXSVGEllipse.ConstructXMLString '+NodeName);
-  self.XMLString:='<ellipse id="'+self.NodeName+'" cx="'+XPos+'"  cy="'+YPos+'"  rx="'+Rx+'" ry="'+Ry+'"'
+  self.XMLString:='<ellipse id="'+self.NameSpace+self.NodeName+'" cx="'+XPos+'"  cy="'+YPos+'"  rx="'+Rx+'" ry="'+Ry+'"'
            +' transform="rotate('+Rotate+','+XPos+','+YPos+')"'
            +' stroke="'+ColorToStr(StrokeColor)+'" fill="'+FillColorToStr(FillColor,FillTransparent)+'" stroke-width="'+StrokeWidth+'" > '
   +'<title>'+Hint+'</title>'
@@ -1070,28 +1079,28 @@ begin
 end;
 
 {$ifndef JScript}
-function addSVGEllipse(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function addSVGEllipse(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
    var
      NewWidget:TXSVGEllipse;
      NewNode:TDataNode;
   begin
-     NewWidget:=TXSVGEllipse.Create('SVG',ScreenObjectName,'TXSVGEllipse',true);
-     NewNode:=NewWidget.CommonSetup(ParentNode,position);
+     NewWidget:=TXSVGEllipse.Create('SVG',ScreenObjectName,NameSpace,'TXSVGEllipse',true);
+     NewNode:=NewWidget.CommonSetup(NameSpace,ParentNode,position);
      NewWidget.SetDefaultAttribs;
      result:=NewNode;
   end;
 {$else}
-function CreateInObSVGEllipse(MyForm:TForm;NodeName:String):TObject;
+function CreateInObSVGEllipse(MyForm:TForm;NodeName,NameSpace:String):TObject;
 var
   NewObj:TXSVGEllipse;
 begin
  // showmessage('CreateInObSVGEllipse '+NodeName);
-  NewObj:=TXSVGEllipse.Create('SVG',NodeName,'TXSVGEllipse',true);
+  NewObj:=TXSVGEllipse.Create('SVG',NodeName,NameSpace,'TXSVGEllipse',true);
   NewObj.FinishSVGInObCreate;
   result:=NewObj;
 end;
 
-function CreateWidgetSVGEllipse(myNode,ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidgetSVGEllipse(myNode,ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
  var
    NewWidget:TXSVGEllipse;
 begin
@@ -1117,7 +1126,7 @@ end;
 procedure TXSVGLine.ConstructXMLString;
 begin
 //showmessage('Line. ConstructXMLString '+NodeName);
-  self.XMLString:='<line id="'+self.NodeName+'" x1="'+ X1+'" x2="'+X2+'" y1="'+Y1+'" y2="'+Y2+'"'
+  self.XMLString:='<line id="'+self.NameSpace+self.NodeName+'" x1="'+ X1+'" x2="'+X2+'" y1="'+Y1+'" y2="'+Y2+'"'
           +' transform="rotate('+rotate+','+X1+','+Y1+')"'
           +' stroke="'+ColorToStr(strokeColor)+'" stroke-width="'+strokeWidth+'" > '
   +'<title>'+Hint+'</title>'
@@ -1138,28 +1147,28 @@ begin
 end;
 
 {$ifndef JScript}
-function addSVGLine(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function addSVGLine(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
    var
      NewWidget:TXSVGLine;
      NewNode:TDataNode;
   begin
-     NewWidget:=TXSVGLine.Create('SVG',ScreenObjectName,'TXSVGLine',true);
-     NewNode:=NewWidget.CommonSetup(ParentNode,position);
+     NewWidget:=TXSVGLine.Create('SVG',ScreenObjectName,NameSpace,'TXSVGLine',true);
+     NewNode:=NewWidget.CommonSetup(NameSpace,ParentNode,position);
      NewWidget.SetDefaultAttribs;
      result:=NewNode;
   end;
 {$else}
-function CreateInObSVGLine(MyForm:TForm;NodeName:String):TObject;
+function CreateInObSVGLine(MyForm:TForm;NodeName,NameSpace:String):TObject;
 var
   NewObj:TXSVGLine;
 begin
   //showmessage('CreateInObSVGLine '+NodeName);
-  NewObj:=TXSVGLine.Create('SVG',NodeName,'TXSVGLine',true);
+  NewObj:=TXSVGLine.Create('SVG',NodeName,NameSpace,'TXSVGLine',true);
   NewObj.FinishSVGInObCreate;
   result:=NewObj;
 end;
 
-function CreateWidgetSVGLine(myNode,ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidgetSVGLine(myNode,ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
  var
    NewWidget:TXSVGLine;
 begin
@@ -1205,7 +1214,7 @@ begin
   //showmessage('PolyLine. ConstructXMLString '+NodeName);
   XArray:= GetArrayFromString(XCoords);
   YArray:= GetArrayFromString(YCoords);
-  str:=  '<polyline id="'+self.NodeName+'" points="';
+  str:=  '<polyline id="'+self.NameSpace+self.NodeName+'" points="';
   numpoints:= length(XArray);
   for i:=0 to numpoints-1 do
   begin
@@ -1231,28 +1240,28 @@ begin
 end;
 
 {$ifndef JScript}
-function addSVGPolyLine(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function addSVGPolyLine(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
    var
      NewWidget:TXSVGPolyLine;
      NewNode:TDataNode;
   begin
-     NewWidget:=TXSVGPolyLine.Create('SVG',ScreenObjectName,'TXSVGPolyLine',true);
-     NewNode:=NewWidget.CommonSetup(ParentNode,position);
+     NewWidget:=TXSVGPolyLine.Create('SVG',ScreenObjectName,NameSpace,'TXSVGPolyLine',true);
+     NewNode:=NewWidget.CommonSetup(NameSpace,ParentNode,position);
      NewWidget.SetDefaultAttribs;
      result:=NewNode;
   end;
 {$else}
-function CreateInObSVGPolyLine(MyForm:TForm;NodeName:String):TObject;
+function CreateInObSVGPolyLine(MyForm:TForm;NodeName,NameSpace:String):TObject;
 var
   NewObj:TXSVGPolyLine;
 begin
   //showmessage('CreateInObSVGPolyLine '+NodeName);
-  NewObj:=TXSVGPolyLine.Create('SVG',NodeName,'TXSVGPolyLine',true);
+  NewObj:=TXSVGPolyLine.Create('SVG',NodeName,NameSpace,'TXSVGPolyLine',true);
   NewObj.FinishSVGInObCreate;
   result:=NewObj;
 end;
 
-function CreateWidgetSVGPolyLine(myNode,ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidgetSVGPolyLine(myNode,ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
  var
    NewWidget:TXSVGPolyLine;
 begin
@@ -1282,7 +1291,7 @@ begin
   //showmessage('PolyGon. ConstructXMLString '+NodeName);
   XArray:= GetArrayFromString(XCoords);
   YArray:= GetArrayFromString(YCoords);
-  str:=  '<polygon id="'+self.NodeName+'" points="';
+  str:=  '<polygon id="'+self.NameSpace+self.NodeName+'" points="';
   numpoints:= length(XArray);
   for i:=0 to numpoints-1 do
   begin
@@ -1309,29 +1318,29 @@ begin
 end;
 
 {$ifndef JScript}
-function addSVGPolyGon(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function addSVGPolyGon(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
    var
      NewWidget:TXSVGPolyGon;
      NewNode:TDataNode;
   begin
-     NewWidget:=TXSVGPolyGon.Create('SVG',ScreenObjectName,'TXSVGPolyGon',true);
-     NewNode:=NewWidget.CommonSetup(ParentNode,position);
+     NewWidget:=TXSVGPolyGon.Create('SVG',ScreenObjectName,NameSpace,'TXSVGPolyGon',true);
+     NewNode:=NewWidget.CommonSetup(NameSpace,ParentNode,position);
      NewWidget.SetDefaultAttribs;
      result:=NewNode;
   end;
 {$else}
 
-function CreateInObSVGPolyGon(MyForm:TForm;NodeName:String):TObject;
+function CreateInObSVGPolyGon(MyForm:TForm;NodeName,NameSpace:String):TObject;
 var
   NewObj:TXSVGPolyGon;
 begin
   //showmessage('CreateInObSVGPolyGon '+NodeName);
-  NewObj:=TXSVGPolyGon.Create('SVG',NodeName,'TXSVGPolyGon',true);
+  NewObj:=TXSVGPolyGon.Create('SVG',NodeName,NameSpace,'TXSVGPolyGon',true);
   NewObj.FinishSVGInObCreate;
   result:=NewObj;
 end;
 
-function CreateWidgetSVGPolyGon(myNode,ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidgetSVGPolyGon(myNode,ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
  var
    NewWidget:TXSVGPolyGon;
 begin
@@ -1647,12 +1656,10 @@ begin
 end;
 
 begin
-  AddDefaultAttribute(SVGDefaultAttribs,'SuspendRefresh','Boolean','True','',false);
-  AddDefaultAttribute(SVGDefaultAttribs,'ActualHeight','Integer','','',false,false);
-  AddDefaultAttribute(SVGDefaultAttribs,'ActualWidth','Integer','','',false,false);
-  AddDefaultAttribute(SVGDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(SVGDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(SVGDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(SVGDefaultAttribs);
+  AddDefaultAttribute(SVGDefaultAttribs,'SuspendRefresh','Boolean','False','',false);
+  AddDefaultAttribute(SVGDefaultAttribs,'ActualHeight','Integer','','',true,false);
+  AddDefaultAttribute(SVGDefaultAttribs,'ActualWidth','Integer','','',true,false);
   AddDefaultAttribute(SVGDefaultAttribs,'FrameWidth','String','300','',false);
   AddDefaultAttribute(SVGDefaultAttribs,'FrameHeight','String','300','',false);
   AddDefaultAttribute(SVGDefaultAttribs,'Border','Boolean','True','',false);
@@ -1661,7 +1668,6 @@ begin
   AddDefaultAttribute(SVGDefaultAttribs,'LabelText','String','SVG Frame','',false);
   AddDefaultAttribute(SVGDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
   AddDefaultAttribute(SVGDefaultAttribs,'HTMLSource','String','','',false,false);
-  AddDefaultAttribute(SVGDefaultAttribs,'XMLString','String','','',false,false);
   AddDefaultsToTable('TXSVGContainer',SVGDefaultAttribs);
 
   AddAttribOptions('TXSVGContainer','Alignment',AlignmentOptions);
@@ -1704,7 +1710,7 @@ begin
   SuppressDesignerProperty('TXSVGContainer','ContainerHeight');
   SuppressDesignerProperty('TXSVGContainer','ContainerWidth');
   SuppressDesignerProperty('TXSVGContainer','BgColor');
-  SuppressDesignerProperty('TXSVGContainer','HTMLSource');
+//  SuppressDesignerProperty('TXSVGContainer','HTMLSource');
 
   SuppressDesignerProperty('TXSVGText','Width');
 

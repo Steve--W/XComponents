@@ -36,6 +36,7 @@ procedure Register;
 {$ifdef JScript}
 type TXHTMLMessage = record
   objid:String;
+  NameSpace:String;
   mtype:String;
   mdata:String;
 end;
@@ -79,7 +80,7 @@ type
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     procedure DoHTMLTextConstructor(TheOwner:TComponent;IsDynamic:Boolean);
     {$else}    // JScript
-    constructor Create(MyForm:TForm;NodeName:String);  override;
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);  override;
     {$endif}
     function CreateTextURL(txt:String):tstringlist;
     function ExtractTextFromTitle(message:String):String;
@@ -139,11 +140,11 @@ begin
   RegisterComponents('XComponents',[TXHTMLText]);
 end;
 
-function CreateHTMLTextWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateHTMLTextWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXHTMLText',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXHTMLText',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -232,16 +233,16 @@ end;
 
 {$else} //JScript  ...............................
 
-constructor TXHTMLText.Create(MyForm:TForm;NodeName:String);
+constructor TXHTMLText.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(MyForm,NodeName);
+  inherited Create(MyForm,NodeName,NameSpace);
   self.NodeType:='TXHTMLText';
   self.IsContainer:=false;
 
   SetNodePropDefaults(self,myDefaultAttribs);
 end;
 
-function CreateHTMLTextWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateHTMLTextWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewWidget:TXHTMLText;
   h,w:integer;
@@ -258,9 +259,9 @@ begin
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXHTMLText.Create(MyForm,NodeName));
+  result:=TObject(TXHTMLText.Create(MyForm,NodeName,NameSpace));
 end;
 
 procedure HandleTXHTMLMessage(msg:TXHTMLMessage);
@@ -272,7 +273,7 @@ begin
   begin
     //showmessage('HandleTXHTMLMessage: '+msg.objid+' '+msg.mtype);
      //this is a notification sent out from within a HTMLText frame.
-     ItemNode:=findDataNodeById(systemnodetree,msg.objid,false);
+     ItemNode:=findDataNodeById(systemnodetree,msg.objid,msg.NameSpace,false);
      if ItemNode<>nil then
      begin
         if msg.mtype='titleChange' then
@@ -327,7 +328,6 @@ begin
   if myNode<>nil then
   begin
     myNode.SetAttributeValue('SourceText',AValue,'String');
- //   showmessage('SetSourceText '+AValue);
     begin
       URLStringList:=CreateTextURL(AValue);
       self.HTMLSource:=URLStringList.Text;
@@ -437,9 +437,7 @@ end;
 
 begin
   // this is the set of node attributes that each GPUCanvas instance will have (added to the set inherited from TXIFrame).
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'FrameWidth','String','300','',false);
   AddDefaultAttribute(myDefaultAttribs,'FrameHeight','String','300','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);

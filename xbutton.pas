@@ -58,7 +58,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
 
   published
@@ -70,7 +70,7 @@ type
     property ButtonWidth: String read GetButtonWidth write SetButtonWidth;
 
     {$ifndef JScript}
-    // Events to be handled
+    // Events to be visible in Lazarus IDE
     property HandleButtonClick: TEventHandler read FHandleButtonClick write FHandleButtonClick;
     {$endif}
   end;
@@ -148,19 +148,44 @@ end;
 
 
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXButton',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXButton',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
 {$else}
-
-constructor TXButton.Create(MyForm:TForm;NodeName:String);
+procedure AddButtonStyles;
 begin
-  inherited Create(NodeName);
+  asm
+  // ----------------------------------------check if the style has already been set
+   var x = document.getElementsByTagName("STYLE");
+   var StyleIsSet = false;
+   if (x.length>0){
+     for (var i=0; i<x.length; i++){
+       var y= x[i].innerHTML;
+       if (y.indexOf(".replayButton") !=-1) { StyleIsSet =true}
+     }
+   }
+
+   if (StyleIsSet == false){
+       var StyleString = '<style>'
+       +'.replayButton { '
+           +' background-color: red;'
+           +' }'
+        +' </style>';
+
+     //----------------------------- now append the style declarations to the head of the HTML page
+     document.head.innerHTML = document.head.innerHTML+StyleString;
+    }
+  end;
+end;
+
+constructor TXButton.Create(MyForm:TForm;NodeName,NameSpace:String);
+begin
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -170,41 +195,42 @@ begin
   SetNodePropDefaults(self,myDefaultAttribs);
 end;
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   xItemText,xEnabled,marginString:string;
 begin
-//showmessage('Create Button widget');
 xItemText:= MyNode.getAttribute('Caption',true).AttribValue;
 xEnabled:= MyNode.getAttribute('Enabled',true).AttribValue;
 marginString := 'margin:'+glbMarginSpacing+' '
                          +glbMarginSpacing+' '
                          +glbMarginSpacing+' '
                          +glbMarginSpacing+';';
+AddButtonStyles;
 
 asm
   try{
 
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
     var HTMLString='';
     var NodeIDString = "'"+ScreenObjectName+"'";
-    var MyObjectName=ScreenObjectName+'Contents';
+    var NameSpaceString = "'"+NameSpace+"'";
+    var wrapperid =  NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
 
     var EnabledString = '';
     if (xEnabled=='False') { EnabledString = ' disabled ';}
 
     var typestring="'ButtonClick'";
-    HTMLString = '<input type="button" id='+MyObjectName+' style="display: inline-block; '+
-                                                                  marginString+'" '+
-                                                                  '" '+
-    'onclick="event.stopPropagation(); pas.Events.handleEvent(null,'+typestring+','+NodeIDString+', '+NodeIDString+');"'+
+    HTMLString = '<input type="button" id='+MyObjectName+' class="widgetinner '+wrapperid+'" '+
+                         'style="font-size:inherit; display: inline-block; '+
+                                marginString+'" '+
+                                '" '+
+    'onclick="event.stopPropagation(); pas.Events.handleEvent(null,'+typestring+','+NodeIDString+', '+NameSpaceString+', '+NodeIDString+');"'+
                         '  '+EnabledString+' value="'+xItemText+'"> ';
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
-
-    //alert('created button widget '+HTMLString);
 
   }
   catch(err) { alert(err.message+'  in XButton.CreateWidget');}
@@ -217,9 +243,9 @@ RefreshComponentProps(myNode);
 result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXButton.Create(MyForm,NodeName));
+  result:=TObject(TXButton.Create(MyForm,NodeName,NameSpace));
 end;
 
 {$endif}
@@ -246,7 +272,7 @@ begin
   TButton(myControl).Caption:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
        //alert('set button caption '+AValue);
        ob.value=AValue;  }
@@ -261,7 +287,7 @@ begin
   TButton(myControl).Enabled:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
     if (AValue==false) {ob.disabled = true}
     else {ob.disabled = false }
@@ -282,7 +308,7 @@ begin
   SetHeightWidth(self.myNode,tc,'ButtonWidth','');
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
   {$endif}
@@ -290,9 +316,7 @@ end;
 
 begin
   // this is the set of node attributes that each XButton instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'Caption','String','Press Me','',false);
   AddDefaultAttribute(myDefaultAttribs,'Enabled','Boolean','True','',false);

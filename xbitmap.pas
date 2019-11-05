@@ -69,6 +69,8 @@ private
   fColorsLookup:TXBitMapColors;
   fBitMapWidth:integer;
   fBitMapHeight:integer;
+  fCharsPerColor:integer;
+  fNumColors:integer;
 
   {$ifndef JScript}
   procedure ImageClick(Sender:TObject);
@@ -108,7 +110,7 @@ public
   procedure SetMapPixelArraySection(AValue:TstringArray;x,y:integer);
   property TheBitMap:TPixMap read fTheBitMap write fTheBitMap;
   {$else}
-  constructor Create(MyForm:TForm;NodeName:String);
+  constructor Create(MyForm:TForm;NodeName,NameSpace:String);
   function GetMapPixelArraySection(x,y,w,h:integer):TstringArray;  overload;
   procedure SetMapPixelArraySection(AValue:TstringArray;x,y:integer); overload;
   Procedure PaintRect( sx, sy, sWidth, sHeight, ImageWidth, ImageHeight:integer);
@@ -117,6 +119,8 @@ public
   property ColorsLookup:TXBitMapColors read fColorsLookup write fColorsLookup;
   property BitMapWidth:integer read fBitMapWidth write fBitMapWidth;
   property BitMapHeight:integer read fBitMapHeight write fBitMapHeight;
+  property NumColors:integer read fNumColors write fNumColors;
+  property CharsPerColor:integer read fCharsPerColor write fCharsPerColor;
 
 published
   { Published declarations }
@@ -196,7 +200,7 @@ begin
   self.TheBitMap:=TPixMap.Create;
   fColorsArray:=TStringList.Create;
   fColorsArray.StrictDelimiter:=true;
-  fColorsArray.LineBreak:=',';
+  fColorsArray.LineBreak:='",';
   SetLength(fMapPixelArray,0);
   SetLength(fColorsLookup,0);
 
@@ -212,11 +216,11 @@ begin
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXBitMap',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXBitMap',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -245,9 +249,9 @@ procedure TXBitMap.SetImageHeight(AValue:string);
 end;
 
 {$else}
-constructor TXBitMap.Create(MyForm:TForm;NodeName:String);
+constructor TXBitMap.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -255,7 +259,7 @@ begin
   self.IsContainer:=false;
   fColorsArray:=TStringList.Create;
   fColorsArray.StrictDelimiter:=true;
-  fColorsArray.LineBreak:=',';
+  fColorsArray.LineBreak:='",';
   SetLength(fMapPixelArray,0);
   SetLength(fColorsLookup,0);
 
@@ -264,7 +268,7 @@ begin
 end;
 
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   LabelText:string;
   OnClickString:String;
@@ -277,12 +281,13 @@ begin
                            +glbMarginSpacing+' '
                            +glbMarginSpacing+';';
 
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', '''');" ';
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', '''+NameSpace+''','''');" ';
 
   asm
     try{
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid =  NameSpace+ScreenObjectName;
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    var MyObjectName=wrapperid+'Contents';
     var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
 
     var ImageString = ' <canvas  id='+MyObjectName+ ' style="display: inline-block; width:100%; height:100%;" ' +
@@ -291,7 +296,7 @@ begin
 
     var HTMLString = labelstring+ImageString;
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
     }
     catch(err) { alert(err.message+'  in XBitMap.CreateWidget');}
@@ -305,9 +310,9 @@ begin
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXBitMap.Create(MyForm,NodeName));
+  result:=TObject(TXBitMap.Create(MyForm,NodeName,NameSpace));
 end;
 
 Procedure TXBitMap.PaintRect( sx, sy, sWidth, sHeight, ImageWidth, ImageHeight:integer);
@@ -315,19 +320,24 @@ var
   NumColours:integer;
 begin
   NumColours:=length(self.fColorsLookup);
-   Asm
-   //alert('PaintRect. '+this.NodeName+' Imagewidth='+ImageWidth+' Imageheight='+ImageHeight);
-	var RawImagecanvas  = document.getElementById(this.NodeName+'Contents');
+   asm
+   try {
+   //alert('PaintRect. '+this.NodeName+' Imagewidth='+ImageWidth+' Imageheight='+ImageHeight+' sWidth='+sWidth+' sHeight='+sHeight);
+	var RawImagecanvas  = document.getElementById(this.NameSpace+this.NodeName+'Contents');
         if (RawImagecanvas!=null) {
 	  var RawImagecontext = RawImagecanvas.getContext("2d");
 	  var RawImageData = RawImagecontext.createImageData(ImageWidth, ImageHeight);
+ //         RawImagecontext.setTransform(1, 0, 0, 1, 0, 0);       // clear any previous scaling
           //alert('ImageData length='+RawImageData.data.length);
 
-	  function SetRawPixel(x,y,r,g,b,a)
+          var pixelchars=this.fColorsLookup[0].PixelType.length;      // number or characters in the color strings
+          console.log('pixelchars='+pixelchars);
+
+          function SetRawPixel(x,y,r,g,b,a)
 	  {
-          //alert('SetRawPixel '+x+','+y+','+r+','+g+','+b+','+a);
+            //console.log('SetRawPixel '+x+','+y+','+r+','+g+','+b+','+a);
             var pixelIndex =  4 * (x + y * ImageWidth);
-            //alert('SetRawPixel '+x+','+y+' index='+pixelIndex);
+            //console.log('SetRawPixel '+x+','+y+' index='+pixelIndex);
 	    RawImageData.data[pixelIndex    ] = r;  //0..255 red   color
 	    RawImageData.data[pixelIndex + 1] = g;  //0..255 green color
 	    RawImageData.data[pixelIndex + 2] = b;  //0..255 blue  color
@@ -340,41 +350,58 @@ begin
 	    // context.putImageData(RawImageData, canvasX, canvasY, sx, sy, sWidth, sHeight);
 	    // we assume that sx,and sy etc deal with the row indexing and times 4 aspects internally
 	    RawImagecontext.putImageData(RawImageData, sx, sy, sx, sy, sWidth, sHeight);
+
+            //alert('scale '+(ImageWidth/(sWidth/pixelchars))+','+(ImageHeight/sHeight));
+            // scale the rendered image (scale the context, then re-draw the image
+            RawImagecontext.webkitImageSmoothingEnabled = false;
+            RawImagecontext.mozImageSmoothingEnabled = false;
+            RawImagecontext.imageSmoothingEnabled = false;
+            RawImagecontext.setTransform(1, 0, 0, 1, 0, 0);       // clear any previous scaling
+            RawImagecontext.scale((ImageWidth/(sWidth/pixelchars)),(ImageHeight/sHeight));
+            RawImagecontext.drawImage(RawImagecanvas, 0, 0);
 	  }
 
 	  function LookupColour(ob,instring)
 	  {
+            //console.log('lookup '+instring);
+  	    var r = 0;
+  	    var g = 0;
+  	    var b = 0;
+  	    var a = 0; // if a lookupchar is not found the pixel is transparent
 	    for (var i = 0; i < NumColours; i++)
    	    {
-		  var r = 0;
-		  var g = 0;
-		  var b = 0;
-		  var a = 0; // if a lookupchar is not found the pixel is transparent
 		  if (instring == ob.fColorsLookup[i].PixelType)
 		    {
 		        r = ob.fColorsLookup[i].r;
 		        g = ob.fColorsLookup[i].g;
 		        b = ob.fColorsLookup[i].b;
 		        a = 255;
-                        //alert('found color '+instring+' = '+r+' '+g+' '+b+' '+a);
+                        //console.log('found color '+instring+' = '+r+' '+g+' '+b+' '+a);
                         return [r,g,b,a];
 		    }
 	    }
              return [r,g,b,a];
 	  }
-
+          //console.log('NumColours='+NumColours);
+          //console.log('sy='+sy+' sHeight='+sHeight);
 	  for (var j = 0; j < sHeight; j++)
 	  {
-
-		  for (var i = 0; i < sWidth; i++)
+                  var p=0;
+		  for (var i = 0; i < sWidth; i+=pixelchars)
 		  {
-                    var clr=LookupColour(this,this.fMapPixelArray[sy+j][sx+i]);
-                    SetRawPixel(sx+i,sy+j,clr[0],clr[1],clr[2],clr[3]);
+                    var pix='';
+                    for (var k=0; k<pixelchars; k++) {pix=pix+this.fMapPixelArray[sy+j][sx+i+k];}
+                    var clr=LookupColour(this,pix);
+                    //console.log('SetRawPixel('+sx+p+','+sy+j+','+clr[0]+','+clr[1]+','+clr[2]+','+clr[3]+')');
+                    if (clr[3]==0) {console.log('pixel ('+pix+') not found '+sx+p+','+sy+j);  }
+
+                    SetRawPixel(sx+p,sy+j,clr[0],clr[1],clr[2],clr[3]);
+                    p=p+1;
 		  }
 	    }
             PaintRawImage(sx,sy,sWidth, sHeight);
           }
-
+      } catch(err) { alert(err.message+'  in XBitMap.PaintRect');}
    end;
 end;
 
@@ -383,11 +410,11 @@ procedure TXBitMap.SetImageWidth(AValue:string);
 begin
   myNode.SetAttributeValue('ImageWidth',AValue);
   asm
-  var ob = document.getElementById(this.NodeName);
+  var ob = document.getElementById(this.NameSpace+this.NodeName);
   if (ob!=null) {
     pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
     //for correct scaling, have to set width the same as CSS width
-    var obc = document.getElementById(this.NodeName+'Contents');
+    var obc = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     obc.setAttribute('width',ob.style.width);
   }
   end;
@@ -397,11 +424,11 @@ procedure TXBitMap.SetImageHeight(AValue:string);
 begin
   myNode.SetAttributeValue('ImageHeight',AValue);
   asm
-  var ob = document.getElementById(this.NodeName);
+  var ob = document.getElementById(this.NameSpace+this.NodeName);
   if (ob!=null) {
     pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
     //for correct scaling, have to set height the same as CSS height
-    var obc = document.getElementById(this.NodeName+'Contents');
+    var obc = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     obc.setAttribute('height',ob.style.height);
   }
   end;
@@ -535,8 +562,10 @@ begin
       {$ifndef JScript}
       workstr:=workstr.Remove(x1-1,(x2-x1)+2);
       {$else}
+      //showmessage('StripComments x1='+inttostr(x1)+' x2='+inttostr(x2)+' workstr=>>'+workstr+'<<');
       tmp:=LeftStr(workstr, x1-1);
-      workstr:=RightStr(tmp, (x2-x1)+2);
+      workstr:=tmp + RightStr(workstr, length(workstr)-x2-1);
+      //showmessage('workstr=>>'+workstr+'<<');
       {$endif}
     end;
   result:=workstr;
@@ -563,23 +592,33 @@ procedure TXBitMap.SetMapData(AValue:string);
 // Set the whole XPM file.  Use it to reset the MapColors array.
 var
   myxpmArray, bits, bits0:TStringList;
-  i,c,x:integer;
-  oldData,tmp,tmp1:String;
+  i,c,d,p,x,cpos:integer;
+  oldData,newData,tmp,tmp1:String;
   colorItem:TColorLookup;
   ok:boolean;
   {$ifndef JScript}
   mystream:TMemoryStream;
   AColor:TColor;
+  DestRect:TRect;
   {$else}
   rtmp,gtmp,btmp,atmp,h,w,sh,sw:integer;
   {$endif}
+  lengthOfColorLine:integer;
+  lengthOfPixelsLine:integer;
 begin
+ // {$ifdef JScript}showmessage('SetMapData 1');{$endif}
  // showmessage('SetMapData '+AValue);
   ok:=true;
   myxpmArray:=TStringList.Create;
   myxpmarray.StrictDelimiter:=true;
-  myxpmarray.LineBreak:=',';
-  myxpmArray.Text:=AValue;
+  myxpmarray.LineBreak:='",';                // nb. data may contain commas
+  newData:=AValue;
+  newData:=myStringReplace(newData,LineEnding,'',-1,-1);
+  newData:=myStringReplace(newData,chr(10),'',-1,-1);
+
+  myxpmArray.Text:=newData;
+
+  //showmessage('myxpmArray initial count='+inttostr(myxpmArray.Count));
 
   {$ifndef JScript}
   if myControl<>nil then
@@ -599,9 +638,11 @@ begin
            TheBitMap.Clear;
            TheBitMap.LoadFromStream(mystream);
            TImage(myControl).Picture.Bitmap.Clear;
-           TImage(myControl).Picture.Bitmap.SetSize(TheBitMap.Width, TheBitMap.Height);
+           TImage(myControl).Picture.Bitmap.SetSize(TImage(self.myControl).Width,TImage(self.myControl).Height);
+
            TImage(myControl).Canvas.Clear;
-           TImage(myControl).Canvas.Draw(0,0,TheBitMap);
+           DestRect:=TImage(myControl).ClientRect;
+           TImage(myControl).Canvas.StretchDraw(DestRect,TheBitMap);      // make the image fit the container size
 
            myNode.SetAttributeValue('MapData',AValue);
 
@@ -629,6 +670,7 @@ begin
 
   if ok then
   begin
+    //{$ifdef JScript}showmessage('SetMapData 2');{$endif}
     bits0:=tStringList.Create;
     bits0.StrictDelimiter:=true;
     bits0.LineBreak:='"';
@@ -639,53 +681,80 @@ begin
     i:=0;
     while i < myxpmarray.Count do
     begin
+      tmp:=myxpmarray[i];
       tmp:=StripComments(myxpmarray[i]);
       x:=pos('{',tmp);
       if x>0 then
       {$ifndef JScript}
         tmp:=tmp.Remove(0,x);
       {$else}
-        tmp:=RightStr(tmp, x);
+        tmp:=RightStr(tmp, length(tmp)-x);
       {$endif}
       if tmp[1]='"' then
       begin
-        bits0.Text:=tmp;
+        bits0.Text:=tmp;    //split on "
         tmp:=bits0[1];
-        bits.Text:=tmp;
+        bits.Text:=tmp;    // split on spaces
         // should have 4 bits (width, height, colors, pixchars)...
         if bits.Count=4 then
         begin
           BitMapWidth:=StrToInt(bits[0]);
           BitMapHeight:=StrToInt(bits[1]);
-         end;
+          NumColors:=StrToInt(bits[2]);
+          CharsPerColor:=StrToInt(bits[3]);
+          LengthOfColorLine:=1 + CharsPerColor + 3 + 9;
+          lengthOfPixelsLine:=1 + (BitMapWidth * CharsPerColor);
+         end
+        else
+        begin
+          showmessage('SetMapData - invalid XPM formatting');
+          ok:=false;
+        end;
+        d:=i;
         i:=myxpmarray.Count;
       end;
       i:=i+1;
     end;
 
+    //{$ifdef JScript}showmessage('SetMapData 3');{$endif}
     fColorsArray.Clear;
     SetLength(fColorsLookup,0);
     // find the colors defined in the data
     // Put the color definitions into a StringList property
+    bits.LineBreak:=#10;
     i:=0;
     c:=0;
     while i < myxpmarray.Count do
     begin
+      tmp:=myxpmarray[i];
       bits0.Text:=myxpmarray[i];     // split on double quotes
       if bits0.Count>1 then
-        begin
+      begin
         tmp:=bits0[1];
-        // get rid of multiple spaces (need single space delimiter between colours)
-        tmp1:='';
-        while tmp1<>tmp do
+
+        // find the first 'c' after a space (cpos)
+        // pixeltype will be the first n characters, where n is cpos-2.
+        // (pixeltype may include space characters)
+        cpos:=0;
+        p:=2;
+        while p<length(tmp)-2 do
         begin
-          tmp1:=myStringReplace(tmp,'  ',' ',-1,-1);
-          tmp:=tmp1;
+          if (tmp[p]+tmp[p+1]+tmp[p+2]) = ' c ' then
+          begin
+            cpos:=p;
+            tmp[p]:=#10;
+            tmp[p+2]:=#10;
+            bits.Text:=tmp;
+            p:=length(tmp);
+          end;
+          p:=p+1;
         end;
-        bits.Text:=tmp;              // split on single space character
+
         if (bits.count=3) and (bits[1]='c') then
         begin
-          fColorsArray.add('"'+tmp+'"');
+          //fColorsArray.add('"'+tmp+'"');
+          tmp:='"'+bits[0]+' '+bits[1]+' '+bits[2];
+          fColorsArray.add('"'+bits[0]+' '+bits[1]+' '+bits[2]);
           c:=i;
           colorItem:=TColorLookup.Create;
           colorItem.PixelType:=bits[0];
@@ -713,23 +782,51 @@ begin
             colorItem.g := gtmp;
             colorItem.b := btmp;
             colorItem.a:=255;
+            //tmp1:=bits[2];
+            //asm
+            //console.log(tmp+'  color '+tmp1+' to rgb '+rtmp+','+gtmp+','+btmp);
+            //end;
             {$endif}
           end;
           SetLength(fColorsLookup,length(fColorsLookup)+1);
           //showmessage('fColorsLookup['+inttostr(length(fColorsLookup)-1)+'] = '+inttostr(colorItem.r)+' '+inttostr(colorItem.g)+' '+inttostr(colorItem.b));
           fColorsLookup[length(fColorsLookup)-1]:=colorItem;
+          bits.Clear;
         end
         else
-        if fColorsArray.Count>0 then
-          i:=myxpmarray.Count;  // colours done - stop
-        i:=i+1;
+        begin
+          if fColorsArray.Count>0 then
+          begin
+            //showmessage('colour collection stopped at line '+inttostr(i)+' '+myxpmarray[i]);
+            i:=myxpmarray.Count;  // colours done - stop
+          end;
+        end;
+      end
+      else
+      begin
+        //showmessage('skip line '+inttostr(i)+' '+myxpmArray[i]);
+        //{$ifdef JScript}tmp:=myxpmArray[i]; asm console.log('skip line '+i+' >>'+tmp+'<<'); end;{$endif}
+        if length(myxpmarray[i])<LengthOfColorLine then
+          // add this to the next one...
+          myxpmarray[i+1]:=myxpmarray[i]+'",'+myxpmarray[i+1];
+        tmp:=myxpmarray[i];
+        tmp:=myxpmarray[i+1];
       end;
+      i:=i+1;
     end;
+    if fColorsArray.Count<>NumColors then
+      showmessage('Number or Colours mismatch (NumColors='+inttostr(NumColors)+' count='+inttostr(fColorsArray.Count));
+
     myNode.SetAttributeValue('MapColors',fColorsArray.Text);
 
+    //{$ifdef JScript}showmessage('SetMapData 4.  myxpmarray.Count='+inttostr(myxpmarray.Count));{$endif}
 
     // Put the Pixels map into a StringList property
     SetLength(fMapPixelArray,0);
+
+    i:=myxpmArray.count;
+    {$ifdef JScript} asm console.log('myxpmarray.Count='+i); end; {$endif}  //529
+
     i:=c+1;
     while i < myxpmarray.Count do
     begin
@@ -738,28 +835,44 @@ begin
       begin
         bits0.Text:=myxpmarray[i];
         tmp:=bits0[1];
+        //{$ifdef JScript} asm console.log(tmp); end; {$endif}  //529
         //showmessage(tmp);
         SetLength(fMapPixelArray,length(fMapPixelArray)+1);
         fMapPixelArray[length(fMapPixelArray)-1]:=tmp;
       end
       else
-        if length(fMapPixelArray)>0 then
-          i:=myxpmarray.Count;  // pixels done - stop
+      begin
+        {$ifdef JScript} asm console.log('skip '+i); end; {$endif}  //529
+        if length(myxpmarray[i])<lengthOfPixelsLine then
+        begin
+          // add this to the next one
+          myxpmarray[i+1]:='",'+myxpmarray[i]+myxpmarray[i+1];
+        end
+        else
+          if length(fMapPixelArray)>0 then
+            i:=myxpmarray.Count;  // pixels done - stop
+      end;
       i:=i+1;
     end;
+    if  length(fMapPixelArray)<>BitMapHeight then
+      showmessage('BitMapHeight mismatch (BitMapHeight='+inttostr(BitMapHeight)+' count='+inttostr(length(fMapPixelArray)));
     MapPixelArray:=fMapPixelArray;  //sets the node attribute value
 
     {$ifndef JScript}
     {$else}
-    h:=length(fMapPixelArray);
-    //showmessage('h='+inttostr(h));
+    //showmessage('SetMapData 5');
+    h:=self.ActualHeight;
+    sh:=length(fMapPixelArray);
+    //showmessage('h='+inttostr(h)+' sh='+inttostr(sh));
     if h>0 then
     begin
-      w:=length(fMapPixelArray[0]);
+      w:=self.ActualWidth;
+      sw:=length(fMapPixelArray[0]);
       //showmessage('w='+inttostr(w));
-      self.PaintRect( 0, 0, w, h, w, h);
+      self.PaintRect( 0, 0, sw, sh, w, h);
     end;
     myNode.SetAttributeValue('MapData',AValue);
+    //showmessage('SetMapData done');
     {$endif}
 
     bits0.Free;
@@ -779,7 +892,7 @@ begin
     'static char * XMap[] = {' +
     '/* <Values>*/' +
     '/* <width/columns> <height/rows> <colors> <chars per pixel>*/' +
-    '"'+inttostr(BitMapWidth)+' '+inttostr(BitMapHeight)+' '+inttostr(fColorsArray.Count)+' 1",'+
+    '"'+inttostr(fBitMapWidth)+' '+inttostr(fBitMapHeight)+' '+inttostr(fNumColors)+' '+inttostr(fCharsPerColor)+'",'+
     '/* <Colors>*/';
   for i:=0 to fColorsArray.Count-1 do
     newmapdata:=newmapdata + fColorsArray[i] + ',';
@@ -820,6 +933,7 @@ begin
         fColorsArray.Add(tmp);
     end;
     bits.Free;
+    fNumColors:=fColorsArray.Count;
 
     if AValue<>'' then
     begin
@@ -833,11 +947,9 @@ end;
 
 begin
   // this is the set of node attributes that each XBitmap instance will have.
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'ActualHeight','Integer','','',true,false);
   AddDefaultAttribute(myDefaultAttribs,'ActualWidth','Integer','','',true,false);
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'ImageWidth','String','250','',false);
   AddDefaultAttribute(myDefaultAttribs,'ImageHeight','String','200','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);

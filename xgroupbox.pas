@@ -52,6 +52,7 @@ type
     function GetAlignment:String;
     function GetCaption:String;
     function GetIsVisible:Boolean;
+    function GetHTMLClasses:String;
 
     procedure SetMyName(AValue:string);
     procedure SetIsSelected(AValue: Boolean);
@@ -65,6 +66,7 @@ type
     procedure SetParent(NewParent: TWinControl); override;
     procedure SetCaption(AValue:string);
     procedure SetIsVisible(AValue:Boolean);
+    procedure SetHTMLClasses(AValue:string);
 
     function DoAlignChildControls(TheAlign: TAlign; AControl: TControl;
                       AControlList: TFPList; var ARect: TRect): Boolean; override;
@@ -91,6 +93,7 @@ type
    property SelectionBorderColor: TColor read FSelectionBorderColor write SetSelectionBorderColor default clGreen;
    property Alignment:String read GetAlignment write SetAlignment;
    property IsVisible:Boolean read GetIsVisible write SetIsVisible;
+   property HTMLClasses: String read GetHTMLClasses write SetHTMLClasses;
 
    property Hint: String read GetHint write SetHint;
    property Name: String read GetName write SetMyName;
@@ -118,7 +121,7 @@ type
     { Protected declarations }
   public
     { Public declarations }
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
 
   published
     { Published declarations }
@@ -224,7 +227,7 @@ procedure TXGroupBox.DoConstructor(TheOwner:TComponent;IsDynamic:Boolean);
 begin
 
   AutoSize:=true;
-  ParentColor:=false;
+  //ParentColor:=false;
   BorderStyle := bsNone;
   BorderWidth:=1;
 
@@ -265,11 +268,11 @@ begin
   DoConstructor(TheOwner,IsDynamic);
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXGroupBox',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXGroupBox',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -324,9 +327,9 @@ begin
 end;
 
 {$else}
-constructor TXGroupBox.Create(MyForm:TForm;NodeName:String);
+constructor TXGroupBox.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -340,31 +343,32 @@ begin
 end;
 
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   Caption:string;
   OnClickString:String;
 begin
   Caption:= uppercase(MyNode.getAttribute('Caption',true).AttribValue);
 
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', this.value);" ';
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
   //showmessage('groupbox createwidget');
 
   asm
     try{
 
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
     var HTMLString='';
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid =  NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
 
    // HTMLString = '<div  id='+MyObjectName+ ' style=" height:100%; width:100%; position:relative; z-index:0;" ' +
-    HTMLString = '<div  id='+MyObjectName+ ' style=" height:100%; width:100%; z-index:0;"  class="vboxNoStretch" ' +
+    HTMLString = '<div  id='+MyObjectName+ ' style=" height:100%; width:100%; z-index:0;"  class="vboxNoStretch widgetinner '+NameSpace+ScreenObjectName+'" ' +
                  OnClickString +
                   '><legend>'+Caption+'</legend></div>';
 
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
   }
@@ -379,10 +383,10 @@ begin
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
   //showmessage('CreateinterfaceObj '+NodeName);
-  result:=TObject(TXGroupBox.Create(MyForm,NodeName));
+  result:=TObject(TXGroupBox.Create(MyForm,NodeName,NameSpace));
 end;
 
 {$endif}
@@ -460,9 +464,9 @@ procedure TXGroupBox.SetMyName(AValue:string);
 begin
   inherited Name:=AValue;
 
-  if myNode<>nil then
-     myNode.NodeName:=AValue;
-  // also rename any associated event code ???
+  if  (csLoading in componentState) then
+    if myNode<>nil then
+      myNode.NodeName:=AValue;
 end;
 
 procedure TXGroupBox.SetSelectionBorderColor(AValue: TColor);
@@ -527,6 +531,14 @@ begin
   SetHeightWidth(self.myNode,TControl(self),'ContainerWidth','ContainerHeight');
 end;
 
+function TXGroupBox.GetHTMLClasses:string;
+begin
+  result:=myNode.GetAttribute('HTMLClasses',true).AttribValue;
+end;
+procedure TXGroupBox.SetHTMLClasses(AValue:string);
+begin
+  myNode.SetAttributeValue('HTMLClasses',AValue);
+end;
 {$endif}
 
 procedure TXGroupBox.SetCaption(AValue:string);
@@ -539,12 +551,14 @@ begin
   inherited Caption:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       }
   end;
   {$endif}
 end;
+
+
 
 {$ifndef JScript}
 function TXGroupBox.GetBgColor:TColor;
@@ -577,15 +591,14 @@ end;
 
 begin
   // this is the set of node attributes that each XHBox instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'ContainerWidth','String','300px','',false);
   AddDefaultAttribute(myDefaultAttribs,'ContainerHeight','String','300px','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'BgColor','Color','#555555','',false);
   AddDefaultAttribute(myDefaultAttribs,'Caption','String','Group Caption','',false);
+  AddDefaultAttribute(myDefaultAttribs,'HTMLClasses','String','','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);

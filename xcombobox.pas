@@ -65,8 +65,9 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
+    function IndexOfOption(AValue:String):integer;
 
   published
     { Published declarations }
@@ -156,11 +157,11 @@ begin
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXComboBox',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXComboBox',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -181,23 +182,6 @@ procedure TXComboBox.ComboBoxChange(Sender: TObject) ;
  end;
 
 
-//procedure TXComboBox.LinkLoadFromProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if (Link.Editor=nil) then exit;
-//  inherited  LinkLoadFromProperty(Sender);
-//
-//  self.ItemIndex:=Link.GetAsInt;
-//
-//end;
-//
-//procedure TXComboBox.LinkSaveToProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if Link.Editor=nil then exit;
-//  Link.SetAsText(TEdit(myControl).Text);
-//
-//end;
 
 procedure TXComboBox.SetBoxWidth(AValue:string);
  var
@@ -210,9 +194,9 @@ end;
 
 
 {$else}
-constructor TXComboBox.Create(MyForm:TForm;NodeName:String);
+constructor TXComboBox.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -223,7 +207,7 @@ begin
 
 end;
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   ItemIndex,LabelText,LabelPos,OptionList:string;
   ReadOnly:Boolean;
@@ -235,17 +219,18 @@ begin
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
   ReadOnly:= StrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
 
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', this.value);" ';
-  OnChangeString:= 'onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''',''ItemIndex'',pas.SysUtils.IntToStr(this.selectedIndex)); '+
-                           'pas.Events.handleEvent(null,''Change'','''+ScreenObjectName+''', this.options[selectedIndex].value, ''ItemValue'');" ';
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
+  OnChangeString:= 'onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''','''+NameSpace+''',''ItemIndex'',pas.SysUtils.IntToStr(this.selectedIndex)); '+
+                           'pas.Events.handleEvent(null,''Change'','''+ScreenObjectName+''','''+NameSpace+''', this.options[selectedIndex].value, ''ItemValue'');" ';
 
   asm
     try{
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
     var HTMLString='';
     var NodeIDString = "'"+ScreenObjectName+"'";
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid =  NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
 
     var ReadOnlyString = '';
     if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
@@ -257,6 +242,7 @@ begin
     var ComboString = '<select id="'+MyObjectName+'" ' + ReadOnlyString +
                   OnChangeString +
                   OnClickString +
+                  ' class="widgetinner '+wrapperid+'" ' +
                   ' style="display: inline-block;"   value='+ItemIndex+'> ';
 
      var optionlistarray=JSON.parse( OptionList);
@@ -269,11 +255,12 @@ begin
 
     HTMLString = labelstring+ComboString;
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
     // attempt to fix the height for a combo box to one line-height... (still not displayed same as editbox...tbd!!!!)
     var dummyEBoxString = '<input type="'+TypeString+'"  id='+MyObjectName+'dummy ' +
+                     ' class="widgetinner '+wrapperid+'" ' +
                      ' style="display: inline-block;" >';
     wrapper.insertAdjacentHTML('beforeend', dummyEBoxString);
     var ob=document.getElementById(MyObjectName);
@@ -295,25 +282,10 @@ end;
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXComboBox.Create(MyForm,NodeName));
+  result:=TObject(TXComboBox.Create(MyForm,NodeName,NameSpace));
 end;
-
-//procedure TXComboBox.LinkLoadFromProperty(Sender: TObject);
-//begin
-//  inherited  LinkLoadFromProperty(Sender);
-//end;
-//
-//procedure TXComboBox.LinkSaveToProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if Link=nil then exit;
-//  if Link.TIObject=nil then exit;
-////  showmessage('linksavetoproperty. '+Link.TIPropertyName+' '+self.ItemIndex);
-//
-//  SetStringProp(Link.TIObject,Link.TIPropertyName,intToStr(self.ItemIndex));
-//end;
 
 
 procedure TXComboBox.SetBoxWidth(AValue:string);
@@ -321,7 +293,7 @@ begin
   //showmessage('box width='+AValue);
   myNode.SetAttributeValue('BoxWidth',AValue);
   asm
-  var ob = document.getElementById(this.NodeName+'Contents');
+  var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
   //  if (ob==null) {alert(this.NodeName+'Contents'+'  not found');}
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
@@ -329,6 +301,16 @@ end;
 
 
 {$endif}
+
+function TXComboBox.IndexOfOption(AValue:String):integer;
+var
+  i:integer;
+  options:TStringList;
+begin
+  options:=JSONStringToStringList(self.OptionList);
+  i:=options.IndexOf(AValue);
+  result:=i;
+end;
 
 function TXComboBox.GetBoxWidth:string;
 begin
@@ -354,7 +336,7 @@ begin
     val:=TComboBox(myControl).Items[i];
     {$else}
     asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       val=ob.options[i].value;
     }
@@ -376,13 +358,12 @@ begin
   myNode.SetAttributeValue('ItemValue',TComboBox(myControl).Text,'String');
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
        ob.selectedIndex=AValue;
        this.myNode.SetAttributeValue('ItemValue',ob.value,'String',false);
        }
   end;
-  //LinkSaveToProperty(self);
   {$endif}
 end;
 
@@ -390,13 +371,13 @@ procedure TXComboBox.SetItemValue(AValue:string);
 var
   i:integer;
   options:TStringList;
-  tmp:string;
+ // tmp:string;
 begin
-  tmp:=self.OptionList;
+  //tmp:=self.OptionList;
   //options:=ListStringToStringList(self.OptionList);
   options:=JSONStringToStringList(self.OptionList);
   //json test...
-  tmp:=StringListToJsonString(options);
+  //tmp:=StringListToJsonString(options);
 
   i:=options.IndexOf(AValue);
   self.ItemIndex:=i;
@@ -410,7 +391,7 @@ begin
   TLabeledEdit(myControl).ReadOnly:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       ob.readOnly = AValue  }
   end;
@@ -434,11 +415,12 @@ begin
         }
     }
 
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       removeOptions(ob);
       var selectedIndex = this.ItemIndex;
 
+      try {
       var optionlistarray=JSON.parse( AValue);
       for (var i=0; i<optionlistarray.length; i++){
         var option = document.createElement("option");
@@ -446,6 +428,8 @@ begin
         if (i==this.ItemIndex ){option.selected=true;}
         ob.add(option);
       }
+      }
+      catch(err) {  alert("Error in TXComboBox.SetOptionList: "+ err.message); };
     }
   end;
   {$endif}
@@ -454,9 +438,7 @@ end;
 
 begin
   // this is the set of node attributes that each TXComboBox instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'BoxWidth','String','200','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Right','',false);

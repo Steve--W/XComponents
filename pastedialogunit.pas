@@ -83,7 +83,7 @@ begin
     PasteDialog.Name:='PasteDialog';
     FormNode:=CreateFormNode(PasteDialog);
     {$else}
-    FormNode:=AddDynamicWidget('TXForm',nil,nil,'PasteDialog','Left',-1);
+    FormNode:=AddDynamicWidget('TXForm',nil,nil,'PasteDialog','','Left',-1);
     PasteDialog:=TXForm(FormNode);
     AddChildToParentNode(UIRootNode,FormNode,-1);
     {$endif}
@@ -94,23 +94,23 @@ begin
     PasteDialog.Width:=320;
     FormNode.IsDynamic:=false;              // so it's not deleted on system clear.
 
-    VBNode:=AddDynamicWidget('TXVBox',PasteDialog,PasteDialog.myNode,'Popup1Root','Left',-1);
+    VBNode:=AddDynamicWidget('TXVBox',PasteDialog,PasteDialog.myNode,'Popup1Root','','Left',-1);
     VBNode.IsDynamic:=false;              // so it's not deleted on system clear.
     VB:=TXVBox(VBNode.ScreenObject);
     VB.ContainerHeight:='100%';
 
-    LabelNode:=AddDynamicWidget('TXLabel',PasteDialog,VBNode,'PasteLabel','Left',-1);
+    LabelNode:=AddDynamicWidget('TXLabel',PasteDialog,VBNode,'PasteLabel','','Left',-1);
     LabelNode.IsDynamic:=false;              // so it's not deleted on system clear.
     PasteLabel:=TXLabel(LabelNode.ScreenObject);
     PasteLabel.LabelCaption:='Waiting for a copy/paste action';
 
-    MemoNode:=AddDynamicWidget('TXMemo',PasteDialog,VBNode,'PasteTarget','Left',-1);
+    MemoNode:=AddDynamicWidget('TXMemo',PasteDialog,VBNode,'PasteTarget','','Left',-1);
     MemoNode.IsDynamic:=false;              // so it's not deleted on system clear.
     PasteTarget:=TXMemo(MemoNode.ScreenObject);
     PasteTarget.MemoHeight:='40';
     PasteTarget.MemoWidth:='200';
 
-    BtnNode:=AddDynamicWidget('TXButton',PasteDialog,VBNode,'PasteDoneBtn','Left',-1);
+    BtnNode:=AddDynamicWidget('TXButton',PasteDialog,VBNode,'PasteDoneBtn','','Left',-1);
     BtnNode.IsDynamic:=false;              // so it's not deleted on system clear.
     PasteDoneBtn:=TXButton(BtnNode.ScreenObject);
     PasteDoneBtn.myNode:=BtnNode;

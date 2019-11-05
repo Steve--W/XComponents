@@ -58,7 +58,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
 
   published
@@ -148,11 +148,11 @@ begin
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXCheckBox',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXCheckBox',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -176,39 +176,12 @@ begin
     CallHandleEvent('Click',itemchecked,self);
   end;
 end;
-//procedure TXCheckBox.LinkLoadFromProperty(Sender: TObject);
-//var
-//  TxtVal:string;
-//  NewValue:Boolean;
-//begin
-//  if Sender=nil then ;
-//  if (Link.Editor=nil) then exit;
-//  inherited  LinkLoadFromProperty(Sender);
-//
-//  TxtVal:=Link.GetAsText;
-//  NewValue:= MyStrToBool(Link.GetAsText);
-//  if NewValue<>TCheckBox(myControl).Checked then
-//  begin
-//     TCheckBox(myControl).Checked:=NewValue;
-//  //   showmessage('checkbox. LinkLoadFromProperty '+TxtVal);
-//  end;
-//
-//end;
-//
-//procedure TXCheckBox.LinkSaveToProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if Link.Editor=nil then exit;
-// // showmessage('checkbox. LinkSaveToProperty '+myBoolToStr(self.myCheckBox.Checked));
-//  Link.SetAsText(myBoolToStr(TCheckBox(myControl).Checked));
-//
-//end;
 
 {$else}
 
-constructor TXCheckBox.Create(MyForm:TForm;NodeName:String);
+constructor TXCheckBox.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -220,7 +193,7 @@ begin
 end;
 
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   Checked,ReadOnly,LabelText,LabelPos:string;
   OnChangeString, OnClickString, OnPasteString:String;
@@ -230,19 +203,20 @@ begin
   ReadOnly:= MyNode.getAttribute('ReadOnly',true).AttribValue;
 
   OnClickString:='onclick="if (this.checked!=undefined) {' +
-                          'pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''',''Checked'',this.checked.toString());' +
+                          'pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''','''+NameSpace+''',''Checked'',this.checked.toString());' +
                           'event.stopPropagation(); ' +
-                          'pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', this.checked.toString());}"';
+                          'pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.checked.toString());}"';
 
   asm
     try{
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
     wrapper.style.display = 'flex';
     var goright =  'flex-e'+'nd';
 
     var HTMLString='';
     var NodeIDString = "'"+ScreenObjectName+"'";
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid =  NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
 
     var ReadOnlyString = '';
     if (ReadOnly=='True') { ReadOnlyString = ' readonly ';}
@@ -253,13 +227,14 @@ begin
     if (Checked == 'true'){Checkstring = 'checked'};
 
     var CheckBoxString = '<input  type="checkbox" id='+MyObjectName+ ' '+
+                       ' class="widgetinner '+wrapperid+'" '+
                        OnClickString +
                        Checkstring +
                        ' style="display:inline-block;" '+ReadOnlyString+' >' ;
 
     HTMLString = labelstring+CheckBoxString;
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
   }
@@ -273,9 +248,9 @@ end;
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXCheckBox.Create(MyForm,NodeName));
+  result:=TObject(TXCheckBox.Create(MyForm,NodeName,NameSpace));
 end;
 
 //procedure TXCheckBox.LinkLoadFromProperty(Sender: TObject);
@@ -313,7 +288,7 @@ begin
   TCheckBox(myControl).Checked:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
        ob.checked=AValue;  }
   end;
@@ -328,7 +303,7 @@ begin
   TCheckBox(myControl).Enabled:=not AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
     if (AValue==true) {ob.disabled = true}
     else {ob.disabled = false }  }
@@ -338,9 +313,7 @@ end;
 
 begin
   // this is the set of node attributes that each XCheckBox instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'ContainerWidth','String','','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);

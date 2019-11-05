@@ -43,6 +43,7 @@ procedure Register;
 {$ifdef JScript}
 type TXHTMLMessage = record
   objid:String;
+  NameSpace:String;
   mtype:String;
   mdata:String;
 end;
@@ -89,15 +90,20 @@ type
     procedure TitleChange(Sender: TObject;const cefBrowser:ICefBrowser;const NewTitle:UString) ;  override;
     procedure myChromiumAfterCreated(Sender: TObject; const browser: ICefBrowser); override;
 
+    //  TOnProcessMessageReceived       = procedure(Sender: TObject; const browser: ICefBrowser; const frame: ICefFrame; sourceProcess: TCefProcessId; const message: ICefProcessMessage; out Result: Boolean) of object;
+    //procedure ChromiumProcessMessageReceived(
+    //  Sender: TObject; const Browser: ICefBrowser;
+    //  sourceProcess: TCefProcessId;
+    //  const message: ICefProcessMessage; out Result: Boolean);
     procedure ChromiumProcessMessageReceived(
-      Sender: TObject; const Browser: ICefBrowser;
-      sourceProcess: TCefProcessId;
+      Sender: TObject; const browser: ICefBrowser;
+      const frame: ICefFrame; sourceProcess: TCefProcessId;
       const message: ICefProcessMessage; out Result: Boolean);
     {$endif}
 
 
     {$else}    // JScript
-    constructor Create(MyForm:TForm;NodeName:String);  override;
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);  override;
     {$endif}
     function CreateTextURL:tstringlist;
     function ExtractTextFromTitle(message:String):String;
@@ -159,8 +165,8 @@ end;
 {$ifdef Chromium}
 // Handler for messages sent OUT of the Cef browser
 procedure TXHTMLEditor.ChromiumProcessMessageReceived(
-  Sender: TObject; const Browser: ICefBrowser;
-  sourceProcess: TCefProcessId;
+  Sender: TObject; const browser: ICefBrowser;
+  const frame: ICefFrame; sourceProcess: TCefProcessId;
   const message: ICefProcessMessage; out Result: Boolean);
 var
   NewText:String;
@@ -172,8 +178,9 @@ begin
       //EditAttributeValue('XMemo1','ItemValue',NewText);
       //just set attribute here
       self.myNode.SetAttributeValue('SourceText',NewText);
-      //event here to refresh ob inspector???
-      CallHandleEventLater('Change',NewText,self.myControl);
+      //event here (eg) to refresh ob inspector
+      if StartingUp=false then
+        CallHandleEventLater('Change',NewText,self.myControl);
 
     end
   else
@@ -191,11 +198,11 @@ begin
   {$endif}
 end;
 
-function CreateHTMLEditorWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateHTMLEditorWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXHTMLEditor',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXHTMLEditor',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -203,6 +210,7 @@ procedure TXHTMLEditor.DoHTMLEditorConstructor;
 begin
   {$ifdef Chromium}
   myChromium.OnProcessMessageReceived:=@self.ChromiumProcessMessageReceived;
+  myChromium.OnTitleChange:=@self.TitleChange;
   {$endif}
   pollingTimer.OnTimer:=@self.DoPollingTimer;
 
@@ -319,16 +327,16 @@ end;
 
 {$else} //JScript  ...............................
 
-constructor TXHTMLEditor.Create(MyForm:TForm;NodeName:String);
+constructor TXHTMLEditor.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(MyForm,NodeName);
+  inherited Create(MyForm,NodeName,NameSpace);
   self.NodeType:='TXHTMLEditor';
   self.IsContainer:=false;
 
   SetNodePropDefaults(self,myDefaultAttribs);
 end;
 
-function CreateHTMLEditorWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateHTMLEditorWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewWidget:TXHTMLEditor;
   h,w:integer;
@@ -345,9 +353,9 @@ begin
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXHTMLEditor.Create(MyForm,NodeName));
+  result:=TObject(TXHTMLEditor.Create(MyForm,NodeName,NameSpace));
 end;
 
 procedure HandleTXHTMLMessage(msg:TXHTMLMessage);
@@ -359,7 +367,7 @@ begin
   begin
     //showmessage('HandleTXHTMLMessage: '+msg.objid+' '+msg.mtype);
      //this is a notification sent out from within a HTMLEditor frame.
-     ItemNode:=findDataNodeById(systemnodetree,msg.objid,false);
+     ItemNode:=findDataNodeById(systemnodetree,msg.objid,msg.NameSpace,false);
      if ItemNode<>nil then
      begin
         if msg.mtype='titleChange' then
@@ -368,17 +376,21 @@ begin
            message:=msg.mdata;
            if message<>'' then
            begin
-           message:= TXHTMLEditor(ItemNode).ExtractTextFromTitle(message);
-           // now save the help text to the SourceText property
-           if (length(trim(message))>0) then // and (StartPos>0)
-           begin
-              TXHTMLEditor(ItemNode).SourceText:= message;
-           end;
+             message:= TXHTMLEditor(ItemNode).ExtractTextFromTitle(message);
+             //showmessage(message);
+             // now save the help text to the SourceText property
+             if (length(trim(message))>0) then // and (StartPos>0)
+             begin
+                TXHTMLEditor(ItemNode).SourceText:= message;
+                //event here (eg) to refresh ob inspector
+                if StartingUp=false then
+                  HandleEvent('Change',ItemNode.NodeName,msg.NameSpace,message);
+             end;
            end
            else     // window was closed
            begin
              TXHTMLEditor(ItemNode).Showing:=false;
-             HandleEvent('HTMLEditorBrowserClosed',ItemNode.NodeName,'');
+             HandleEvent('HTMLEditorBrowserClosed',ItemNode.NodeName,msg.NameSpace,'');
            end;
         end;
      end;
@@ -543,8 +555,10 @@ OutputStringList:= TStringList.Create;
 
 //Initalise the the header, footer and help text strings
 if IsEditable = true
-then startstring:='<div contenteditable="true"  class="wysiwyg-content" id = "my_wysiwyg_editor">'
-else startstring:='<div contenteditable="false" class="wysiwyg-content" id = "my_wysiwyg_editor">';
+then startstring:='<div contenteditable="true"'
+else startstring:='<div contenteditable="false"';
+//startstring:=startstring+' class="wysiwyg-content" id = "my_wysiwyg_editor" style="height:100%; width:100%" >';
+startstring:=startstring+' class="wysiwyg-content" id = "my_wysiwyg_editor" >';
 endstring := '</div>' ;
 
 InnerStartLength:=length(startstring);
@@ -600,7 +614,8 @@ WYSIWYGHEADER.Add('.wysiwyg-border-width: 1px !default;');
 WYSIWYGHEADER.Add('.wysiwyg-button-height: 30px !default;');
 WYSIWYGHEADER.Add('.wysiwyg-button-selected-color: #F0F0F0 !default;');
 WYSIWYGHEADER.Add('.wysiwyg-button-width: 30px !default;');
-WYSIWYGHEADER.Add('.wysiwyg-content-height: 300px !default;');
+//WYSIWYGHEADER.Add('.wysiwyg-content-height: 300px !default;');
+//WYSIWYGHEADER.Add('.wysiwyg-content-height: 100%;');
 WYSIWYGHEADER.Add('.wysiwyg-content-padding: 10px !default;');
 WYSIWYGHEADER.Add('.wysiwyg {');
 WYSIWYGHEADER.Add('  border: .wysiwyg-border-width .wysiwyg-border-style .wysiwyg-border-color;');
@@ -609,7 +624,9 @@ WYSIWYGHEADER.Add('}');
 WYSIWYGHEADER.Add('');
 WYSIWYGHEADER.Add('.wysiwyg-content {');
 WYSIWYGHEADER.Add('  box-sizing: border-box;');
-WYSIWYGHEADER.Add('  height: .wysiwyg-content-height;');
+//WYSIWYGHEADER.Add('  height: .wysiwyg-content-height;');
+WYSIWYGHEADER.Add('  height: 100%;');
+WYSIWYGHEADER.Add('  width: 100%;');
 WYSIWYGHEADER.Add('  outline: 0;');
 WYSIWYGHEADER.Add('  overflow-y: auto;');
 WYSIWYGHEADER.Add('  padding: .wysiwyg-content-padding;');
@@ -678,6 +695,7 @@ WYSIWYGFOOTER.Add('      </div>');
 WYSIWYGFOOTER.Add(myNode.GetAttribute('FooterHTML',false).AttribValue);
 WYSIWYGFOOTER.Add('    </div>');
 WYSIWYGFOOTER.Add('<script>');
+
 WYSIWYGFOOTER.Add('function stopediting(){window.close()};');
 WYSIWYGFOOTER.Add('const defaultParagraphSeparatorString = "defaultParagraphSeparator"');
 WYSIWYGFOOTER.Add('const formatBlock = "formatBlock"');
@@ -826,7 +844,7 @@ WYSIWYGFOOTER.Add('    result: () => exec("undo")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
 WYSIWYGFOOTER.Add('save: {');
-WYSIWYGFOOTER.Add('    icon: "<b>Save</b>",');
+WYSIWYGFOOTER.Add('    icon: "<b>Commit</b>",');
 WYSIWYGFOOTER.Add('    title: "Save",');
 WYSIWYGFOOTER.Add('    result: () => {  ');
 WYSIWYGFOOTER.Add('                  var theText = document.getElementById("my_wysiwyg_editor").innerHTML;    ');
@@ -841,7 +859,7 @@ WYSIWYGFOOTER.Add('                  var savedtext = "TXHTMLEditor ' + self.myNo
   end
   else
     // Windows, with external browser page
-    //!!!! using polling to fetch title
+    //!! using polling to fetch title
     WYSIWYGFOOTER.Add('                document.title =savedtext; checkTitle(); ');
   {$else}
   // Windows, with external browser page
@@ -850,11 +868,13 @@ WYSIWYGFOOTER.Add('                  var savedtext = "TXHTMLEditor ' + self.myNo
   {$endif}
 {$else}
 if self.IsEmbedded then
+begin
   // JS. with embedded iframe.
-  WYSIWYGFOOTER.Add('                if (parent!=null) {parent.postMessage({"objid":"'+self.myNode.Nodename+'", "mtype":"titleChange", "mdata":savedtext},"*")}' )
+  WYSIWYGFOOTER.Add('                if (parent!=null) {parent.postMessage({"objid":"'+self.myNode.Nodename+'", "NameSpace":"'+self.myNode.NameSpace+'", "mtype":"titleChange", "mdata":savedtext},"*")}' );
+end
 else
   // JS. with external browser page
-  WYSIWYGFOOTER.Add('                if (window.opener!=null) {window.opener.postMessage({"objid":"'+self.myNode.Nodename+'", "mtype":"titleChange", "mdata":savedtext},"*")} ' );
+  WYSIWYGFOOTER.Add('                if (window.opener!=null) {window.opener.postMessage({"objid":"'+self.myNode.Nodename+'", "NameSpace":"'+self.myNode.NameSpace+'", "mtype":"titleChange", "mdata":savedtext},"*")} ' );
 {$endif}
 WYSIWYGFOOTER.Add('                  },');
 WYSIWYGFOOTER.Add('      },');
@@ -869,7 +889,7 @@ begin
   WYSIWYGFOOTER.Add('                  var savedtext = "TXHTMLEditor ' + self.myNode.NodeName + 'Z!Z!Z"+ document.getElementById("my_wysiwyg_editor").innerHTML+"Z!Z!Z";');
   WYSIWYGFOOTER.Add('                  document.title =savedtext; var ok=checkTitle(); ');
   WYSIWYGFOOTER.Add('                  if (ok) { ');
-  WYSIWYGFOOTER.Add('                    if (window.opener!=null) {window.opener.postMessage({"objid":"'+self.myNode.Nodename+'", "mtype":"titleChange", "mdata":savedtext},"*");}' );
+  WYSIWYGFOOTER.Add('                    if (window.opener!=null) {window.opener.postMessage({"objid":"'+self.myNode.Nodename+'", "NameSpace":"'+self.myNode.NameSpace+'", "mtype":"titleChange", "mdata":savedtext},"*");}' );
   WYSIWYGFOOTER.Add('                    setTimeout(function(){stopediting(); }, 600);} },');
   WYSIWYGFOOTER.Add('  },');
   WYSIWYGFOOTER.Add('');
@@ -1002,12 +1022,10 @@ end;
 
 begin
   // this is the set of node attributes that each GPUCanvas instance will have (added to the set inherited from TXIFrame).
-  AddDefaultAttribute(myDefaultAttribs,'SuspendRefresh','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
+  AddDefaultAttribute(myDefaultAttribs,'SuspendRefresh','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'ActualHeight','Integer','','',true,false);
   AddDefaultAttribute(myDefaultAttribs,'ActualWidth','Integer','','',true,false);
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'FrameWidth','String','300','',false);
   AddDefaultAttribute(myDefaultAttribs,'FrameHeight','String','300','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);

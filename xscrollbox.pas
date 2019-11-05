@@ -53,6 +53,7 @@ type
     function GetAlignment:String;
     function GetIsVisible:Boolean;
     function GetSpacingAround:integer;
+    function GetHTMLClasses:String;
 
     procedure SetMyName(AValue:string);
     procedure SetIsSelected(AValue: Boolean);
@@ -65,6 +66,7 @@ type
     procedure SetAlignment(AValue:string);
     procedure SetIsVisible(AValue:Boolean);
     procedure SetSpacingAround(AValue:integer);
+    procedure SetHTMLClasses(AValue:string);
     procedure SetName(const NewName: TComponentName); override;
     procedure SetParent(NewParent: TWinControl); override;
 
@@ -98,6 +100,7 @@ type
    property Alignment:String read GetAlignment write SetAlignment;
    property IsVisible:Boolean read GetIsVisible write SetIsVisible;
    property SpacingAround:integer read GetSpacingAround write SetSpacingAround;
+   property HTMLClasses: String read GetHTMLClasses write SetHTMLClasses;
 
    property Hint: String read GetHint write SetHint;
    property Name: String read GetName write SetMyName;
@@ -128,7 +131,7 @@ type
     { Protected declarations }
   public
     { Public declarations }
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
 
   published
     { Published declarations }
@@ -225,6 +228,9 @@ begin
   RegisterPropertyEditor(TypeInfo(TMouseWheelEvent), TXScrollBox, 'OnMouseWheel', THiddenPropertyEditor);
   RegisterPropertyEditor(TypeInfo(TMouseWheelUpDownEvent), TXScrollBox, 'OnMouseWheelDown', THiddenPropertyEditor);
   RegisterPropertyEditor(TypeInfo(TMouseWheelUpDownEvent), TXScrollBox, 'OnMouseWheelUp', THiddenPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TMouseWheelEvent), TXScrollBox, 'OnMouseWheelHorz', THiddenPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TMouseWheelUpDownEvent), TXScrollBox, 'OnMouseWheelLeft', THiddenPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TMouseWheelUpDownEvent), TXScrollBox, 'OnMouseWheelRight', THiddenPropertyEditor);
   RegisterPropertyEditor(TypeInfo(TNotifyEvent), TXScrollBox, 'OnPaint', THiddenPropertyEditor);
   RegisterPropertyEditor(TypeInfo(TNotifyEvent), TXScrollBox, 'OnResize', THiddenPropertyEditor);
   RegisterPropertyEditor(TypeInfo(TStartDockEvent), TXScrollBox, 'OnStartDock', THiddenPropertyEditor);
@@ -248,7 +254,7 @@ begin
 
   MyEventTypes:=TStringList.Create;
   self.SetMyEventTypes;
-  //self.myNode:=CreateComponentDataNode(self.Name,MyNodeType, self.myEventTypes, self,TheOwner,IsDynamic);
+
   CreateComponentDataNode2(self,MyNodeType,myDefaultAttribs, self.myEventTypes, TheOwner,IsDynamic);
 
   // Lazarus Designer extension...
@@ -277,11 +283,11 @@ begin
   DoConstructor(TheOwner,IsDynamic);
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXScrollBox',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXScrollBox',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -342,9 +348,9 @@ end;
 
 
 {$else}
-constructor TXScrollBox.Create(MyForm:TForm;NodeName:String);
+constructor TXScrollBox.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -357,33 +363,34 @@ begin
 end;
 
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   ScrollType:string;
   OnChangeString, OnClickString, OnPasteString:String;
 begin
   ScrollType:= uppercase(MyNode.getAttribute('ScrollType',true).AttribValue);
 
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''', this.value);" ';
- // showmessage('scrollbox createwidget '+ScreenObjectName);
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
+ // showmessage('scrollbox createwidget '+ScreenObjectName+' nodename='+MyNode.NodeName);
 
   asm
     try{
 
-      var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+      var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
       var HTMLString='';
-      var MyObjectName=ScreenObjectName+'Contents';
+      var wrapperid = NameSpace+ScreenObjectName;
+      var MyObjectName=wrapperid+'Contents';
       var oflow = ''
       if ((ScrollType=='BOTH')||(ScrollType=='RIGHT')) {oflow = 'overflow-y:scroll; '}
       if ((ScrollType=='BOTH')||(ScrollType=='BOTTOM')) {oflow = oflow+'overflow-x:scroll; '}
 
-      HTMLString = '<div id='+MyObjectName+ '  class="vboxNoStretch" style="'+oflow+' height:100%; width:100%;" ' +
+      HTMLString = '<div id='+MyObjectName+ '  class="vboxNoStretch '+NameSpace+ScreenObjectName+'" style="'+oflow+' height:100%; width:100%;" ' +
                    OnClickString +
                    '></div> ';
 
 
-      var wrapper=document.getElementById(ScreenObjectName);
+      var wrapper=document.getElementById(wrapperid);
       wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
     }
@@ -397,10 +404,10 @@ begin
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
   //showmessage('CreateinterfaceObj '+NodeName);
-  result:=TObject(TXScrollBox.Create(MyForm,NodeName));
+  result:=TObject(TXScrollBox.Create(MyForm,NodeName,NameSpace));
   //showmessage('CreateinterfaceObj '+NodeName+' done');
 end;
 
@@ -438,6 +445,10 @@ begin
   else
     result:=True;
 end;
+function TXScrollBox.GetHTMLClasses:string;
+begin
+  result:=myNode.GetAttribute('HTMLClasses',true).AttribValue;
+end;
 function TXScrollBox.GetSpacingAround:integer;
 var
   str:String;
@@ -458,7 +469,7 @@ begin
   self.BorderSpacing.Around:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName);
+    var ob = document.getElementById(this.NameSpace+this.NodeName);
     if (ob!=null) {
       ob.style.margin=str+'px';
     }
@@ -520,9 +531,9 @@ procedure TXScrollBox.SetMyName(AValue:string);
 begin
   inherited Name:=AValue;
 
-  if myNode<>nil then
-     myNode.NodeName:=AValue;
-  // also rename any associated event code ???
+  if  (csLoading in componentState) then
+    if myNode<>nil then
+      myNode.NodeName:=AValue;
 end;
 
 procedure TXScrollBox.SetSelectionBorderColor(AValue: TColor);
@@ -571,8 +582,12 @@ begin
   SetHeightWidth(self.myNode,TControl(self),'ContainerWidth','ContainerHeight');
 end;
 
-{$endif}
+procedure TXScrollBox.SetHTMLClasses(AValue:string);
+begin
+  myNode.SetAttributeValue('HTMLClasses',AValue);
+end;
 
+{$endif}
 
 procedure TXScrollBox.SetScrollType(AValue:string);
 var
@@ -593,7 +608,7 @@ begin
     self.HorzScrollBar.Visible:=false;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       ob.style.overlow='none';
       if ((AVal=='BOTH')||(AVal=='RIGHT')) {ob.style.overflowY='scroll';}
@@ -643,15 +658,14 @@ end;
 
 begin
   // this is the set of node attributes that each TXScrollBox instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'ContainerWidth','String','300px','',false);
   AddDefaultAttribute(myDefaultAttribs,'ContainerHeight','String','300px','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
   AddDefaultAttribute(myDefaultAttribs,'ScrollType','String','Both','',false);
+  AddDefaultAttribute(myDefaultAttribs,'HTMLClasses','String','','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);

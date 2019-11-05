@@ -55,10 +55,11 @@ type
     procedure SetCaption(AValue:String);
     procedure SetBoxWidth(AValue:string);
 
+    procedure SetBgColor(AValue:TColor); override;
+
+
   protected
     { Protected declarations }
-//    procedure LinkLoadFromProperty(Sender: TObject);  override;
-//    procedure LinkSaveToProperty(Sender: TObject);  override;
     {$ifndef JScript}
     procedure DoConstructor(TheOwner:TComponent;IsDynamic:Boolean);
     property ParentColor;
@@ -69,7 +70,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
 
   published
@@ -116,11 +117,6 @@ begin
    RegisterPropertyEditor(TypeInfo(String), TXRadioBtns, 'LabelPos', THiddenPropertyEditor);
    RegisterPropertyEditor(TypeInfo(String), TXRadioBtns, 'LabelText', THiddenPropertyEditor);
 
-   // suppress some of the link properties
-//   RegisterPropertyEditor(TypeInfo(TAliasStrings), TXPropertyLink, 'AliasValues', THiddenPropertyEditor);
-//   RegisterPropertyEditor(TypeInfo(String), TXPropertyLink, 'TIElementName', THiddenPropertyEditor);
-//   RegisterPropertyEditor(TypeInfo(TPropertyLinkOptions), TXPropertyLink, 'Options', THiddenPropertyEditor);
-
 end;
 
 constructor TXRadioBtns.Create(TheOwner:TComponent);
@@ -154,16 +150,17 @@ begin
   CreateComponentDataNode2(self,MyNodeType,myDefaultAttribs, self.myEventTypes, TheOwner,IsDynamic);
 
   self.ParentColor:=true;
+  TRadioGroup(myControl).ParentColor:=false;
   // Setting IsContainer false will prevent designer dropping new child controls into this one.
   self.IsContainer:=false;
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXRadioBtns',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXRadioBtns',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -176,8 +173,9 @@ procedure TXRadioBtns.RadioGroupChange(Sender: TObject) ;
    begin
     RadioButtonGroup :=  TCustomRadioGroup(sender) ;
     self.ItemValue:=RadioButtonGroup.Items[RadioButtonGroup.ItemIndex];
-    self.myeditingDone(self);     //implements a property link
-    CallHandleEvent('Change',IntToStr(RadioButtonGroup.itemindex),Sender);
+    //self.myeditingDone(self);     //implements a property link
+    //CallHandleEvent('Change',IntToStr(RadioButtonGroup.itemindex),Sender);
+    CallHandleEvent('Change',self.ItemValue,Sender);
    end;
  end;
 
@@ -196,39 +194,12 @@ procedure TXRadioBtns.SetBoxWidth(AValue:string);
   myNode.SetAttributeValue('BoxWidth',AValue);
   SetHeightWidth(self.myNode,tc,'BoxWidth','');
 end;
-//procedure TXRadioBtns.LinkLoadFromProperty(Sender: TObject);
-//var
-//  TxtVal:string;
-//  NewIndex:Integer;
-//begin
-//  if Sender=nil then ;
-//  if (Link.Editor=nil) then exit;
-//  inherited  LinkLoadFromProperty(Sender);
-//
-//  TxtVal:=Link.GetAsText;
-//  NewIndex:=TRadioGroup(myControl).Items.IndexOfName(TxtVal);
-//
-//  if NewIndex>-1 then
-//  begin
-//     TRadioGroup(myControl).ItemIndex:=NewIndex;
-//     self.ItemValue:=TxtVal;
-//  end;
-//
-//end;
-//
-//procedure TXRadioBtns.LinkSaveToProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if Link.Editor=nil then exit;
-// // showmessage('radiogroup. LinkSaveToProperty '+myBoolToStr(self.myCheckBox.Checked));
-//  Link.SetAsText(self.ItemValue);
-//
-//end;
+
 {$else}
 
-constructor TXRadioBtns.Create(MyForm:TForm;NodeName:String);
+constructor TXRadioBtns.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -240,13 +211,14 @@ end;
 
 function CreateButtonsList(myNode:TDataNode;OptionList:String):string;
 var
-  OnChangeString, ItemValue,ReadOnly,myName,quot:string;
+  OnChangeString, ItemValue,ReadOnly,myName,NameSpace,quot:string;
 begin
   ReadOnly:= MyNode.getAttribute('ReadOnly',true).AttribValue;
   ItemValue:= MyNode.getAttribute('ItemValue',true).AttribValue;
+  NameSpace:=myNode.nameSpace;
   myName:=myNode.NodeName;
-  OnChangeString:='onchange="if (this.checked) {pas.NodeUtils.SetInterfaceProperty('''+myName+''',''ItemValue'',this.value);' +
-                          'pas.Events.handleEvent(null,''Change'','''+myName+''',''';
+  OnChangeString:='onchange="if (this.checked) {pas.NodeUtils.SetInterfaceProperty('''+myName+''','''+NameSpace+''',''ItemValue'',this.value);' +
+                          'pas.Events.handleEvent(null,''Change'','''+myName+''','''+NameSpace+''',''';
   quot:='''';
 
   asm
@@ -255,15 +227,17 @@ begin
     if (ReadOnly=='true') { ReadOnlyString = ' readonly ';}
 
     var HTMLString='';
+    var wrapperid = NameSpace+myName;
     var optionlistarray=JSON.parse(OptionList);
     for (var i=0; i<optionlistarray.length; i++){
        var currentitemstring = optionlistarray[i];
        var selectedflag ='';
-       if (i==ItemValue ){selectedflag = 'checked'}
+       if (currentitemstring==ItemValue ){selectedflag = 'checked'}
        HTMLString = HTMLString +'<input type="radio"  '+selectedflag + ReadOnlyString
-                               +' id="'+myName+currentitemstring+'" '
-                               +' name='+myName+' '
-                               + OnChangeString+i+quot+');}" '
+                               +' id="'+wrapperid+currentitemstring+'" '
+                               +' name='+wrapperid+' '
+                               //+ OnChangeString+i+quot+');}" '
+                               + OnChangeString+currentitemstring+quot+');}" '
                                +' value="'+currentitemstring+'" '
                                +'>'+currentitemstring+'<Br>';
      }
@@ -274,7 +248,7 @@ begin
 
 end;
 
-function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   myCaption,ItemValue,OptionList:string;
   OnClickString:String;
@@ -282,14 +256,15 @@ begin
   myCaption:= MyNode.getAttribute('Caption',true).AttribValue;
   OptionList:= MyNode.getAttribute('OptionList',true).AttribValue;
 
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''');"';
+  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''','''');"';
   asm
     try{
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
     var HTMLString='';
     var NodeIDString = "'"+ScreenObjectName+"'";
-    var MyObjectName=ScreenObjectName+'Contents';
+    var wrapperid = NameSpace+ScreenObjectName;
+    var MyObjectName=wrapperid+'Contents';
 
     HTMLString = '<fieldset  id='+MyObjectName+' style="display: inline-block;height:100%;width:100%;" '
                  + OnClickString
@@ -299,7 +274,7 @@ begin
     HTMLString = HTMLString + Legend + Buttons + '</fieldset> ';
     //alert('create radiogroup widget. html='+HTMLString);
 
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
   }
   catch(err) { alert(err.message+'  in XRadioBtns.CreateWidget');}
@@ -311,9 +286,9 @@ end;
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXRadioBtns.Create(MyForm,NodeName));
+  result:=TObject(TXRadioBtns.Create(MyForm,NodeName,NameSpace));
 end;
 
 procedure TXRadioBtns.SetBoxWidth(AValue:string);
@@ -321,25 +296,11 @@ begin
   //showmessage('memo width='+AValue);
   myNode.SetAttributeValue('BoxWidth',AValue);
   asm
-  var ob = document.getElementById(this.NodeName+'Contents');
+  var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
   //  if (ob==null) {alert(this.NodeName+'Contents'+'  not found');}
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
 end;
-//procedure TXRadioBtns.LinkLoadFromProperty(Sender: TObject);
-//begin
-//  inherited  LinkLoadFromProperty(Sender);
-//end;
-//
-//procedure TXRadioBtns.LinkSaveToProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if Link=nil then exit;
-//  if Link.TIObject=nil then exit;
-////  showmessage('linksavetoproperty. '+Link.TIPropertyName+' '+self.ItemValue);
-//
-//  SetStringProp(Link.TIObject,Link.TIPropertyName,self.ItemValue);
-//end;
 
 {$endif}
 
@@ -375,7 +336,7 @@ begin
   TRadioGroup(myControl).Caption:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'ContentsLegend');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsLegend');
     if (ob!=null) {
        //alert('setcaption '+AValue);
        ob.innerHTML=AValue  }
@@ -397,11 +358,10 @@ begin
   {$else}
   asm
   //alert('setitemvalue to '+AValue);
-    var ob = document.getElementById(this.NodeName+AValue);
+    var ob = document.getElementById(this.NameSpace+this.NodeName+AValue);
     if (ob!=null) {
        ob.checked=true;  }
    end;
-  //LinkSaveToProperty(self);
   {$endif}
 end;
 
@@ -415,7 +375,7 @@ begin
   //TRadioGroup(myControl).items:=ListStringToStringList(AValue);
   TRadioGroup(myControl).items:=JSONStringToStringList(AValue);
   {$else}
-  myName:=self.NodeName;
+  myName:=self.NameSpace+self.NodeName;
   myCaption:=myNode.GetAttribute('Caption',true).AttribValue;
   asm
     //alert('setoptionlist. AValue='+AValue);
@@ -439,7 +399,7 @@ begin
   {$else}
   asm
   //alert('setreadonly');
-    var ob = document.getElementById(this.NodeName);
+    var ob = document.getElementById(this.NameSpace+this.NodeName);
     if (ob!=null) {
     if (AValue==true) {ob.disabled = true}
     else {ob.disabled = false }  }
@@ -448,11 +408,18 @@ begin
   {$endif}
 end;
 
+procedure TXRadioBtns.SetBgColor(AValue:TColor);
+begin
+  inherited SetBgColor(AValue);
+
+  {$ifndef JScript}
+  TRadioGroup(myControl).Color:=AValue;
+  {$endif}
+end;
+
 begin
   // this is the set of node attributes that each TXRadioBtns instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'BgColor','Color','#FFFFFF','',false);

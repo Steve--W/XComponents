@@ -33,17 +33,17 @@ type TTreeNodeHint = function(TreeLabelStr:String):String of object;
 
 {$ifndef JScript}
 type TXTree=class;
-type TTreeNodeDropAccepted = function(myTree:TObject; SourceName,SrcText,DstText:String):Boolean of object;
+//type TTreeNodeDropAccepted = function(myTree:TObject; SourceName,SrcText,DstText:String):Boolean of object;
 {$else}
-type TTreeNodeDropAccepted = function(myTree:TObject; SourceName,SrcText,DstText:String):Boolean of object;
+//type TTreeNodeDropAccepted = function(myTree:TObject; SourceName,SrcText,DstText:String):Boolean of object;
 
 const  TreeNodeHighlightColor:String = '#ffff00';          //yellow
 
 
 function addTreeStyles(dummy:string):string;
-function addTreeNode(WrapperNodeId,parentName,NameOfDetailsList,SummaryText,HasChildren,color,isopen:string;
+function addTreeNode(WrapperNodeId,NameSpace,parentName,NameOfDetailsList,SummaryText,HasChildren,color,isopen:string;
                  NodeHintFunc:TTreeNodeHint;Draggable:Boolean):string;
-function addnode(WrapperNodeId,ParentName,currentNodeTree,IdOfNodeBeingAdded:string;
+function addnode(WrapperNodeId,NameSpace,ParentName,currentNodeTree,IdOfNodeBeingAdded:string;
                  OpenToLevel,level:integer;normalColor:String;NodeHintFunc:TTreeNodeHint;Draggable:Boolean):string;
 function SetOpenStatusOfNodeChildren(NodeName,NameOfSelectedNode:string;level:integer):boolean;
 function GetTreeRootID(NodeID:String):String;
@@ -51,9 +51,10 @@ function deselectNodeChildren(NodeName,normalColor:String):string;
 function clearNodeSelectedMarker(NameOfDetailsList,normalColor:String):string;
 function OpenAndScrollToSelectedNode(NameOfDetailsList:string):string;
 procedure clearTreeNode(parentName:string);
-procedure HandleTreeNodeClick(WrapperNodeId,SelectedNodeObjectId:String);
-procedure DragStart(nodeId,NameOfDetailsList,SummaryText:String);
-function HandleTreeNodeDragOver(ob:TObject;DestTreeId,DstText:string): Boolean;
+procedure HandleTreeNodeClick(WrapperNodeId,NameSpace,SelectedNodeObjectId:String);
+procedure DragStart(nodeId,NameSpace,NameOfDetailsList,SummaryText:String);
+function HandleTreeNodeDragOver(ob:TObject;DestTreeId,NameSpace,DstText:string): Boolean;
+procedure HandleTreeNodeDrop(ob:TObject;DestTreeId,NameSpace,DstText:string);
 function NodeIdFromText(TreeNode:TDataNode;NodeText:String):String;
 procedure SetDraggableAttribute(NodeName,draggable:string);
 
@@ -66,6 +67,7 @@ procedure SetDraggableAttribute(NodeName,draggable:string);
 type
 PNodeDataRec = ^TNodeDataRec;
 TNodeDataRec = record
+  ID:String;
   NodeHint: string;
   OriginalText:String;
 end;
@@ -90,18 +92,21 @@ type TMyTreeView = class(TTreeView)
   procedure HandleMouseLeave(Sender: TObject) ;
   procedure KillEditing(Sender: TObject; Node:TTreeNode; xx:Boolean) ;
   function NodeHint(tn: TTreeNode): string;
-  function AddATreeNode(ParentNode:TTreeNode; nodename:string):TTreeNode;
-  procedure PopulateMeFromJSONData(NodeTreeString:String);
+  function AddATreeNode(ParentNode:TTreeNode; nodeText,TreeName:string):TTreeNode;
+  procedure PopulateMeFromJSONData(NodeTreeString,RootName:String;openlvl:integer);
   procedure selectNodeByText(NodeText:String);
-  function AddNewNode(NodeItems:TTreeNodes;ParentNode:TTreeNode; NodeString:string):TTreeNode;
-  function AddChildren(jData: TJSONData; ParentNode:TTreeNode):TTreeNode;
+  procedure selectNodeById(NodeId:String);
+  function AddNewNode(NodeItems:TTreeNodes;ParentNode:TTreeNode; NodeString,TreeName:string):TTreeNode;
+  function AddChildren(jData: TJSONData; ParentNode:TTreeNode;RootName:String):TTreeNode;
   procedure ExpandTreeNodes(Level: Integer);
+  function BuildExpandedText(thisNode:TTreeNode):String;
   procedure SetNodeHint(Sender: TObject; Shift: TShiftState; X, Y: Integer) ;
   function BuildTreeDataString(FromNode:TTreeNode;str:String):String;
   function FindNodeByText(AValue:String):TTreeNode;
   function FindNodeByExpandedText(AValue:String):TTreeNode;
   function NodeTextIsUnique(NodeText:String):Boolean;
-  function MakeTextUnique(NodeText:String):String;
+  function FindNodeById(NodeId:String):TTreeNode;
+//  function MakeTextUnique(NodeText:String):String;
 end;
 {$endif}
 
@@ -112,7 +117,7 @@ type
     { Private declarations }
     fAllowDrop:Boolean;
     fTreeNodeHint:TTreeNodeHint;
-  //  fTreeNodeDropAccepted:TTreeNodeDropAccepted;
+    fSelectedNodeId:String;
 
     {$ifndef JScript}
     fHandleClick:TEventHandler;
@@ -123,7 +128,6 @@ type
 
     procedure TreeClick(Sender:TObject);
     {$else}
-    fSelectedNodeId:String;
     fNodeBeingDragged:String;
     {$endif}
 
@@ -131,6 +135,7 @@ type
 
     function GetTreeData:string;
     function GetSelectedNodeText:string;
+    function GetSelectedTextPath:String;
     function GetTreeWidth:string;
     function GetTreeHeight:string;
     function GetReadOnly:Boolean;
@@ -157,28 +162,34 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
     {$endif}
 
     procedure DeSelectNode;
-    procedure InsertNewSiblingNode(NodeText:String);
-    procedure InsertNewChildNode(NodeText:String);
+    function InsertNewSiblingNode(NodeText:String):String;
+    function InsertNewChildNode(NodeText:String):String;
     procedure DeleteSelectedNode;
     procedure MoveNode(SourceNodeText,DestNodeText:String);
     function NodeTextIsUnique(NodeText:String):Boolean;
-    function MakeTextUnique(NodeText:String):String;
+//    function MakeTextUnique(NodeText:String):String;
     function BuildTreeDataString:String;
+    procedure SelectTreeNodeById(NodeId:string);
+    procedure SetSelectedNodeId(AValue:String);
     {$ifndef JScript}
     procedure SelectTreeNodeByText(NodeText:string);
     {$else}
-    procedure SelectTreeNodeById(NodeId:string);
-    procedure SetSelectedNodeId(AValue:String);
+    function GetChildNodes(nodeId:String):TStringArray;
+    function TextOfNode(nodeId:String):String;
+    function NumChildNodes(nodeid:String):integer;
+    procedure SetNodeText(nodeid,newtext:String);
+    function getParentOfNode(nodeid:String):String;
     {$endif}
   published
     { Published declarations }
 
     // Properties defined for this class...
     property SelectedNodeText: String read GetSelectedNodeText write SetSelectedNodeText;
+    property SelectedTextPath:String read GetSelectedTextPath;   //read-only property
     property TreeData: String read GetTreeData write SetTreeData;
     property TreeHeight: String read GetTreeHeight write SetTreeHeight;
     property TreeWidth: String read GetTreeWidth write SetTreeWidth;
@@ -189,7 +200,6 @@ type
 
     // these properties will appear as events on Lazarus IDE...
     property TreeNodeHintFunc: TTreeNodeHint read FTreeNodeHint write FTreeNodeHint;
- //   property TreeNodeDropAccepted: TTreeNodeDropAccepted read FTreeNodeDropAccepted write FTreeNodeDropAccepted;
 
     {$ifndef JScript}
     // Events to be visible in Lazarus IDE
@@ -200,15 +210,18 @@ type
     property HandleDropAccepted: TEventHandler read FDropAccepted write FDropAccepted;
     {$else}
     property NodeBeingDragged: String read fNodeBeingDragged write fNodeBeingDragged;   // NodeBeingDragged is a SUMMARY item in the HTML tree structure
-    property SelectedNodeId: String read fSelectedNodeId write SetSelectedNodeId;       // SelectedNodeId is a SUMMARY item in the HTML tree structure
     {$endif}
+    property SelectedNodeId: String read fSelectedNodeId write SetSelectedNodeId;       // SelectedNodeId is a SUMMARY item in the HTML tree structure
 
 end;
 
 
-  {$ifndef JScript}
-  procedure Register;
-  {$endif}
+{$ifndef JScript}
+//var
+//    TreeNodeIdCounter:longint;
+
+procedure Register;
+{$endif}
 
 
 var
@@ -244,6 +257,35 @@ begin
   // inherited from TWrapperPanel, not required here
   RegisterPropertyEditor(TypeInfo(TColor), TXTree, 'BgColor', THiddenPropertyEditor);
 //  RegisterPropertyEditor(TypeInfo(TXPropertyLink), TXTree, 'Link', THiddenPropertyEditor);
+end;
+
+function GetNewNodeId(ParentNode:TTreeNode; TreeName:String):String;
+var
+  str:String;
+  PNode,sibNode:TTreeNode;
+  c:integer;
+begin
+  //TreeNodeIdCounter:=TreeNodeIdCounter+1;
+  //result:=inttostr(TreeNodeIdCounter);
+  pNode:=ParentNode;
+  if pNode<>nil then
+  begin
+    sibNode:=pNode.GetLastChild;
+    if sibNode<>nil then
+      c:=sibNode.Index+1
+    else
+      c:=0;
+  end
+  else
+    c:=0;
+  str:=intToStr(c);
+  while (pNode<>nil) do
+  begin
+    c:=PNode.Index;  // num within sibling set??
+    str:=intToStr(c)+'_'+str;
+    pNode:=pNode.Parent;
+  end;
+  result:=TreeName+str;
 end;
 
 constructor TXTree.Create(TheOwner:TComponent);
@@ -301,11 +343,11 @@ begin
 
 end;
 
-function CreateWidget(ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+function CreateWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NewNode:TDataNode;
 begin
-  NewNode:=CreateDynamicLazWidget('TXTree',ParentNode.MyForm,ParentNode,ScreenObjectName,Alignment,position);
+  NewNode:=CreateDynamicLazWidget('TXTree',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
 end;
 
@@ -330,21 +372,35 @@ end;
 
 procedure TmyTreeView.TreeEditingEnd(Sender:TObject; Node:TTreeNode; Cancel:Boolean);
 begin
-  Node.Text:=self.MakeTextUnique(Node.Text);
+//  Node.Text:=self.MakeTextUnique(Node.Text);
 end;
 
 procedure TmyTreeView.HandleDragDrop(Sender, Source: TObject; X, Y: Integer);
 var
   Src, Dst: TTreeNode;
+  e:TeventStatus;
+  DestName:String;
+  DestNode:TDataNode;
+  values:TNodeEventValue;
 begin
   Src := TmyTreeView(Source).Selected;
   Dst := TmyTreeView(Sender).GetNodeAt(X,Y);
+  DestName:=TTreeView(Sender).parent.Name;
 
   if (Src<>nil)
   and (Dst<>nil) then
   begin
     TmyTreeView(Sender).DropTargetNode:=Dst;
-    CallHandleEvent('Drop',Dst.Text,Sender);
+    e:=TEventStatus.Create('Drop',DestName);
+    DestNode:=TXTree(self.parent).myNode;
+    values:=TNodeEventValue.Create;
+    values.DstText:=Dst.Text;
+    values.myTree:=TXTree(self.Parent);
+    values.SrcText:=Src.Text;
+    values.SourceName:=TmyTreeView(Source).Parent.Name;
+    values.myNode:=DestNode;
+    e.ValueObject:=values;
+    CallHandleEvent(e,'Drop',Dst.Text,Sender);
   end;
   self.IsDropTarget:=false;
 end;
@@ -359,10 +415,11 @@ var
   e:TEventStatus;
   ob:TNodeEventValue;
 begin
+  // Sender is TTreeView
   if (Source is TTreeView) then
   begin
 
-    SourceName:=TTreeView(Source).parent.Name;
+    SourceName:=TTreeView(Source).parent.Name;         //!!!!namespace????
     DestName:=TTreeView(Sender).parent.Name;
 
     DestTreeNode := TTreeNode(TTreeView(Sender).GetNodeAt(X, Y)) ;
@@ -370,27 +427,22 @@ begin
 
     Accept:=true;
     // Decide whether a drop is allowed here
-//    if TXTree(self.Parent).TreeNodeDropAccepted<>nil then
-//    begin
-//      if (DestTreeNode<>nil) then DstText:=DestTreeNode.Text else DstText:='';
-//      Accept := TXTree(self.Parent).TreeNodeDropAccepted(TXTree(self.Parent),SourceName,Src.Text,DstText);
-//    end;
-    // OR.....do it the XIDE way...
     // 1) is there a function? (in the form, or registered, or in user code)
     // 2) execute the function - send in SourceName,Src.Text,DstText
     // 3) get the result (e.ReturnString)
     if (DestTreeNode<>nil) then
     begin
-      ob:=TNodeEventValue.Create;
       DstText:=DestTreeNode.Text;
       DestNode:=TXTree(self.parent).myNode;
       e:=TEventStatus.Create('DropAccepted',DestName);
+      ob:=TNodeEventValue.Create;
       ob.DstText:=DstText;
       ob.myTree:=TXTree(self.Parent);
       ob.SrcText:=Src.Text;
       ob.SourceName:=SourceName;
+      ob.myNode:=DestTreeNode;
       e.ValueObject:=ob;
-      ExecuteEventHandler(e,'DropAccepted',DestName,'',DestNode);
+      ExecuteEventHandler(e,'DropAccepted',DestName,'',DestNode);   //bypasses event trappers
       Accept := MyStrToBool(e.ReturnString);
     end;
 
@@ -480,6 +532,7 @@ begin
 
 end;
 
+
 procedure TmyTreeView.selectNodeByText(NodeText:String);
 var
   TargetNode:TTreeNode;
@@ -492,10 +545,43 @@ begin
   end;
 end;
 
+procedure TmyTreeView.selectNodeById(NodeId:String);
+var
+  TargetNode:TTreeNode;
+begin
+  TargetNode:=self.FindNodeById(NodeId);
+  if TargetNode<>nil then
+  begin
+    if TargetNode<>self.Selected then
+      self.Select(TargetNode);        // In Lazarus this will automatically open any parent nodes
+  end;
+end;
+
 procedure TmyTreeView.TreeSelectedNodeChange(Sender: TObject; Node: TTreeNode);
+var
+  outer:TObject;
+  NameSpace,nodeName,nodeID:String;
+  pth:String;
+  MyRecPtr: PNodeDataRec;
 begin
     if Assigned(Node) then
-      CallHandleEvent('TreeNodeClick',Node.Text,Sender);
+    begin
+      // added 09/06/19 (so that selectednodetext is always set automatically.  previously had to use the TreeNodeClick event)
+      nodeName := FindNodeId(Sender,outer,NameSpace);
+      if (outer<>nil)
+      and (outer is TXTree) then
+      begin
+        MyRecPtr:=Node.Data;
+        NodeID:=MyRecPtr^.ID;
+     //   TXTree(outer).SelectedNodeId:=NodeID;
+        TXTree(outer).SelectedNodeText:=Node.Text;
+        pth:=TXTree(outer).SelectedTextPath;   // this sets the value for attribute 'SelectedTextPath'
+        CallHandleEvent('TreeNodeClick',NodeID,Sender);
+      end;
+
+
+      //CallHandleEvent('TreeNodeClick',Node.Text,Sender);
+    end;
 end;
 
 function TmyTreeView.FindNodeByText(AValue:String):TTreeNode;
@@ -581,6 +667,23 @@ begin
   result:=foundNode;
 end;
 
+function TmyTreeView.BuildExpandedText(thisNode:TTreeNode):String;
+var
+  i:integer;
+  str:String;
+  parentNode:TTreeNode;
+begin
+  str:=inttostr(thisNode.index)+':'+thisNode.Text;
+  parentNode:=thisNode;
+  while parentNode.Parent<>nil do
+  begin
+    parentNode:=parentNode.Parent;
+    i:=parentNode.Index;
+    str:=inttostr(i)+':'+parentNode.Text+'/'+str;
+  end;
+  result:=str;
+end;
+
 function TmyTreeView.NodeTextIsUnique(NodeText:String):Boolean;
 var
   tn:TTreeNode;
@@ -592,47 +695,83 @@ begin
     result:=true;
 end;
 
-function TMyTreeView.MakeTextUnique(NodeText:String):String;
-var
-  i:integer;
-begin
-  if self.NodeTextIsUnique(NodeText) then
-    result:=NodeText
-  else
+//function TMyTreeView.MakeTextUnique(NodeText:String):String;
+//var
+//  i:integer;
+//begin
+//  if self.NodeTextIsUnique(NodeText) then
+//    result:=NodeText
+//  else
+//  begin
+//    i:=1;
+//    while (not self.NodeTextIsUnique(NodeText+intToStr(i))) do
+//    begin
+//      i:=i+1;
+//    end;
+//    result:=NodeText + intToStr(i);
+//  end;
+//end;
+
+function TmyTreeView.FindNodeById(NodeId:String):TTreeNode;
+  function GetNodeId(ANode:TTreeNode):String;
+  var
+    MyRecPtr:PNodeDataRec;
   begin
-    i:=1;
-    while (not self.NodeTextIsUnique(NodeText+intToStr(i))) do
-    begin
-      i:=i+1;
-    end;
-    result:=NodeText + intToStr(i);
+    MyRecPtr:=ANode.Data;
+    result:=MyRecPtr^.ID;
   end;
+var
+  myItems:TTreeNodes;
+  myId:String;
+  nextNode:TTreeNode;
+begin
+  myItems:=self.Items;
+  nextNode := myItems.GetFirstNode;
+  myId:=GetNodeId(nextNode);
+  while ((nextNode<>nil) and (myId <> NodeId)) do
+  begin
+    nextNode := nextNode.GetNext;
+    if nextNode<>nil then
+      myId:=GetNodeId(nextNode);
+  end;
+  result:=nextNode;
 end;
+
 
 procedure TmyTreeView.CustomDrawTreeNode(Sender: TCustomTreeView;Node: TTreeNode; State: TCustomDrawState;var DefaultDraw: Boolean) ;
 begin
   DefaultDraw:=true;
 end;
 
-function TmyTreeView.AddNewNode(NodeItems:TTreeNodes;ParentNode:TTreeNode; NodeString:string):TTreeNode;
+function TmyTreeView.AddNewNode(NodeItems:TTreeNodes;ParentNode:TTreeNode; NodeString,TreeName:string):TTreeNode;
 var
   NewTreeNode:TTreeNode;
   myHint,NodeId:String;
   MyRecPtr: PNodeDataRec;
+//  AData: TTreeData;
 begin
-   New(MyRecPtr);
-   if ParentNode<>nil then
-     NewTreeNode:=NodeItems.AddChildObject(ParentNode,NodeString,MyRecPtr)
-   else
-     NewTreeNode:=NodeItems.Add(nil,NodeString);
+//  AData := TTreeData.Create;
+//  AData.ID := '?????';
+//  ShowMessage(TTreeData(ANode.Data).ID);
 
-   // Create the Hint text for this node, if specified.
-   if (self.Parent<>nil) and (self.Parent is TXTree) then
-     if TXTree(self.Parent).TreeNodeHintFunc<>nil then
-       MyRecPtr^.NodeHint := TXTree(self.Parent).TreeNodeHintFunc(NodeString);
+  New(MyRecPtr);
+  MyRecPtr^.ID:=GetNewNodeId(ParentNode,TreeName);
+  if ParentNode<>nil then
+    NewTreeNode:=NodeItems.AddChildObject(ParentNode,NodeString,MyRecPtr)
+  else
+  begin
+    NewTreeNode:=NodeItems.Add(nil,NodeString);  //root node
+    NewTreeNode.Data:=MyRecPtr;
+  end;
 
-   MyRecPtr^.OriginalText := NewTreeNode.Text;   // save node text to workaround user edits (can't disable editing!!!!)
-   result:=NewTreeNode;
+
+  // Create the Hint text for this node, if specified.
+  if (self.Parent<>nil) and (self.Parent is TXTree) then
+    if TXTree(self.Parent).TreeNodeHintFunc<>nil then
+      MyRecPtr^.NodeHint := TXTree(self.Parent).TreeNodeHintFunc(NodeString);
+
+  MyRecPtr^.OriginalText := NewTreeNode.Text;   // save node text to workaround user edits (can't disable editing!!!!)
+  result:=NewTreeNode;
 end;
 
 procedure TMyTreeView.ExpandTreeNodes(Level: Integer);
@@ -688,11 +827,11 @@ begin
   result:=str;
 end;
 
-function TMyTreeView.AddATreeNode(ParentNode:TTreeNode; nodename:string):TTreeNode;
+function TMyTreeView.AddATreeNode(ParentNode:TTreeNode; nodeText,TreeName:string):TTreeNode;
 begin
-  result:= AddNewNode(self.Items,ParentNode, nodename);
+  result:= AddNewNode(self.Items,ParentNode, nodeText,TreeName);
 end;
-function TMyTreeView.AddChildren(jData: TJSONData; ParentNode:TTreeNode):TTreeNode;
+function TMyTreeView.AddChildren(jData: TJSONData; ParentNode:TTreeNode;RootName:String):TTreeNode;
 var
   i:integer;
   jItem : TJSONData;
@@ -711,101 +850,72 @@ begin
       if (i=0) and (object_type='jtString') then
       begin
         nodename:=jItem.AsString;
-        NewNode:=self.AddATreeNode(ParentNode,jItem.AsString);
+        NewNode:=self.AddATreeNode(ParentNode,jItem.AsString,RootName);
       end
       else if (object_type='jtString') then
       begin
-        tmpNode:=self.AddATreeNode(NewNode,jItem.AsString);
+        tmpNode:=self.AddATreeNode(NewNode,jItem.AsString,RootName);
       end
       else if object_type='jtArray' then
       begin
-        self.AddChildren(jItem,NewNode);
+        self.AddChildren(jItem,NewNode,RootName);
       end;
       i:=i+1;
     end;
 end;
-(*
-procedure JSONItems(jData : TJSONData);
-var
-  jItem : TJSONData;
-  i, j: Integer;
-  object_name, field_name, field_value, object_type, object_items: String;
-begin
 
-  for i := 0 to jData.Count - 1 do
-  begin
-    jItem := jData.Items[i];
-    showmessage('i='+inttostr(i)+' count='+inttostr(jItem.Count) );
-
-    object_type := GetEnumName(TypeInfo(TJSONtype), Ord(jItem.JSONType));
-    if jData is TJSONObject then
-    begin
-      object_name := TJSONObject(jData).Names[i];
-      showmessage('object type: ' + object_type + '|object name: ' + object_name + '|number of fields: ' + object_items);
-      for j := 0 to jItem.Count - 1 do
-      begin
-        field_name := TJSONObject(jItem).Names[j];
-        field_value := jItem.FindPath(TJSONObject(jItem).Names[j]).AsString;
-
-        showmessage(field_name + '|' + field_value);
-      end;
-    end
-    else if object_type='jtString' then
-    begin
-      showmessage('string '+jItem.asString);
-    end
-    else if object_type='jtArray' then
-    begin
-      showmessage('array '+jItem.AsJSON);
-      for j:=0 to JItem.Count-1 do
-      begin
-        JSONItems(jItem.Items[j]);
-      end;
-    end;
-
-
-  end;
-
-end;
-*)
-procedure TMyTreeView.PopulateMeFromJSONData(NodeTreeString:String);
+procedure TMyTreeView.PopulateMeFromJSONData(NodeTreeString,RootName:String;openlvl:integer);
 var
    jData,JItem : TJSONData;
    i:integer;
-   object_type, nodename:string;
+   object_type, nodename, tmp:string;
    newnode,parentnode:TTreeNode;
 begin
   parentnode:=nil;
   with self.Items do
   begin
     Clear; { remove any existing nodes }
-    jData := GetJSON(NodeTreeString);
-    //tmp:=jData.asJSON;
-    //showmessage(jData.asJSON);
-    //JSONItems(jData);
-    i:=0;
-    // everything at this level is a child of the root node
-    while i < jData.Count do
-    begin
-      jItem := jData.Items[i];
-      object_type := GetEnumName(TypeInfo(TJSONtype), Ord(jItem.JSONType));
-      if object_type='jtString' then
+
+    try
+      jData := GetJSON(NodeTreeString);
+    except
+      on E: Exception do
       begin
-        nodename:=jItem.asString;
-        newnode:=self.AddATreeNode(parentnode,nodename);
-        if i=0 then parentnode:=newnode;
-      end
-      else if object_type='jtArray' then
-      begin
-        // first element in an array is the node, and following elements are node children
-        self.AddChildren(jItem,newnode);
+        showmessage('JSON error: '+e.Message);
+        jData := nil;
       end;
-      i:=i+1;
     end;
 
+    if jData<>nil then
+    begin
+      //tmp:=jData.asJSON;
+      //showmessage(jData.asJSON);
+      //JSONItems(jData);
+      i:=0;
+      // everything at this level is a child of the root node
+      while i < jData.Count do
+      begin
+        jItem := jData.Items[i];
+        tmp:=jItem.asJSON;
+        object_type := GetEnumName(TypeInfo(TJSONtype), Ord(jItem.JSONType));
+        if object_type='jtString' then
+        begin
+          nodename:=jItem.asString;
+          newnode:=self.AddATreeNode(parentnode,nodename,RootName);
+          if i=0 then parentnode:=newnode;
+        end
+        else if object_type='jtArray' then
+        begin
+          // first element in an array is the node, and following elements are node children
+          //self.AddChildren(jItem,newnode);
+          self.AddChildren(jItem,parentnode,RootName);
+        end;
+        i:=i+1;
+      end;
+      self.ExpandTreeNodes(openlvl);
+    end;
   end;
   jData.Free;
-  ExpandTreeNodes(1);   // by default show the first level
 end;
 
 procedure TXTree.TreeClick(Sender: TObject) ;
@@ -819,10 +929,10 @@ begin
   result:=TMyTreeView(self.myControl).NodeTextIsUnique(NodeText);
 end;
 
-function TXTree.MakeTextUnique(NodeText:String):String;
-begin
-  result:=TMyTreeView(self.myControl).MakeTextUnique(NodeText);
-end;
+//function TXTree.MakeTextUnique(NodeText:String):String;
+//begin
+//  result:=TMyTreeView(self.myControl).MakeTextUnique(NodeText);
+//end;
 
 function TXTree.BuildTreeDataString:String;
 begin
@@ -857,7 +967,17 @@ begin
    ATreeView.selectNodeByText(NodeText);
 end;
 
+procedure TXTree.SelectTreeNodeById(NodeId:string);
+var
+   ATreeView:TMyTreeView;
+begin
+   // select the required node in the tree
+   //showmessage('select node with text: '+NodeText);
+   ATreeView:=TMyTreeView(self.myControl);
+   ATreeView.selectNodeById(NodeId);
+end;
 {$else}
+
 function addTreeStyles(dummy:string):string;
 begin
 
@@ -884,68 +1004,146 @@ end;
 
 end;
 
-function HandleTreeNodeDragOver(ob:TObject;DestTreeId,DstText:string):Boolean;
+procedure HandleTreeNodeDrop(ob:TObject;DestTreeId,NameSpace,DstText:string);
 var
   thisXTree:TXTree;
   thisNode:TDataNode;
   e:TEventStatus;
   NodeObj:TNodeEventValue;
 begin
-//showmessage('HandleTreeNodeDragOver DestTreeId='+DestTreeId+' DstText='+DstText);
-  //ob:object raising the event
+//asm
+//alert('HandleTreeNodeDrop ob.id='+ob.id+' DestTreeId='+DestTreeId+' DstText='+DstText);
+//end;
+  //ob:object raising the event (a 'Summary' node)
+  if DraggingTree<>nil then
+  begin
+    thisNode:=FindDataNodeById(SystemNodeTree,DestTreeId,NameSpace,true);
+    thisXTree:=TXTree(thisNode.ScreenObject);
+    begin
+      NodeObj:=TNodeEventValue.Create;
+      e:=TEventStatus.Create('Drop',thisNode.NodeName);
+      e.NameSpace:=NameSpace;
+      NodeObj.DstText:=DstText;
+      NodeObj.myTree:=thisXTree;
+      NodeObj.SrcText:=DraggingTree.NodeBeingDragged;
+      NodeObj.SourceName:=DraggingTree.myNode.NodeName;
+      NodeObj.myNode:=ob;
+      e.ValueObject:=NodeObj;
+
+      asm
+      pas.Events.handleEvent(e, 'Drop' ,ob.id,NameSpace ,DstText);
+      //pas.Events.handleEvent(e, 'Drop' ,ob.id,NameSpace ,ob.id);
+      end;
+
+    end;
+  end;
+end;
+
+function HandleTreeNodeDragOver(ob:TObject;DestTreeId,NameSpace,DstText:string):Boolean;
+var
+  thisXTree:TXTree;
+  thisNode:TDataNode;
+  e:TEventStatus;
+  NodeObj:TNodeEventValue;
+begin
+//if DraggingTree=nil then showmessage('HandleTreeNodeDragOver DestTreeId='+DestTreeId+' DstText='+DstText+' DraggingTree=nil')
+//else showmessage('HandleTreeNodeDragOver DestTreeId='+DestTreeId+' DstText='+DstText+' DraggingTree is set');
+  //ob:object raising the event (a 'Summary' node)
   // DstText ..... text of node in the tree that is being dragged over
   result:=true;
   if DraggingTree<>nil then
   begin
-    thisNode:=FindDataNodeById(SystemNodeTree,DestTreeId,true);
+    thisNode:=FindDataNodeById(SystemNodeTree,DestTreeId,NameSpace,true);
     thisXTree:=TXTree(thisNode.ScreenObject);
-//    if thisXTree.TreeNodeDropAccepted<>nil then
-//    begin
-//      //  showmessage('SourceTree='+DraggingTree.myNode.NodeName+' SourceNode='+DraggingTree.NodeBeingDragged+' destNode='+DstText);
-//      result := thisXTree.TreeNodeDropAccepted(thisXTree,DraggingTree.myNode.NodeName,DraggingTree.NodeBeingDragged,DstText);
-//    end;
-    // OR.....do it the XIDE way...
+    // Is drop allowed?
     // 1) is there a function? (in the form, or registered, or in user code)
     // 2) execute the function - send in SourceName,Src.Text,DstText
     // 3) get the result (e.ReturnString)
     begin
       NodeObj:=TNodeEventValue.Create;
       e:=TEventStatus.Create('DropAccepted',thisNode.NodeName);
+      e.NameSpace:=NameSpace;
       NodeObj.DstText:=DstText;
       NodeObj.myTree:=thisXTree;
       NodeObj.SrcText:=DraggingTree.NodeBeingDragged;
       NodeObj.SourceName:=DraggingTree.myNode.NodeName;
+      NodeObj.myNode:=ob;
       e.ValueObject:=NodeObj;
-      ExecuteEventHandler(e,'DropAccepted',thisNode.NodeName,'',thisXTree);
+      ExecuteEventHandler(e,'DropAccepted',thisNode.NodeName,'',thisXTree);     //bypasses event trappers
       result := MyStrToBool(e.ReturnString);
     end;
   end;
 end;
 
-procedure DragStart(nodeId,NameOfDetailsList,SummaryText:String);
+procedure DragStart(nodeId,NameSpace,NameOfDetailsList,SummaryText:String);
 var
   treeNode:TDataNode;
   myXTree:TXTree;
 begin
-  treeNode:=FindDataNodeById(SystemNodeTree,nodeId,true);
+ // showmessage('DragStart.  NodeId='+NameSpace+'.'+nodeId);
+  treeNode:=FindDataNodeById(SystemNodeTree,nodeId,NameSpace,true);
   myXTree:=TXTree(treenode.ScreenObject);
   DraggingTree:=myXTree;
-  myXTree.NodeBeingDragged:=SummaryText;
+  myXTree.NodeBeingDragged:=SummaryText;     //?NameOfDetailsList!!!!
   //showmessage('drag node '+SummaryText);
   asm
-  pas.Events.handleEvent( null,'DragStart' ,NameOfDetailsList,SummaryText);
+  pas.Events.handleEvent( null,'DragStart' ,NameOfDetailsList,NameSpace,SummaryText);
   end;
 end;
 
+//  HTML Tree Structure is...
+//      A
+//        B
+//        C
+//      D
+//      E
+//        F
+//          G
+//
+//     <DIV  id=AOuterDiv >
+//        <DETAILS id=A >
+//          <SUMMARY  id=ASummary />
+//          <DIV  id=BOuterDiv >
+//            <DETAILS id=B >
+//              <SUMMARY  id=BSummary /></DETAILS>
+//          </DIV>
+//          <DIV  id=COuterDiv >
+//            <DETAILS id=C >
+//              <SUMMARY  id=CSummary /></DETAILS>
+//          </DIV>
+//       </DETAILS>
+//     <DIV  id=DOuterDiv >
+//        <DETAILS id=D >
+//          <SUMMARY  id=DSummary /></DETAILS>
+//     </DIV>
+//     <DIV  id=EOuterDiv >
+//        <DETAILS id=E >
+//          <SUMMARY  id=ESummary />
+//          <DIV  id=FOuterDiv >
+//            <DETAILS id=F >
+//              <SUMMARY  id=FSummary />
+//              <DIV  id=GOuterDiv >
+//                <DETAILS id=G >
+//                  <SUMMARY  id=GSummary />
+//                </DETAILS>
+//              </DIV>
+//            </DETAILS>
+//          </DIV>
+//        </DETAILS>
+//     </DIV>
+
+
 //................................................... add Tree Node .......
-function addTreeNode(WrapperNodeId,parentName,NameOfDetailsList,
+function addTreeNode(WrapperNodeId,NameSpace,parentName,NameOfDetailsList,
                      SummaryText,HasChildren,color,isopen:string;NodeHintFunc:TTreeNodeHint;Draggable:Boolean):string;
+var
+  newnodeid:String;
 begin
 
 asm
  try{
 
- //alert('addTreeNode node '+SummaryText);
+ //alert('addTreeNode '+WrapperNodeId+' parentName='+parentName+' SummaryText='+SummaryText);
 
   var SystemNodeText='';
   if (Array.isArray(SummaryText)){
@@ -954,15 +1152,17 @@ asm
   else {
     SystemNodeText=SummaryText;
     }
+ // alert('addTreeNode '+WrapperNodeId+' parentName='+parentName+' nodetext='+SystemNodeText);
+
   var myHint='';
   if (NodeHintFunc!=null) {
      myHint = NodeHintFunc(SystemNodeText);
      //alert('Hint '+myHint);
      }
 
-//alert('addTreeNode '+NameOfDetailsList+' to '+parentName);
+//if (NameSpace!='') {alert('NS='+NameSpace+' addTreeNode '+NameOfDetailsList+' to '+parentName);}
   var parent = (document.getElementById(parentName));
-  if (parent==null) {alert('cannot find parent '+parentName);}
+  if (parent==null) {alert('addTreeNode cannot find parent '+parentName);}
   else
   {
   var div = document.createElement("div");
@@ -970,43 +1170,47 @@ asm
   div.style.marginLeft = "25px";
   div.id = NameOfDetailsList+'OuterDiv';
 
-  var dragstartstring='event.stopPropagation(); pas.XTree.DragStart("'+WrapperNodeId+'" ,"'+NameOfDetailsList+'" ,"'+SummaryText+'"); ';
-  var dragOverEventString='if (pas.XTree.HandleTreeNodeDragOver(event.target,"'+WrapperNodeId+'","'+SummaryText+'")==true) {event.preventDefault();};';
-  var dropEventString='event.stopPropagation(); pas.Events.handleEvent(null, "Drop" ,"'+NameOfDetailsList+'" ,"'+SummaryText+'"); ';
+  var dragstartstring='event.stopPropagation(); pas.XTree.DragStart("'+WrapperNodeId+'","'+NameSpace+'","'+NameOfDetailsList+'" ,"'+SummaryText+'"); ';
+  var dragOverEventString='if (pas.XTree.HandleTreeNodeDragOver(event.target,"'+WrapperNodeId+'","'+NameSpace+'","'+SummaryText+'")==true) {event.preventDefault();};';
+  var dropEventString='event.stopPropagation(); pas.XTree.HandleTreeNodeDrop(event.target,"'+WrapperNodeId+'","'+NameSpace+'","'+SummaryText+'"); ';
   var dragEventString =  'draggable="true" '
     +" ondragstart = '"+dragstartstring+"' "
     +" ondragover = '"+dragOverEventString+"' "
     +" ondrop =  '"+dropEventString+"' ";
 
   var ClickEventString = 'event.stopPropagation(); '+
-                         'pas.XTree.HandleTreeNodeClick("'+WrapperNodeId+'" ,"'+NameOfDetailsList+'Summary"); '+
-                         'pas.Events.handleEvent(null, "TreeNodeClick" ,"'+NameOfDetailsList+'" ,"'+SummaryText+'"); '+
+                         'pas.XTree.HandleTreeNodeClick("'+WrapperNodeId+'","'+NameSpace+'","'+NameOfDetailsList+'Summary"); '+
+                         'pas.Events.handleEvent(null, "TreeNodeClick" ,"'+NameOfDetailsList+'","'+NameSpace+'" ,"'+NameOfDetailsList+'"); '+
                          '';
   if (HasChildren==true){
     if(isopen==true){
       div.innerHTML = "<details open id="+NameOfDetailsList+"><summary id="+NameOfDetailsList+"Summary "
                       +dragEventString
                       +"  onclick ='"+ClickEventString
-                      +"'  class='hasChildren ' style='background-color:"+color+";'>"+SummaryText+"</summary></details>";}
+                      +"' class='widgetinner "+NameSpace+WrapperNodeId+" hasChildren ' style='background-color:"+color+";'>"+SummaryText+"</summary></details>";}
       else {
       div.innerHTML = "<details  id="+NameOfDetailsList+"><summary id="+NameOfDetailsList+"Summary "
                       +dragEventString
                       +" onclick ='" +ClickEventString
-                      +"'  class='hasChildren ' style='background-color:"+color+";'>"+SummaryText+"</summary></details>";
+                      +"' class='widgetinner "+NameSpace+WrapperNodeId+" hasChildren ' style='background-color:"+color+";'>"+SummaryText+"</summary></details>";
     }
   }
   else {
     div.innerHTML = "<details id = "+NameOfDetailsList+" ><summary id="+NameOfDetailsList+"Summary "
                      +dragEventString
                      +" onclick ='"+ClickEventString
-                     +"'  class='noChildren' style='background-color:"+color+";' >"+SummaryText+"</summary></details>";
+                     +"'  class='widgetinner "+NameSpace+WrapperNodeId+" noChildren' style='background-color:"+color+";' >"+SummaryText+"</summary></details>";
   }
    div.title = myHint;
 
    parent.appendChild(div);
+
+   newnodeid = NameOfDetailsList;
   }
  }catch(err) {alert('Error in XTree.addTreeNode '+ err.message);}
 end;
+
+result:=newnodeid;
 
 end;
 
@@ -1022,38 +1226,98 @@ try {
 end;
 end;
 
-function addnode(WrapperNodeId,ParentName,currentNodeTree,IdOfNodeBeingAdded:string;
+function addnode(WrapperNodeId,NameSpace,ParentName,currentNodeTree,IdOfNodeBeingAdded:string;
                  OpenToLevel,level:integer;normalColor:string;NodeHintFunc:TTreeNodeHint;Draggable:Boolean):string;
+var
+  newnodeid:String;
 begin
 
 asm
    try {
-   //alert('addnode: '+ParentNodeId+' '+ParentName+' '+ParentName+' newnode '+IdOfNodeBeingAdded);
+   //alert('addnode: '+WrapperNodeId+' '+ParentName+' '+currentNodeTree+' newnode='+IdOfNodeBeingAdded);
+   //alert('addnode: '+WrapperNodeId+' parentname:'+ParentName+'  newnode='+IdOfNodeBeingAdded);
        var isopen=false;
        if (level<OpenToLevel) {isopen=true;}  //by default just show the first n levels of the tree
        var localcurrentNodeTree=currentNodeTree;
 
        if ((localcurrentNodeTree.length>1)&&(Array.isArray(localcurrentNodeTree))){
        // This node has children so create the parent node
-         pas.XTree.addTreeNode(WrapperNodeId,ParentName,IdOfNodeBeingAdded,localcurrentNodeTree[0],
+         newnodeid=pas.XTree.addTreeNode(WrapperNodeId,NameSpace,ParentName,IdOfNodeBeingAdded,localcurrentNodeTree[0],
                                       true,normalColor,isopen,NodeHintFunc,Draggable);
 
        // then make the recursive call for each of its children
        for (var i=1; i<localcurrentNodeTree.length; i++){
-         var NameOfChildNode = IdOfNodeBeingAdded+'_'+i
-         pas.XTree.addnode(WrapperNodeId,IdOfNodeBeingAdded,localcurrentNodeTree[i],
+         var NameOfChildNode = IdOfNodeBeingAdded+'_'+(i-1)
+         pas.XTree.addnode(WrapperNodeId,NameSpace,IdOfNodeBeingAdded,localcurrentNodeTree[i],
                            NameOfChildNode,OpenToLevel,level+1,normalColor,NodeHintFunc,Draggable);}
        }
        else {
        // This node does not have children so just create the node
-         pas.XTree.addTreeNode(WrapperNodeId,ParentName,IdOfNodeBeingAdded,localcurrentNodeTree,
+       //if (currentNodeTree=='StyleRule') {alert('addTreeNode: '+WrapperNodeId+' '+ParentName+' '+localcurrentNodeTree+' newnode='+IdOfNodeBeingAdded);}
+         newnodeid=pas.XTree.addTreeNode(WrapperNodeId,NameSpace,ParentName,IdOfNodeBeingAdded,localcurrentNodeTree,
                                       false,normalColor,true,NodeHintFunc,Draggable);
+       //if (currentNodeTree=='StyleRule') {alert('node added');}
        }
     }catch(err){alert('Error in XTree.addnode '+ err.message);}
 end;
 
+result:=newnodeid;
+
 end;
 
+function GetPathToNode(TreeName,NameOfSelectedNode:string):string;
+var containsSelectedNode:boolean;
+  str:String;
+begin
+  //showmessage('GetPathToNode. Tree='+TreeName);
+
+  asm
+    try{
+    var thisNode=document.getElementById(NameOfSelectedNode);
+    var parent=thisNode;
+   // alert('thisNode='+thisNode.id+' '+thisNode.tagName);
+
+    do
+    {
+      var idx='';
+      parent = parent.parentNode;     // should be a DETAILS element
+      //alert('parentid='+parent.id+' tag='+parent.tagName);
+      if (parent.tagName=="DETAILS") {
+        var list = parent.getElementsByTagName("SUMMARY");
+        // should contain just one SUMMARY element
+        if (list.length>0) {
+          var summ=list[0];
+          var localDiv=parent.parentNode;
+          var parentDiv=localDiv.parentNode;
+          var DList = parentDiv.children;
+          // find the sibling number of this summary element
+          var i=0;
+          var j=-1;
+          do {
+            // just count the DIV children up to this node (localDiv)
+            if (DList[i].tagName=='DIV') {j=j+1;}
+            if (DList[i]==localDiv) {
+                idx=j+':';
+                i=DList.length;
+              }
+            i=i+1;
+          }
+          while (i<DList.length);
+
+          if (str!="") {str=idx+summ.innerHTML+"/"+str;}
+          else {str=idx+summ.innerHTML;}
+
+        }
+      }
+    }
+    while ((parent.id!=TreeName)&&(parent.id!=TreeName+"Contents")&&(thisNode.parentNode!=null)&&(thisNode.parentNode!=undefined))
+    }catch(err) { alert(err.message+'  in XTree.GetPathToNode'); }
+  end;
+
+  // prepend each name with the sibling number
+
+  result:=  str;
+end;
 
 function SetOpenStatusOfNodeChildren(NodeName,NameOfSelectedNode:string;level:integer):boolean;
 var containsSelectedNode:boolean;
@@ -1089,7 +1353,7 @@ begin
     //alert('GetTreeRootID. NodeID='+NodeID);
         var TreeRootID = "";
         var instring = pas.StringUtils.TrimWhiteSpace(NodeID);
-        var EndOfTreeRootID = pas.StringUtils.FoundString(instring,"Contents" );
+        var EndOfTreeRootID = pas.StringUtils.FoundString(instring,"Node" );
         for (var i=0; i<EndOfTreeRootID-1; i++){ TreeRootID = TreeRootID+instring[i];}
      }catch(err) { alert(err.message+'  in XTree.GetTreeRootID'); }
      return TreeRootID;
@@ -1100,7 +1364,8 @@ function OpenAndScrollToSelectedNode(NameOfDetailsList:string):string;
 begin
   asm
     try{
-      var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'ContentsScroll'; // the tree nodes container
+    //  var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'ContentsScroll'; // the tree nodes container
+      var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'Node'; // the tree nodes container
       var root = (document.getElementById(TreeRootID));
       pas.XTree.SetOpenStatusOfNodeChildren(root.id,NameOfDetailsList,0);
       var SelectedNode=document.getElementById(NameOfDetailsList);
@@ -1121,7 +1386,6 @@ begin
       parentNode.style.background=normalColor;
 
       if (parentNode.children.length>0) {
-       // if (pas.Stringutils.FoundString(NodeName,'Navig')<1) {alert('node '+NodeName+' has '+parentNode.children.length+' children');}
         for (var i=0; i<parentNode.children.length; i++) {
           pas.XTree.deselectNodeChildren( parentNode.children[i].id,normalColor);
         }
@@ -1154,14 +1418,15 @@ function clearNodeSelectedMarker(NameOfDetailsList,normalColor:string):string;
 begin
   asm
     try{
-      //alert('clearNodeSelectedMarker. NameOfDetailsList='+NameOfDetailsList+' normalColor='+normalColor);
+//      alert('clearNodeSelectedMarker. NameOfDetailsList='+NameOfDetailsList+' normalColor='+normalColor);
       // go down the tree from the root clearing the selected colour
 
-      var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'ContentsScroll';  // the tree nodes container
+  //    var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'ContentsScroll';  // the tree nodes container
+      var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'Node';  // the tree nodes container
       //alert('tree root id='+TreeRootID);
       var root = (document.getElementById(TreeRootID));
       if (root==null) {
-        alert('root is null')}
+        alert('root is null ('+TreeRootID+')')}
       else {
         pas.XTree.deselectNodeChildren(root.id,normalColor); }
 
@@ -1169,14 +1434,16 @@ begin
   end;
 end;
 
-function NodeIdFromText(TreeNode:TDataNode;NodeText:String):String;
+function NodeIdFromText(TreeNode:TDataNode;NodeText:String):String;      //!!!!namespace???
 var
    TreeObject:TObject;
    FoundId:String;
 begin
   TreeObject:=TreeNode;
   asm
-    var ob = document.getElementById(TreeObject.NodeName+'ContentsScroll');  // the tree nodes container
+  //alert('NodeIdFromText.  NodeName='+TreeNode.NameSpace+'.'+TreeNode.NodeName+' Text='+NodeText);
+//  var ob = document.getElementById(TreeObject.NameSpace+TreeObject.NodeName+'ContentsScroll');  // the tree nodes container
+  var ob = document.getElementById(TreeObject.NameSpace+TreeObject.NodeName+'Node');  // the tree nodes container
     if (ob!=null) {
             function checkChildren(obj) {
                for (var i=0; i<obj.children.length; i++) {
@@ -1212,7 +1479,8 @@ var
 begin
   TreeObject:=TreeNode;
   asm
-    var ob = document.getElementById(TreeObject.NodeName+'ContentsScroll');  // the tree nodes container
+ // var ob = document.getElementById(TreeObject.NameSpace+TreeObject.NodeName+'ContentsScroll');  // the tree nodes container
+  var ob = document.getElementById(TreeObject.NameSpace+TreeObject.NodeName+'Node');  // the tree nodes container
     if (ob!=null) {
        var node = document.getElementById(NodeId);
       // NB. the node object should be a <summary> object, where innerHTML is simply the visible node text.
@@ -1224,9 +1492,9 @@ begin
 end;
 
 
-constructor TXTree.Create(MyForm:TForm;NodeName:String);
+constructor TXTree.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
-  inherited Create(NodeName);
+  inherited Create(NodeName,NameSpace);
   self.NodeType:=MyNodeType;
   self.MyForm:=MyForm;
 
@@ -1238,7 +1506,7 @@ end;
 
 
 function CreateWidget(MyNode,
-                 ParentNode:TDataNode;ScreenObjectName:string;position:integer;Alignment:String):TDataNode;
+                 ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   NodeTree,SelectedNodeString,LabelText,LabelPos,normalColor:string;
   Ht,Wd:String;
@@ -1246,6 +1514,7 @@ var
   NodeHintFunc:TTreeNodeHint;
   openlvl:integer;
 begin
+  //showmessage('TXTree CreateWidget '+NameSpace+'.'+ScreenObjectName);
 
   NodeTree:=MyNode.GetAttribute('TreeData',true).AttribValue;
   //SelectedNodeString:=MyNode.GetAttribute('SelectedNodeText',true).AttribValue;
@@ -1262,10 +1531,11 @@ begin
 
   asm
     try{
-    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,$impl.MyNodeType,position);
-    var wrapper=document.getElementById(ScreenObjectName);
+    var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    var wrapperid = NameSpace+ScreenObjectName;
+    var wrapper=document.getElementById(wrapperid);
 
-    var MyObjectName=ScreenObjectName+'Contents';
+    var MyObjectName=wrapperid+'Contents';
     var localcontainer = document.createElement("div");
     localcontainer.id = MyObjectName;
     localcontainer.style.display="inline-block;";
@@ -1277,17 +1547,17 @@ begin
 
 
     // put in a scrollbox to contain all the tree nodes
-    //alert('tree container id='+ScreenObjectName+'Contents'+'Scroll');
+    //alert('tree container id='+wrapperid+'Node');
     var ContainerString = '<div style = "overflow:scroll; display:inline-block;'+
                                 'background-color:'+normalColor+';'+Ht+Wd+'" '+
-                                'id='+MyObjectName+'Scroll ></div> ';
+                                'id='+wrapperid+'Node class="'+NameSpace+ScreenObjectName+'"></div> ';
     localcontainer.insertAdjacentHTML( 'beforeend', ContainerString );
 
-    var TreeName = ScreenObjectName+'ContentsScroll';
+    var TreeName = wrapperid+'Node';
     var localNodeTree =JSON.parse(NodeTree);
     //alert('NodeName='+NodeName+' Treename='+TreeName);
 
-    pas.XTree.addnode(NodeName,TreeName,localNodeTree,(TreeName+'Node'),
+    pas.XTree.addnode(NodeName,NameSpace,TreeName,localNodeTree,(TreeName+'0'),
                       openlvl,0,normalColor,NodeHintFunc,true) ;
 
 
@@ -1308,25 +1578,26 @@ begin
 
   RefreshComponentProps(myNode);
 
+  //showmessage('TXTree CreateWidget Done');
   result:=myNode;
 end;
 
-function CreateinterfaceObj(MyForm:TForm;NodeName:String):TObject;
+function CreateinterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
-  result:=TObject(TXTree.Create(MyForm,NodeName));
+  result:=TObject(TXTree.Create(MyForm,NodeName,NameSpace));
 end;
 
-procedure HandleTreeNodeClick(WrapperNodeId,SelectedNodeObjectId:String);
+procedure HandleTreeNodeClick(WrapperNodeId,NameSpace,SelectedNodeObjectId:String);
 var
   myNode:TDataNode;
   NodeText:String;
 begin
-  //showmessage('HandleTreeNodeClick WrapperNodeId='+WrapperNodeId+' NodeObjectId='+SelectedNodeObjectId);
-   myNode:=FindDataNodeById(SystemNodetree,WrapperNodeId,true);
+//  showmessage('HandleTreeNodeClick WrapperNodeId='+WrapperNodeId+' NodeObjectId='+SelectedNodeObjectId+' NS='+NameSpace);
+   myNode:=FindDataNodeById(SystemNodetree,WrapperNodeId,NameSpace,true);
    NodeText:=NodeTextFromId(myNode,SelectedNodeObjectId);
-   //showmessage('HandleTreeNodeClick. NodeText='+NodeText);
-   TXTree(myNode).SelectedNodeText:=NodeText;
-
+   //showmessage('HandleTreeNodeClick. NodeText='+NodeText+' NS='+NameSpace);
+   //TXTree(myNode).SelectedNodeText:=NodeText;
+   TXTree(myNode).SelectedNodeId:=SelectedNodeObjectId;
 end;
 
 procedure TXTree.SelectTreeNodeById(NodeId:string);
@@ -1334,6 +1605,7 @@ var
    normalColor:string;
    ParentId:String;    // id minus the Summary suffix
 begin
+  //showmessage('SelectTreeNodeById '+NodeId);
    normalColor:=self.BgColor;
    ParentId:=myStringReplace(NodeId,'Summary','',-1,-1);
    //showmessage('parentid='+ParentId);
@@ -1345,7 +1617,6 @@ begin
      var myself = document.getElementById(ParentId);
      if (myself!=null)
      {
-     //alert('node found');
      var HTMLString = myself.innerHTML;
      var hasChildren = pas.StringUtils.FoundString(HTMLString,"hasChildren");
 
@@ -1376,7 +1647,6 @@ begin
      }
      else alert('Cannot find node '+NodeId);
      }catch(err) { alert(err.message+'  in XTree.SelectTreeNodeById'); }
-     //alert('done');
    end;
 
 end;
@@ -1386,7 +1656,8 @@ var
    FoundId:String;
 begin
   asm
-    var ob = document.getElementById(this.NodeName+'ContentsScroll');  // the tree nodes container
+ //   var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsScroll');  // the tree nodes container
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Node');  // the tree nodes container
     if (ob!=null) {
             function checkChildren(obj) {
                for (var i=0; i<obj.children.length; i++) {
@@ -1417,21 +1688,116 @@ begin
     result:=true;
 end;
 
-function TXTree.MakeTextUnique(NodeText:String):String;
+//function TXTree.MakeTextUnique(NodeText:String):String;
+//var
+//  i:integer;
+//begin
+//  if self.NodeTextIsUnique(NodeText) then
+//    result:=NodeText
+//  else
+//  begin
+//    i:=1;
+//    while (not self.NodeTextIsUnique(NodeText+intToStr(i))) do
+//    begin
+//      i:=i+1;
+//    end;
+//    result:=NodeText + intToStr(i);
+//  end;
+//end;
+
+function TXTree.GetChildNodes(nodeId:String):TStringArray;
 var
-  i:integer;
+  nodes:TStringArray;
 begin
-  if self.NodeTextIsUnique(NodeText) then
-    result:=NodeText
-  else
-  begin
-    i:=1;
-    while (not self.NodeTextIsUnique(NodeText+intToStr(i))) do
-    begin
-      i:=i+1;
-    end;
-    result:=NodeText + intToStr(i);
+  setLength(nodes,0);
+  asm
+    //alert('GetChildNodes for '+nodeId);
+    try {
+    var ob = document.getElementById(nodeId);  //nodeId should be a 'DETAILS' node
+    if (ob!=null) {
+            function fetchChildren(obj) {
+              //alert('GetChildNodes.fetchChildren of '+obj.id+' tag='+obj.tagName);
+
+              if ((obj.tagName!='DETAILS')) {return;}
+
+              // DETAILS tag...
+               if (obj.children.length==0) {
+                 return;
+               }
+               else
+               {
+               var hasChildNodes = ((obj.tagName=='DETAILS')&&(pas.HTMLUtils.ContainsChildWithTag(obj,'DIV')));
+               if (hasChildNodes) {
+                 for (var i=0; i<obj.children.length; i++) {
+                   //alert('found child '+obj.children[i].id);
+                     if (obj.children[i].tagName=='DIV') {
+                       //alert('child is div.');
+                       var childDiv=obj.children[i];
+                       var dtl = childDiv.getElementsByTagName("DETAILS");
+                       nodes.push(dtl[0].id);
+                       }
+                   }
+               }
+              }
+            }
+    fetchChildren(ob);
+    }
+    else
+      alert('GetChildNodes. '+nodeId+' not found');
+
+    }catch(err) {alert('Error in XTree.GetChildNodes '+ err.message);}
   end;
+
+  result:=nodes;
+end;
+
+function TXTree.NumChildNodes(nodeid:String):integer;
+var
+  nodes:TStringArray;
+  num:integer;
+begin
+  nodes:=self.GetChildNodes(nodeId);
+  num:=length(nodes);
+  result:=num;
+end;
+
+function TXTree.GetParentOfNode(nodeid:String):String;
+var
+  ParentId:String;
+begin
+asm
+  var ob=document.getElementById(nodeid);
+  //alert('selected='+SelectedNodeId);
+  // expected to be a SUMMARY element
+  // parent will be a DETAILS element
+  // parent will be a DIV element
+  // parent will be the actual node parent - another DETAILS element
+  if (ob.tagName=='SUMMARY') {ob=ob.parentNode;}
+  if (ob.tagName=='DETAILS') {
+    ob=ob.parentNode;
+    if (ob.tagName=='DIV') {ob=ob.parentNode;}
+    ParentId=ob.id;
+  }
+end;
+  result:=ParentId;
+end;
+
+
+function TXTree.TextOfNode(nodeId:String):String;
+var
+  str:string;
+begin
+  asm
+    //alert('GetChildNodes for '+nodeId);
+    try {
+    var ob = document.getElementById(nodeId);  //nodeId should be a 'DETAILS' node
+    if (ob!=null) {
+      var summNode=ob.children[0];
+      str=summNode.innerHTML;
+    }
+    }catch(err) {alert('Error in XTree.GetChildNodes '+ err.message);}
+  end;
+  result:=str;
 end;
 
 function TXTree.BuildTreeDataString:String;
@@ -1441,7 +1807,8 @@ begin
   str:='';
   asm
     //alert('treedata for '+this.NodeName);
-    var ob = document.getElementById(this.NodeName+'ContentsScroll');  // the tree nodes top container
+ //   var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsScroll');  // the tree nodes top container
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Node');  // the tree nodes top container
     if (ob!=null) {
             function fetchChildren(obj,str) {
               //alert('fetchChildren of '+obj.id+' tag='+obj.tagName);
@@ -1473,22 +1840,12 @@ begin
   result:=str;
 end;
 
-procedure TXTree.SetSelectedNodeId(AValue:string);
-begin
-  fSelectedNodeId:=AValue;
-  //showmessage('SetSelectedNodeId Tree='+self.NodeName+' Id='+AValue);
-  if AValue<>'' then
-  begin
-     self.SelectTreeNodeById(AValue);
-  end;
-end;
-
 procedure TXTree.SetTreeWidth(AValue:string);
 begin
   //showmessage('tree width='+AValue);
   myNode.SetAttributeValue('TreeWidth',AValue);
   asm
-  var ob = document.getElementById(this.NodeName);
+  var ob = document.getElementById(this.NameSpace+this.NodeName);
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
 end;
@@ -1497,13 +1854,54 @@ procedure TXTree.SetTreeHeight(AValue:string);
 begin
   myNode.SetAttributeValue('TreeHeight',AValue);
   asm
-  var ob = document.getElementById(this.NodeName);
+  var ob = document.getElementById(this.NameSpace+this.NodeName);
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
   end;
 end;
 
+procedure TXTree.SetNodeText(nodeid,newtext:String);
+begin
+  asm
+  var ob = document.getElementById(nodeid);     // should be a SUMMARY element
+  ob.innerHTML=newtext;
+  end;
+  self.TreeData:=self.buildTreeDataString;
+end;
 
 {$endif}
+
+procedure TXTree.SetSelectedNodeId(AValue:string);
+var
+  nodeId:String;
+  nodeText:String;
+  {$ifndef JScript}
+  ANode:TTreeNode;
+  {$endif}
+begin
+  nodeId:=AValue;
+  {$ifndef JScript}
+  ANode:=TmyTreeView(self.myControl).FindNodeById(nodeId);
+  nodeText:=ANode.Text;
+  {$else}
+  // make sure the id is a SUMMARY element.
+  // (might send in a DETAILS id.  SUMMARY is first child of DETAILS)
+  asm
+    var ob=document.getElementById(nodeId);
+    if (ob.tagName=='DETAILS') {
+      ob=ob.getElementsByTagName('SUMMARY')[0];
+      nodeId=ob.id;
+      }
+    nodeText=ob.innerHTML;
+  end;
+  {$endif}
+  fSelectedNodeId:=nodeId;
+  myNode.SetAttributeValue('SelectedNodeText',nodeText);
+  //showmessage('SetSelectedNodeId Tree='+self.NodeName+' Id='+nodeId);
+  if nodeId<>'' then
+  begin
+     self.SelectTreeNodeById(nodeId);
+  end;
+end;
 
 procedure TXTree.DeSelectNode;
 var
@@ -1513,24 +1911,24 @@ begin
   TTreeView(myControl).Selected:=nil;
   {$else}
   normalColor:=self.BgColor;
-  deselectNodeChildren(self.NodeName,normalColor);
+  deselectNodeChildren(self.NameSpace+self.NodeName,normalColor);
   {$endif}
 end;
 
 
-procedure TXTree.InsertNewSiblingNode(NodeText:String);
+function TXTree.InsertNewSiblingNode(NodeText:String):String;
 // insert new sibling with the selected node
 {$ifndef JScript}
 var
   myTree:TmyTreeView;
 begin
+  result:='';
   myTree:=TmyTreeView(self.myControl);
   if myTree.Selected<>nil then
   begin
     if myTree.Selected<>myTree.Items[0] then
     begin
       myTree.Selected:=myTree.Items.Add(myTree.Selected,NodeText);    //add new node as sibling
-      //self.TreeData:=myTree.buildTreeDataString(myTree.Items[0],'');
       self.TreeData:=self.buildTreeDataString;
     end
     else
@@ -1542,20 +1940,25 @@ begin
 var
   localSelectedNodeId,tmp:String;
   localDraggable:Boolean;
+  newnodeid:String;
 begin
   localSelectedNodeId :=self.SelectedNodeId;
   localDraggable:=self.Draggable;
+  result:='';
   if localSelectedNodeId<>'' then
   begin
     //showmessage('InsertNewSiblingNode.  SelectedNodeId='+localSelectedNodeId);
     asm
-    //  alert('WrapperNodeId='+this.NodeName+' localSelectedNodeId='+localSelectedNodeId+' this.SelectedNodeId='+this.SelectedNodeId);  //!!!! why is this.SelectedNodeId undefined??
+    //alert('WrapperNodeId='+this.NodeName+' localSelectedNodeId='+localSelectedNodeId+' this.SelectedNodeId='+this.SelectedNodeId);  //!!!! why is this.SelectedNodeId undefined??
       var ob = document.getElementById(localSelectedNodeId);
       // find parent of selected node
-      var parentnode=pas.HTMLUtils.getParentByTagName(this.NodeName,ob.parentNode,'details');
+      var parentnode=pas.HTMLUtils.getParentByTagName(this.NameSpace+this.NodeName,ob.parentNode,'details');
       if (parentnode!=null) {
          //alert('found parent '+parentnode.id+' (tag is '+parentnode.tagName+')');
-         pas.XTree.addnode(this.NodeName,parentnode.id,NodeText,(NodeText+'Node'),1,0,this.BgColor,null,localDraggable);
+         var idx=this.NumChildNodes(parentnode.id);
+         newnodeid=pas.XTree.addnode(this.NodeName,this.NameSpace,parentnode.id,NodeText,
+                                       (parentnode.id+'_'+(idx)),           //!! need the same id that will be produced when tree is rebuilt
+                                       1,0,this.BgColor,null,localDraggable);
       }
         else {alert('parentnode not found');}
     end;
@@ -1563,19 +1966,22 @@ begin
   end
   else
      showmessage('Please select a tree node first');
+
+  result:=newnodeid;
 {$endif}
 end;
 
-procedure TXTree.InsertNewChildNode(NodeText:String);
+function TXTree.InsertNewChildNode(NodeText:String):String;
 {$ifndef JScript}
 var
   myTree:TmyTreeView;
 begin
+  result:='';
   myTree:=TmyTreeView(self.myControl);
   if myTree.Selected<>nil then
   begin
     myTree.Selected:=myTree.Items.AddChild(myTree.Selected,NodeText);    //add new node as child
-    //self.TreeData:=myTree.buildTreeDataString(myTree.Items[0],'');
+    result:=NodeText;//!!!! need a unique nodeid here
     self.TreeData:=self.buildTreeDataString;
   end
   else
@@ -1584,22 +1990,36 @@ begin
 var
   localSelectedNodeId:String;
   localDraggable:Boolean;
+  newnodeid:String;
 begin
   localSelectedNodeId :=self.SelectedNodeId;
   localDraggable:=self.Draggable;
+  newnodeid:='';
   if localSelectedNodeId<>'' then
   begin
-    //showmessage('InsertNewSiblingNode.  SelectedNodeId='+localSelectedNodeId);
+    //if NodeText='StyleRule' then showmessage('InsertNewChildNode.  NodeText='+NodeText+' SelectedNodeId='+localSelectedNodeId);
     asm
-      //alert('WrapperNodeId='+this.NodeName+' localSelectedNodeId='+localSelectedNodeId+' this.SelectedNodeId='+this.SelectedNodeId);
+      //if (NodeText=='StyleRule') {alert('WrapperNodeId='+this.NodeName+' localSelectedNodeId='+localSelectedNodeId);}
       var ob = document.getElementById(localSelectedNodeId);
-      //alert('adding under parent '+ob.parentNode.id+' (tag is '+ob.parentNode.tagName+')');
-      pas.XTree.addnode(this.NodeName,ob.parentNode.id,NodeText,(NodeText+'Node'),1,0,this.BgColor,null,localDraggable);
+      if (ob!=null) {
+        if (ob.tagName=='SUMMARY') {ob = ob.parentNode;}  // ob should be the DETAILS element for this node.
+        // find existing child nodes
+        var idx=this.NumChildNodes(ob.id);
+        //if (NodeText=='StyleRule') {alert('adding under parent '+ob.id+' (tag is '+ob.tagName+')');}
+        newnodeid=pas.XTree.addnode(this.NodeName,this.NameSpace,ob.id,NodeText,
+                                    (ob.id+'_'+(idx)),                        //!! need the same id that will be produced when tree is rebuilt
+                                    1,0,this.BgColor,null,localDraggable);
+        ob=document.getElementById(newnodeid);
+        if (ob.tagName=='SUMMARY') {ob = ob.parentNode;}  // ob should be the DETAILS element for this node.
+        newnodeid=ob.id;
+      }
+      else {alert('node '+localSelectedNodeId+' not found'); }
     end;
     self.TreeData:=self.buildTreeDataString;
   end
   else
      showmessage('Please select a tree node first');
+  result:=newnodeid;    //return the id of the new DETAILS element
 {$endif}
 end;
 
@@ -1632,7 +2052,7 @@ begin
     asm
       var ob = document.getElementById(localSelectedNodeId);
       // delete the HTML node that is the DIV parent of the selected node
-      var divp = pas.HTMLUtils.getParentByTagName(this.NodeName,ob,'div');
+      var divp = pas.HTMLUtils.getParentByTagName(this.NameSpace+this.NodeName,ob,'div');
       divp.remove();
     end;
     self.TreeData:=self.buildTreeDataString;
@@ -1642,7 +2062,7 @@ begin
 {$endif}
 end;
 
-procedure TXTree.MoveNode(SourceNodeText,DestNodeText:String);
+procedure TXTree.MoveNode(SourceNodeText,DestNodeText:String);     //!!!! do this with nodeId...
 var
   {$ifndef JScript}
   Src,dst,parentNode,newNode:TTreeNode;
@@ -1665,7 +2085,7 @@ begin
     parentNode:=dst.Parent;
   myTree.InsertMarkType:=tvimNone;
 
-  newNode:=myTree.AddNewNode(myTree.Items,parentnode,Src.Text);
+  newNode:=myTree.AddNewNode(myTree.Items,parentnode,Src.Text,self.myNode.NodeName+'Node');
   myTree.Items.Delete(Src);
 
 {$else}
@@ -1713,11 +2133,37 @@ begin
   else
     result:=0;
 end;
+function TXTree.GetSelectedTextPath:String;
+var
+  pth:string;
+  localSelectedNodeId,tmp:String;
+begin
+  pth:='';
+  {$ifndef JScript}
+  if TmyTreeView(myControl).Selected<>nil then
+  begin
+    //pth:=TmyTreeView(myControl).Selected.GetTextPath;
+    pth:=TmyTreeView(myControl).BuildExpandedText(TmyTreeView(myControl).Selected);
+  end;
+  {$else}
+  // build the text path from the defined nodes
+    localSelectedNodeId :=self.SelectedNodeId;
+
+    if localSelectedNodeId<>'' then
+    begin
+ //     showmessage('GetSelectedTextPath.  SelectedNodeId='+localSelectedNodeId);
+      pth:=GetPathToNode(self.NodeName,localSelectedNodeId);
+    end;
+  {$endif}
+
+  myNode.setAttributeValue('SelectedTextPath',pth,'String');
+  result:=pth;
+end;
 
 procedure TXTree.SetTreeData(NodeTreeString:String);
 var
   SelectedId:string;
-  myNodeName:String;
+  myNodeName,myNameSpace:String;
   NodeHintFunc:TTreeNodeHint;
   localDraggable:Boolean;
   openlvl:integer;
@@ -1725,22 +2171,33 @@ begin
   myNode.setAttributeValue('TreeData',NodeTreeString,'TreeString');
   openlvl:=self.OpenToLevel;
   {$ifndef JScript}
-  TmyTreeView(myControl).PopulateMeFromJSONData(NodeTreeString);
+  TmyTreeView(myControl).PopulateMeFromJSONData(NodeTreeString,myNode.NodeName+'Node',openlvl);
   {$else}
     localDraggable:=self.Draggable;
     selectedId:=self.SelectedNodeId;
     myNodeName:=self.NodeName;
-    clearTreeNode(myNodeName+'ContentsScroll');
+    myNameSpace:=self.NameSpace;
+ //   clearTreeNode(myNameSpace+myNodeName+'ContentsScroll');
+    clearTreeNode(myNameSpace+myNodeName+'Node');
     NodeHintFunc:=TXTree(MyNode).TreeNodeHintFunc;
     asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    try {
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
-      var TreeName = myNodeName+'ContentsScroll';
+      //var TreeName = myNameSpace+myNodeName+'ContentsScroll';
+      var ParentName = myNameSpace+myNodeName+'Node';
       var localNodeTree =JSON.parse(NodeTreeString);
-      pas.XTree.addnode(myNodeName,TreeName,localNodeTree,(TreeName+'Node'),
+      //alert('localNodeTree ='+localNodeTree);
+      //alert('SetTreeData '+TreeName+' Namespace='+myNameSpace);
+      pas.XTree.addnode(myNodeName,myNameSpace,ParentName,localNodeTree,
+                        ParentName+'0',
                         openlvl,0,this.BgColor,NodeHintFunc,localDraggable) ;
     }
-  end;
+    }
+    catch(err) {  alert("Error in TXTree.SetTreeData: "+ err.message); };
+
+    end;
+    self.HTMLClasses:=self.HTMLClasses;
   {$endif}
   self.SelectedNodeText:='';
 end;
@@ -1752,7 +2209,7 @@ begin
   TmyTreeView(myControl).ReadOnly:=AValue;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       ob.readOnly = AValue  }
   end;
@@ -1769,7 +2226,7 @@ begin
     TmyTreeView(myControl).DragMode:=dmManual;
   {$else}
   asm
-    var ob = document.getElementById(this.NodeName+'Contents');
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       //draggable attribute must be set for all the tree nodes (with summary tag)
       pas.XTree.SetDraggableAttribute(ob.id, AValue.toString());
@@ -1779,14 +2236,25 @@ begin
 end;
 
 procedure TXTree.SetOpenToLevel(AValue:Integer);
+var
+  oldval:integer;
 begin
+  oldval:=self.OpenToLevel;
   myNode.SetAttributeValue('OpenToLevel',IntToStr(AValue),'Integer');
-  // takes effect next time the tree is rebuilt
+  {$ifndef JScript}
+  TMyTreeView(self.myControl).ExpandTreeNodes(AValue);
+  {$else}
+  // takes effect next time the tree is rebuilt   ?!!!!
+  if oldval<>AValue then
+  begin
+    self.TreeData:=self.TreeData;
+  end;
+  {$endif}
 end;
 
 procedure TXTree.SetSelectedNodeText(AValue:string);
 var
-  NodeId:String;
+  NodeId,pth:String;
 begin
   if AValue<>self.SelectedNodeText then
   begin
@@ -1794,11 +2262,13 @@ begin
     if AValue<>'' then
     begin
       {$ifndef JScript}
-      self.SelectTreeNodeByText(AValue);                   // selects node with this text....!! node texts must be unique
+      self.SelectTreeNodeByText(AValue);                   // selects node with this text....!!!! node texts must be unique
       {$else}
       NodeId:=NodeIdFromText(self,AValue);
-    //  showmessage('SetSelectedNodeText '+AValue+'   setting SelectedNodeId to '+NodeId);
+      //showmessage('SetSelectedNodeText '+AValue+'   setting SelectedNodeId to '+NodeId);
       self.SelectedNodeId:=NodeId;
+      pth:=self.SelectedTextPath;   // this sets the value for attribute 'SelectedTextPath'
+
       {$endif}
     end;
   end;
@@ -1807,9 +2277,7 @@ end;
 
 begin
   // this is the set of node attributes that each XHBox instance will have.
-  AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
+  AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'TreeWidth','String','200','',false);
   AddDefaultAttribute(myDefaultAttribs,'TreeHeight','String','150','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','False','',false);
@@ -1820,6 +2288,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'ReadOnly','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'Draggable','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'SelectedNodeText','String','','',false);
+  AddDefaultAttribute(myDefaultAttribs,'SelectedTextPath','String','','',true,false);
   AddDefaultAttribute(myDefaultAttribs,'OpenToLevel','Integer','1','',false);
   AddDefaultAttribute(myDefaultAttribs,'TreeData','Integer',ExampleNodeTree,'',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
@@ -1830,6 +2299,7 @@ begin
   {$ifndef JScript}
   RegisterClass(TXTree);
   AddNodeFuncLookup(MyNodeType,@CreateWidget);
+ // TreeNodeIdCounter:=0;
 {$else}
   AddNodeFuncLookup(MyNodeType,@CreateinterfaceObj,@CreateWidget);
   {$endif}
