@@ -1,0 +1,23486 @@
+﻿var pas = {};
+
+var rtl = {
+
+  version: 10101,
+
+  quiet: false,
+  debug_load_units: false,
+  debug_rtti: false,
+
+  debug: function(){
+    if (rtl.quiet || !console || !console.log) return;
+    console.log(arguments);
+  },
+
+  error: function(s){
+    rtl.debug('Error: ',s);
+    throw s;
+  },
+
+  warn: function(s){
+    rtl.debug('Warn: ',s);
+  },
+
+  checkVersion: function(v){
+    if (rtl.version != v) throw "expected rtl version "+v+", but found "+rtl.version;
+  },
+
+  hasString: function(s){
+    return rtl.isString(s) && (s.length>0);
+  },
+
+  isArray: function(a) {
+    return Array.isArray(a);
+  },
+
+  isFunction: function(f){
+    return typeof(f)==="function";
+  },
+
+  isModule: function(m){
+    return rtl.isObject(m) && rtl.hasString(m.$name) && (pas[m.$name]===m);
+  },
+
+  isImplementation: function(m){
+    return rtl.isObject(m) && rtl.isModule(m.$module) && (m.$module.$impl===m);
+  },
+
+  isNumber: function(n){
+    return typeof(n)==="number";
+  },
+
+  isObject: function(o){
+    var s=typeof(o);
+    return (typeof(o)==="object") && (o!=null);
+  },
+
+  isString: function(s){
+    return typeof(s)==="string";
+  },
+
+  getNumber: function(n){
+    return typeof(n)==="number"?n:NaN;
+  },
+
+  getChar: function(c){
+    return ((typeof(c)==="string") && (c.length===1)) ? c : "";
+  },
+
+  getObject: function(o){
+    return ((typeof(o)==="object") || (typeof(o)==='function')) ? o : null;
+  },
+
+  isPasClass: function(type){
+    return (rtl.isObject(type) && type.hasOwnProperty('$classname') && rtl.isObject(type.$module));
+  },
+
+  isPasClassInstance: function(type){
+    return (rtl.isObject(type) && rtl.isPasClass(type.$class));
+  },
+
+  hexStr: function(n,digits){
+    return ("000000000000000"+n.toString(16).toUpperCase()).slice(-digits);
+  },
+
+  m_loading: 0,
+  m_loading_intf: 1,
+  m_intf_loaded: 2,
+  m_loading_impl: 3, // loading all used unit
+  m_initializing: 4, // running initialization
+  m_initialized: 5,
+
+  module: function(module_name, intfuseslist, intfcode, impluseslist, implcode){
+    if (rtl.debug_load_units) rtl.debug('rtl.module name="'+module_name+'" intfuses='+intfuseslist+' impluses='+impluseslist+' hasimplcode='+rtl.isFunction(implcode));
+    if (!rtl.hasString(module_name)) rtl.error('invalid module name "'+module_name+'"');
+    if (!rtl.isArray(intfuseslist)) rtl.error('invalid interface useslist of "'+module_name+'"');
+    if (!rtl.isFunction(intfcode)) rtl.error('invalid interface code of "'+module_name+'"');
+    if (!(impluseslist==undefined) && !rtl.isArray(impluseslist)) rtl.error('invalid implementation useslist of "'+module_name+'"');
+    if (!(implcode==undefined) && !rtl.isFunction(implcode)) rtl.error('invalid implementation code of "'+module_name+'"');
+
+    if (pas[module_name])
+      rtl.error('module "'+module_name+'" is already registered');
+
+    var module = pas[module_name] = {
+      $name: module_name,
+      $intfuseslist: intfuseslist,
+      $impluseslist: impluseslist,
+      $state: rtl.m_loading,
+      $intfcode: intfcode,
+      $implcode: implcode,
+      $impl: null,
+      $rtti: Object.create(rtl.tSectionRTTI)
+    };
+    module.$rtti.$module = module;
+    if (implcode) module.$impl = {
+      $module: module,
+      $rtti: module.$rtti
+    };
+  },
+
+  exitcode: 0,
+
+  run: function(module_name){
+  
+    function doRun(){
+      if (!rtl.hasString(module_name)) module_name='program';
+      if (rtl.debug_load_units) rtl.debug('rtl.run module="'+module_name+'"');
+      rtl.initRTTI();
+      var module = pas[module_name];
+      if (!module) rtl.error('rtl.run module "'+module_name+'" missing');
+      rtl.loadintf(module);
+      rtl.loadimpl(module);
+      if (module_name=='program'){
+        if (rtl.debug_load_units) rtl.debug('running $main');
+        var r = pas.program.$main();
+        if (rtl.isNumber(r)) rtl.exitcode = r;
+      }
+    }
+    
+    if (rtl.showUncaughtExceptions) {
+      try{
+        doRun();
+      } catch(re) {
+        var errMsg = re.hasOwnProperty('$class') ? re.$class.$classname : '';
+	    errMsg +=  ((errMsg) ? ': ' : '') + (re.hasOwnProperty('fMessage') ? re.fMessage : re);
+        alert('Uncaught Exception : '+errMsg);
+        rtl.exitCode = 216;
+      }
+    } else {
+      doRun();
+    }
+    return rtl.exitcode;
+  },
+
+  loadintf: function(module){
+    if (module.$state>rtl.m_loading_intf) return; // already finished
+    if (rtl.debug_load_units) rtl.debug('loadintf: "'+module.$name+'"');
+    if (module.$state===rtl.m_loading_intf)
+      rtl.error('unit cycle detected "'+module.$name+'"');
+    module.$state=rtl.m_loading_intf;
+    // load interfaces of interface useslist
+    rtl.loaduseslist(module,module.$intfuseslist,rtl.loadintf);
+    // run interface
+    if (rtl.debug_load_units) rtl.debug('loadintf: run intf of "'+module.$name+'"');
+    module.$intfcode(module.$intfuseslist);
+    // success
+    module.$state=rtl.m_intf_loaded;
+    // Note: units only used in implementations are not yet loaded (not even their interfaces)
+  },
+
+  loaduseslist: function(module,useslist,f){
+    if (useslist==undefined) return;
+    for (var i in useslist){
+      var unitname=useslist[i];
+      if (rtl.debug_load_units) rtl.debug('loaduseslist of "'+module.$name+'" uses="'+unitname+'"');
+      if (pas[unitname]==undefined)
+        rtl.error('module "'+module.$name+'" misses "'+unitname+'"');
+      f(pas[unitname]);
+    }
+  },
+
+  loadimpl: function(module){
+    if (module.$state>=rtl.m_loading_impl) return; // already processing
+    if (module.$state<rtl.m_intf_loaded) rtl.error('loadimpl: interface not loaded of "'+module.$name+'"');
+    if (rtl.debug_load_units) rtl.debug('loadimpl: load uses of "'+module.$name+'"');
+    module.$state=rtl.m_loading_impl;
+    // load interfaces of implementation useslist
+    rtl.loaduseslist(module,module.$impluseslist,rtl.loadintf);
+    // load implementation of interfaces useslist
+    rtl.loaduseslist(module,module.$intfuseslist,rtl.loadimpl);
+    // load implementation of implementation useslist
+    rtl.loaduseslist(module,module.$impluseslist,rtl.loadimpl);
+    // Note: At this point all interfaces used by this unit are loaded. If
+    //   there are implementation uses cycles some used units might not yet be
+    //   initialized. This is by design.
+    // run implementation
+    if (rtl.debug_load_units) rtl.debug('loadimpl: run impl of "'+module.$name+'"');
+    if (rtl.isFunction(module.$implcode)) module.$implcode(module.$impluseslist);
+    // run initialization
+    if (rtl.debug_load_units) rtl.debug('loadimpl: run init of "'+module.$name+'"');
+    module.$state=rtl.m_initializing;
+    if (rtl.isFunction(module.$init)) module.$init();
+    // unit initialized
+    module.$state=rtl.m_initialized;
+  },
+
+  createCallback: function(scope, fn){
+    var cb;
+    if (typeof(fn)==='string'){
+      cb = function(){
+        return scope[fn].apply(scope,arguments);
+      };
+    } else {
+      cb = function(){
+        return fn.apply(scope,arguments);
+      };
+    };
+    cb.scope = scope;
+    cb.fn = fn;
+    return cb;
+  },
+
+  cloneCallback: function(cb){
+    return rtl.createCallback(cb.scope,cb.fn);
+  },
+
+  eqCallback: function(a,b){
+    // can be a function or a function wrapper
+    if (a==b){
+      return true;
+    } else {
+      return (a!=null) && (b!=null) && (a.fn) && (a.scope===b.scope) && (a.fn==b.fn);
+    }
+  },
+
+  initClass: function(c,parent,name,initfn){
+    parent[name] = c;
+    c.$class = c; // Note: o.$class === Object.getPrototypeOf(o)
+    c.$classname = name;
+    if ((parent.$module) && (parent.$module.$impl===parent)) parent=parent.$module;
+    c.$parent = parent;
+    c.$fullname = parent.$name+'.'+name;
+    if (rtl.isModule(parent)){
+      c.$module = parent;
+      c.$name = name;
+    } else {
+      c.$module = parent.$module;
+      c.$name = parent.name+'.'+name;
+    };
+    // rtti
+    if (rtl.debug_rtti) rtl.debug('initClass '+c.$fullname);
+    var t = c.$module.$rtti.$Class(c.$name,{ "class": c, module: parent });
+    c.$rtti = t;
+    if (rtl.isObject(c.$ancestor)) t.ancestor = c.$ancestor.$rtti;
+    if (!t.ancestor) t.ancestor = null;
+    // init members
+    initfn.call(c);
+  },
+
+  createClass: function(parent,name,ancestor,initfn){
+    // create a normal class,
+    // ancestor must be null or a normal class,
+    // the root ancestor can be an external class
+    var c = null;
+    if (ancestor != null){
+      c = Object.create(ancestor);
+      c.$ancestor = ancestor;
+      // Note:
+      // if root is an "object" then c.$ancestor === Object.getPrototypeOf(c)
+      // if root is a "function" then c.$ancestor === c.__proto__, Object.getPrototypeOf(c) returns the root
+    } else {
+      c = {};
+      c.$create = function(fnname,args){
+        if (args == undefined) args = [];
+        var o = Object.create(this);
+        o.$init();
+        try{
+          o[fnname].apply(o,args);
+          o.AfterConstruction();
+        } catch($e){
+          // do not call BeforeDestruction
+          if (o.Destroy) o.Destroy();
+          o.$final();
+          throw $e;
+        }
+        return o;
+      };
+      c.$destroy = function(fnname){
+        this.BeforeDestruction();
+        if (this[fnname]) this[fnname]();
+        this.$final();
+      };
+    };
+    rtl.initClass(c,parent,name,initfn);
+  },
+
+  createClassExt: function(parent,name,ancestor,newinstancefnname,initfn){
+    // Create a class using an external ancestor.
+    // If newinstancefnname is given, use that function to create the new object.
+    // If exist call BeforeDestruction and AfterConstruction.
+    var c = null;
+    c = Object.create(ancestor);
+    c.$create = function(fnname,args){
+      if (args == undefined) args = [];
+      var o = null;
+      if (newinstancefnname.length>0){
+        o = this[newinstancefnname](fnname,args);
+      } else {
+        o = Object.create(this);
+      }
+      if (o.$init) o.$init();
+      try{
+        o[fnname].apply(o,args);
+        if (o.AfterConstruction) o.AfterConstruction();
+      } catch($e){
+        // do not call BeforeDestruction
+        if (o.Destroy) o.Destroy();
+        if (o.$final) this.$final();
+        throw $e;
+      }
+      return o;
+    };
+    c.$destroy = function(fnname){
+      if (this.BeforeDestruction) this.BeforeDestruction();
+      if (this[fnname]) this[fnname]();
+      if (this.$final) this.$final();
+    };
+    rtl.initClass(c,parent,name,initfn);
+  },
+
+  tObjectDestroy: "Destroy",
+
+  free: function(obj,name){
+    if (obj[name]==null) return;
+    obj[name].$destroy(rtl.tObjectDestroy);
+    obj[name]=null;
+  },
+
+  freeLoc: function(obj){
+    if (obj==null) return;
+    obj.$destroy(rtl.tObjectDestroy);
+    return null;
+  },
+
+  is: function(instance,type){
+    return type.isPrototypeOf(instance) || (instance===type);
+  },
+
+  isExt: function(instance,type,mode){
+    // mode===1 means instance must be a Pascal class instance
+    // mode===2 means instance must be a Pascal class
+    // Notes:
+    // isPrototypeOf and instanceof return false on equal
+    // isPrototypeOf does not work for Date.isPrototypeOf(new Date())
+    //   so if isPrototypeOf is false test with instanceof
+    // instanceof needs a function on right side
+    if (instance == null) return false; // Note: ==null checks for undefined too
+    if ((typeof(type) !== 'object') && (typeof(type) !== 'function')) return false;
+    if (instance === type){
+      if (mode===1) return false;
+      if (mode===2) return rtl.isPasClass(instance);
+      return true;
+    }
+    if (type.isPrototypeOf && type.isPrototypeOf(instance)){
+      if (mode===1) return rtl.isPasClassInstance(instance);
+      if (mode===2) return rtl.isPasClass(instance);
+      return true;
+    }
+    if ((typeof type == 'function') && (instance instanceof type)) return true;
+    return false;
+  },
+
+  Exception: null,
+  EInvalidCast: null,
+  EAbstractError: null,
+  ERangeError: null,
+
+  raiseE: function(typename){
+    var t = rtl[typename];
+    if (t==null){
+      var mod = pas.SysUtils;
+      if (!mod) mod = pas.sysutils;
+      if (mod){
+        t = mod[typename];
+        if (!t) t = mod[typename.toLowerCase()];
+        if (!t) t = mod['Exception'];
+        if (!t) t = mod['exception'];
+      }
+    }
+    if (t){
+      if (t.Create){
+        throw t.$create("Create");
+      } else if (t.create){
+        throw t.$create("create");
+      }
+    }
+    if (typename === "EInvalidCast") throw "invalid type cast";
+    if (typename === "EAbstractError") throw "Abstract method called";
+    if (typename === "ERangeError") throw "range error";
+    throw typename;
+  },
+
+  as: function(instance,type){
+    if((instance === null) || rtl.is(instance,type)) return instance;
+    rtl.raiseE("EInvalidCast");
+  },
+
+  asExt: function(instance,type,mode){
+    if((instance === null) || rtl.isExt(instance,type,mode)) return instance;
+    rtl.raiseE("EInvalidCast");
+  },
+
+  createInterface: function(module, name, guid, fnnames, ancestor, initfn){
+    //console.log('createInterface name="'+name+'" guid="'+guid+'" names='+fnnames);
+    var i = ancestor?Object.create(ancestor):{};
+    module[name] = i;
+    i.$module = module;
+    i.$name = name;
+    i.$fullname = module.$name+'.'+name;
+    i.$guid = guid;
+    i.$guidr = null;
+    i.$names = fnnames?fnnames:[];
+    if (rtl.isFunction(initfn)){
+      // rtti
+      if (rtl.debug_rtti) rtl.debug('createInterface '+i.$fullname);
+      var t = i.$module.$rtti.$Interface(name,{ "interface": i, module: module });
+      i.$rtti = t;
+      if (ancestor) t.ancestor = ancestor.$rtti;
+      if (!t.ancestor) t.ancestor = null;
+      initfn.call(i);
+    }
+    return i;
+  },
+
+  strToGUIDR: function(s,g){
+    var p = 0;
+    function n(l){
+      var h = s.substr(p,l);
+      p+=l;
+      return parseInt(h,16);
+    }
+    p+=1; // skip {
+    g.D1 = n(8);
+    p+=1; // skip -
+    g.D2 = n(4);
+    p+=1; // skip -
+    g.D3 = n(4);
+    p+=1; // skip -
+    if (!g.D4) g.D4=[];
+    g.D4[0] = n(2);
+    g.D4[1] = n(2);
+    p+=1; // skip -
+    for(var i=2; i<8; i++) g.D4[i] = n(2);
+    return g;
+  },
+
+  guidrToStr: function(g){
+    if (g.$intf) return g.$intf.$guid;
+    var h = rtl.hexStr;
+    var s='{'+h(g.D1,8)+'-'+h(g.D2,4)+'-'+h(g.D3,4)+'-'+h(g.D4[0],2)+h(g.D4[1],2)+'-';
+    for (var i=2; i<8; i++) s+=h(g.D4[i],2);
+    s+='}';
+    return s;
+  },
+
+  createTGUID: function(guid){
+    var TGuid = (pas.System)?pas.System.TGuid:pas.system.tguid;
+    var g = rtl.strToGUIDR(guid,new TGuid());
+    return g;
+  },
+
+  getIntfGUIDR: function(intfTypeOrVar){
+    if (!intfTypeOrVar) return null;
+    if (!intfTypeOrVar.$guidr){
+      var g = rtl.createTGUID(intfTypeOrVar.$guid);
+      if (!intfTypeOrVar.hasOwnProperty('$guid')) intfTypeOrVar = Object.getPrototypeOf(intfTypeOrVar);
+      g.$intf = intfTypeOrVar;
+      intfTypeOrVar.$guidr = g;
+    }
+    return intfTypeOrVar.$guidr;
+  },
+
+  addIntf: function (aclass, intf, map){
+    function jmp(fn){
+      if (typeof(fn)==="function"){
+        return function(){ return fn.apply(this.$o,arguments); };
+      } else {
+        return function(){ rtl.raiseE('EAbstractError'); };
+      }
+    }
+    if(!map) map = {};
+    var t = intf;
+    var item = Object.create(t);
+    if (!aclass.hasOwnProperty('$intfmaps')) aclass.$intfmaps = {};
+    aclass.$intfmaps[intf.$guid] = item;
+    do{
+      var names = t.$names;
+      if (!names) break;
+      for (var i=0; i<names.length; i++){
+        var intfname = names[i];
+        var fnname = map[intfname];
+        if (!fnname) fnname = intfname;
+        //console.log('addIntf: intftype='+t.$name+' index='+i+' intfname="'+intfname+'" fnname="'+fnname+'" old='+typeof(item[intfname]));
+        item[intfname] = jmp(aclass[fnname]);
+      }
+      t = Object.getPrototypeOf(t);
+    }while(t!=null);
+  },
+
+  getIntfG: function (obj, guid, query){
+    if (!obj) return null;
+    //console.log('getIntfG: obj='+obj.$classname+' guid='+guid+' query='+query);
+    // search
+    var maps = obj.$intfmaps;
+    if (!maps) return null;
+    var item = maps[guid];
+    if (!item) return null;
+    // check delegation
+    //console.log('getIntfG: obj='+obj.$classname+' guid='+guid+' query='+query+' item='+typeof(item));
+    if (typeof item === 'function') return item.call(obj); // delegate. Note: COM contains _AddRef
+    // check cache
+    var intf = null;
+    if (obj.$interfaces){
+      intf = obj.$interfaces[guid];
+      //console.log('getIntfG: obj='+obj.$classname+' guid='+guid+' cache='+typeof(intf));
+    }
+    if (!intf){ // intf can be undefined!
+      intf = Object.create(item);
+      intf.$o = obj;
+      if (!obj.$interfaces) obj.$interfaces = {};
+      obj.$interfaces[guid] = intf;
+    }
+    if (typeof(query)==='object'){
+      // called by queryIntfT
+      var o = null;
+      if (intf.QueryInterface(rtl.getIntfGUIDR(query),
+          {get:function(){ return o; }, set:function(v){ o=v; }}) === 0){
+        return o;
+      } else {
+        return null;
+      }
+    } else if(query===2){
+      // called by TObject.GetInterfaceByStr
+      if (intf.$kind === 'com') intf._AddRef();
+    }
+    return intf;
+  },
+
+  getIntfT: function(obj,intftype){
+    return rtl.getIntfG(obj,intftype.$guid);
+  },
+
+  queryIntfT: function(obj,intftype){
+    return rtl.getIntfG(obj,intftype.$guid,intftype);
+  },
+
+  queryIntfIsT: function(obj,intftype){
+    var i = rtl.queryIntfG(obj,intftype.$guid);
+    if (!i) return false;
+    if (i.$kind === 'com') i._Release();
+    return true;
+  },
+
+  asIntfT: function (obj,intftype){
+    var i = rtl.getIntfG(obj,intftype.$guid);
+    if (i!==null) return i;
+    rtl.raiseEInvalidCast();
+  },
+
+  intfIsClass: function(intf,classtype){
+    return (intf!=null) && (rtl.is(intf.$o,classtype));
+  },
+
+  intfAsClass: function(intf,classtype){
+    if (intf==null) return null;
+    return rtl.as(intf.$o,classtype);
+  },
+
+  intfToClass: function(intf,classtype){
+    if ((intf!==null) && rtl.is(intf.$o,classtype)) return intf.$o;
+    return null;
+  },
+
+  // interface reference counting
+  intfRefs: { // base object for temporary interface variables
+    ref: function(id,intf){
+      // called for temporary interface references needing delayed release
+      var old = this[id];
+      //console.log('rtl.intfRefs.ref: id='+id+' old="'+(old?old.$name:'null')+'" intf="'+(intf?intf.$name:'null')+' $o='+(intf?intf.$o:'null'));
+      if (old){
+        // called again, e.g. in a loop
+        delete this[id];
+        old._Release(); // may fail
+      }
+      this[id]=intf;
+      return intf;
+    },
+    free: function(){
+      //console.log('rtl.intfRefs.free...');
+      for (var id in this){
+        if (this.hasOwnProperty(id)){
+          //console.log('rtl.intfRefs.free: id='+id+' '+this[id].$name+' $o='+this[id].$o.$classname);
+          this[id]._Release();
+        }
+      }
+    }
+  },
+
+  createIntfRefs: function(){
+    //console.log('rtl.createIntfRefs');
+    return Object.create(rtl.intfRefs);
+  },
+
+  setIntfP: function(path,name,value,skipAddRef){
+    var old = path[name];
+    //console.log('rtl.setIntfP path='+path+' name='+name+' old="'+(old?old.$name:'null')+'" value="'+(value?value.$name:'null')+'"');
+    if (old === value) return;
+    if (old !== null){
+      path[name]=null;
+      old._Release();
+    }
+    if (value !== null){
+      if (!skipAddRef) value._AddRef();
+      path[name]=value;
+    }
+  },
+
+  setIntfL: function(old,value,skipAddRef){
+    //console.log('rtl.setIntfL old="'+(old?old.$name:'null')+'" value="'+(value?value.$name:'null')+'"');
+    if (old !== value){
+      if (value!==null){
+        if (!skipAddRef) value._AddRef();
+      }
+      if (old!==null){
+        old._Release();  // Release after AddRef, to avoid double Release if Release creates an exception
+      }
+    } else if (skipAddRef){
+      if (old!==null){
+        old._Release();  // value has an AddRef
+      }
+    }
+    return value;
+  },
+
+  _AddRef: function(intf){
+    //if (intf) console.log('rtl._AddRef intf="'+(intf?intf.$name:'null')+'"');
+    if (intf) intf._AddRef();
+    return intf;
+  },
+
+  _Release: function(intf){
+    //if (intf) console.log('rtl._Release intf="'+(intf?intf.$name:'null')+'"');
+    if (intf) intf._Release();
+    return intf;
+  },
+
+  checkMethodCall: function(obj,type){
+    if (rtl.isObject(obj) && rtl.is(obj,type)) return;
+    rtl.raiseE("EInvalidCast");
+  },
+
+  rc: function(i,minval,maxval){
+    // range check integer
+    if ((Math.floor(i)===i) && (i>=minval) && (i<=maxval)) return i;
+    rtl.raiseE('ERangeError');
+  },
+
+  rcc: function(c,minval,maxval){
+    // range check char
+    if ((typeof(c)==='string') && (c.length===1)){
+      var i = c.charCodeAt(0);
+      if ((i>=minval) && (i<=maxval)) return c;
+    }
+    rtl.raiseE('ERangeError');
+  },
+
+  rcSetCharAt: function(s,index,c){
+    // range check setCharAt
+    if ((typeof(s)!=='string') || (index<0) || (index>=s.length)) rtl.raiseE('ERangeError');
+    return rtl.setCharAt(s,index,c);
+  },
+
+  rcCharAt: function(s,index){
+    // range check charAt
+    if ((typeof(s)!=='string') || (index<0) || (index>=s.length)) rtl.raiseE('ERangeError');
+    return s.charAt(index);
+  },
+
+  rcArrR: function(arr,index){
+    // range check read array
+    if (Array.isArray(arr) && (typeof(index)==='number') && (index>=0) && (index<arr.length)){
+      if (arguments.length>2){
+        // arr,index1,index2,...
+        arr=arr[index];
+        for (var i=2; i<arguments.length; i++) arr=rtl.rcArrR(arr,arguments[i]);
+        return arr;
+      }
+      return arr[index];
+    }
+    rtl.raiseE('ERangeError');
+  },
+
+  rcArrW: function(arr,index,value){
+    // range check write array
+    // arr,index1,index2,...,value
+    for (var i=3; i<arguments.length; i++){
+      arr=rtl.rcArrR(arr,index);
+      index=arguments[i-1];
+      value=arguments[i];
+    }
+    if (Array.isArray(arr) && (typeof(index)==='number') && (index>=0) && (index<arr.length)){
+      return arr[index]=value;
+    }
+    rtl.raiseE('ERangeError');
+  },
+
+  length: function(arr){
+    return (arr == null) ? 0 : arr.length;
+  },
+
+  arraySetLength: function(arr,defaultvalue,newlength){
+    // multi dim: (arr,defaultvalue,dim1,dim2,...)
+    if (arr == null) arr = [];
+    var p = arguments;
+    function setLength(a,argNo){
+      var oldlen = a.length;
+      var newlen = p[argNo];
+      if (oldlen!==newlength){
+        a.length = newlength;
+        if (argNo === p.length-1){
+          if (rtl.isArray(defaultvalue)){
+            for (var i=oldlen; i<newlen; i++) a[i]=[]; // nested array
+          } else if (rtl.isFunction(defaultvalue)){
+            for (var i=oldlen; i<newlen; i++) a[i]=new defaultvalue(); // e.g. record
+          } else if (rtl.isObject(defaultvalue)) {
+            for (var i=oldlen; i<newlen; i++) a[i]={}; // e.g. set
+          } else {
+            for (var i=oldlen; i<newlen; i++) a[i]=defaultvalue;
+          }
+        } else {
+          for (var i=oldlen; i<newlen; i++) a[i]=[]; // nested array
+        }
+      }
+      if (argNo < p.length-1){
+        // multi argNo
+        for (var i=0; i<newlen; i++) a[i]=setLength(a[i],argNo+1);
+      }
+      return a;
+    }
+    return setLength(arr,2);
+  },
+
+  arrayEq: function(a,b){
+    if (a===null) return b===null;
+    if (b===null) return false;
+    if (a.length!==b.length) return false;
+    for (var i=0; i<a.length; i++) if (a[i]!==b[i]) return false;
+    return true;
+  },
+
+  arrayClone: function(type,src,srcpos,endpos,dst,dstpos){
+    // type: 0 for references, "refset" for calling refSet(), a function for new type()
+    // src must not be null
+    // This function does not range check.
+    if (rtl.isFunction(type)){
+      for (; srcpos<endpos; srcpos++) dst[dstpos++] = new type(src[srcpos]); // clone record
+    } else if(type === 'refSet') {
+      for (; srcpos<endpos; srcpos++) dst[dstpos++] = rtl.refSet(src[srcpos]); // ref set
+    }  else {
+      for (; srcpos<endpos; srcpos++) dst[dstpos++] = src[srcpos]; // reference
+    };
+  },
+
+  arrayConcat: function(type){
+    // type: see rtl.arrayClone
+    var a = [];
+    var l = 0;
+    for (var i=1; i<arguments.length; i++){
+      var src = arguments[i];
+      if (src !== null) l+=src.length;
+    };
+    a.length = l;
+    l=0;
+    for (var i=1; i<arguments.length; i++){
+      var src = arguments[i];
+      if (src === null) continue;
+      rtl.arrayClone(type,src,0,src.length,a,l);
+      l+=src.length;
+    };
+    return a;
+  },
+
+  arrayConcatN: function(){
+    var a = null;
+    for (var i=1; i<arguments.length; i++){
+      var src = arguments[i];
+      if (src === null) continue;
+      if (a===null){
+        a=src; // Note: concat(a) does not clone
+      } else {
+        a=a.concat(src);
+      }
+    };
+    return a;
+  },
+
+  arrayCopy: function(type, srcarray, index, count){
+    // type: see rtl.arrayClone
+    // if count is missing, use srcarray.length
+    if (srcarray === null) return [];
+    if (index < 0) index = 0;
+    if (count === undefined) count=srcarray.length;
+    var end = index+count;
+    if (end>srcarray.length) end = srcarray.length;
+    if (index>=end) return [];
+    if (type===0){
+      return srcarray.slice(index,end);
+    } else {
+      var a = [];
+      a.length = end-index;
+      rtl.arrayClone(type,srcarray,index,end,a,0);
+      return a;
+    }
+  },
+
+  setCharAt: function(s,index,c){
+    return s.substr(0,index)+c+s.substr(index+1);
+  },
+
+  getResStr: function(mod,name){
+    var rs = mod.$resourcestrings[name];
+    return rs.current?rs.current:rs.org;
+  },
+
+  createSet: function(){
+    var s = {};
+    for (var i=0; i<arguments.length; i++){
+      if (arguments[i]!=null){
+        s[arguments[i]]=true;
+      } else {
+        var first=arguments[i+=1];
+        var last=arguments[i+=1];
+        for(var j=first; j<=last; j++) s[j]=true;
+      }
+    }
+    return s;
+  },
+
+  cloneSet: function(s){
+    var r = {};
+    for (var key in s) r[key]=true;
+    return r;
+  },
+
+  refSet: function(s){
+    Object.defineProperty(s, '$shared', {
+      enumerable: false,
+      configurable: true,
+      writable: true,
+      value: true
+    });
+    return s;
+  },
+
+  includeSet: function(s,enumvalue){
+    if (s.$shared) s = rtl.cloneSet(s);
+    s[enumvalue] = true;
+    return s;
+  },
+
+  excludeSet: function(s,enumvalue){
+    if (s.$shared) s = rtl.cloneSet(s);
+    delete s[enumvalue];
+    return s;
+  },
+
+  diffSet: function(s,t){
+    var r = {};
+    for (var key in s) if (!t[key]) r[key]=true;
+    return r;
+  },
+
+  unionSet: function(s,t){
+    var r = {};
+    for (var key in s) r[key]=true;
+    for (var key in t) r[key]=true;
+    return r;
+  },
+
+  intersectSet: function(s,t){
+    var r = {};
+    for (var key in s) if (t[key]) r[key]=true;
+    return r;
+  },
+
+  symDiffSet: function(s,t){
+    var r = {};
+    for (var key in s) if (!t[key]) r[key]=true;
+    for (var key in t) if (!s[key]) r[key]=true;
+    return r;
+  },
+
+  eqSet: function(s,t){
+    for (var key in s) if (!t[key]) return false;
+    for (var key in t) if (!s[key]) return false;
+    return true;
+  },
+
+  neSet: function(s,t){
+    return !rtl.eqSet(s,t);
+  },
+
+  leSet: function(s,t){
+    for (var key in s) if (!t[key]) return false;
+    return true;
+  },
+
+  geSet: function(s,t){
+    for (var key in t) if (!s[key]) return false;
+    return true;
+  },
+
+  strSetLength: function(s,newlen){
+    var oldlen = s.length;
+    if (oldlen > newlen){
+      return s.substring(0,newlen);
+    } else if (s.repeat){
+      // Note: repeat needs ECMAScript6!
+      return s+' '.repeat(newlen-oldlen);
+    } else {
+       while (oldlen<newlen){
+         s+=' ';
+         oldlen++;
+       };
+       return s;
+    }
+  },
+
+  spaceLeft: function(s,width){
+    var l=s.length;
+    if (l>=width) return s;
+    if (s.repeat){
+      // Note: repeat needs ECMAScript6!
+      return ' '.repeat(width-l) + s;
+    } else {
+      while (l<width){
+        s=' '+s;
+        l++;
+      };
+    };
+  },
+
+  floatToStr : function(d,w,p){
+    // input 1-3 arguments: double, width, precision
+    if (arguments.length>2){
+      return rtl.spaceLeft(d.toFixed(p),w);
+    } else {
+	  // exponent width
+	  var pad = "";
+	  var ad = Math.abs(d);
+	  if (ad<1.0e+10) {
+		pad='00';
+	  } else if (ad<1.0e+100) {
+		pad='0';
+      }  	
+	  if (arguments.length<2) {
+	    w=9;		
+      } else if (w<9) {
+		w=9;
+      }		  
+      var p = w-8;
+      var s=(d>0 ? " " : "" ) + d.toExponential(p);
+      s=s.replace(/e(.)/,'E$1'+pad);
+      return rtl.spaceLeft(s,w);
+    }
+  },
+
+  initRTTI: function(){
+    if (rtl.debug_rtti) rtl.debug('initRTTI');
+
+    // base types
+    rtl.tTypeInfo = { name: "tTypeInfo" };
+    function newBaseTI(name,kind,ancestor){
+      if (!ancestor) ancestor = rtl.tTypeInfo;
+      if (rtl.debug_rtti) rtl.debug('initRTTI.newBaseTI "'+name+'" '+kind+' ("'+ancestor.name+'")');
+      var t = Object.create(ancestor);
+      t.name = name;
+      t.kind = kind;
+      rtl[name] = t;
+      return t;
+    };
+    function newBaseInt(name,minvalue,maxvalue,ordtype){
+      var t = newBaseTI(name,1 /* tkInteger */,rtl.tTypeInfoInteger);
+      t.minvalue = minvalue;
+      t.maxvalue = maxvalue;
+      t.ordtype = ordtype;
+      return t;
+    };
+    newBaseTI("tTypeInfoInteger",1 /* tkInteger */);
+    newBaseInt("shortint",-0x80,0x7f,0);
+    newBaseInt("byte",0,0xff,1);
+    newBaseInt("smallint",-0x8000,0x7fff,2);
+    newBaseInt("word",0,0xffff,3);
+    newBaseInt("longint",-0x80000000,0x7fffffff,4);
+    newBaseInt("longword",0,0xffffffff,5);
+    newBaseInt("nativeint",-0x10000000000000,0xfffffffffffff,6);
+    newBaseInt("nativeuint",0,0xfffffffffffff,7);
+    newBaseTI("char",2 /* tkChar */);
+    newBaseTI("string",3 /* tkString */);
+    newBaseTI("tTypeInfoEnum",4 /* tkEnumeration */,rtl.tTypeInfoInteger);
+    newBaseTI("tTypeInfoSet",5 /* tkSet */);
+    newBaseTI("double",6 /* tkDouble */);
+    newBaseTI("boolean",7 /* tkBool */);
+    newBaseTI("tTypeInfoProcVar",8 /* tkProcVar */);
+    newBaseTI("tTypeInfoMethodVar",9 /* tkMethod */,rtl.tTypeInfoProcVar);
+    newBaseTI("tTypeInfoArray",10 /* tkArray */);
+    newBaseTI("tTypeInfoDynArray",11 /* tkDynArray */);
+    newBaseTI("tTypeInfoPointer",15 /* tkPointer */);
+    var t = newBaseTI("pointer",15 /* tkPointer */,rtl.tTypeInfoPointer);
+    t.reftype = null;
+    newBaseTI("jsvalue",16 /* tkJSValue */);
+    newBaseTI("tTypeInfoRefToProcVar",17 /* tkRefToProcVar */,rtl.tTypeInfoProcVar);
+
+    // member kinds
+    rtl.tTypeMember = {};
+    function newMember(name,kind){
+      var m = Object.create(rtl.tTypeMember);
+      m.name = name;
+      m.kind = kind;
+      rtl[name] = m;
+    };
+    newMember("tTypeMemberField",1); // tmkField
+    newMember("tTypeMemberMethod",2); // tmkMethod
+    newMember("tTypeMemberProperty",3); // tmkProperty
+
+    // base object for storing members: a simple object
+    rtl.tTypeMembers = {};
+
+    // tTypeInfoStruct - base object for tTypeInfoClass, tTypeInfoRecord, tTypeInfoInterface
+    var tis = newBaseTI("tTypeInfoStruct",0);
+    tis.$addMember = function(name,ancestor,options){
+      if (rtl.debug_rtti){
+        if (!rtl.hasString(name) || (name.charAt()==='$')) throw 'invalid member "'+name+'", this="'+this.name+'"';
+        if (!rtl.is(ancestor,rtl.tTypeMember)) throw 'invalid ancestor "'+ancestor+':'+ancestor.name+'", "'+this.name+'.'+name+'"';
+        if ((options!=undefined) && (typeof(options)!='object')) throw 'invalid options "'+options+'", "'+this.name+'.'+name+'"';
+      };
+      var t = Object.create(ancestor);
+      t.name = name;
+      this.members[name] = t;
+      this.names.push(name);
+      if (rtl.isObject(options)){
+        for (var key in options) if (options.hasOwnProperty(key)) t[key] = options[key];
+      };
+      return t;
+    };
+    tis.addField = function(name,type,options){
+      var t = this.$addMember(name,rtl.tTypeMemberField,options);
+      if (rtl.debug_rtti){
+        if (!rtl.is(type,rtl.tTypeInfo)) throw 'invalid type "'+type+'", "'+this.name+'.'+name+'"';
+      };
+      t.typeinfo = type;
+      this.fields.push(name);
+      return t;
+    };
+    tis.addFields = function(){
+      var i=0;
+      while(i<arguments.length){
+        var name = arguments[i++];
+        var type = arguments[i++];
+        if ((i<arguments.length) && (typeof(arguments[i])==='object')){
+          this.addField(name,type,arguments[i++]);
+        } else {
+          this.addField(name,type);
+        };
+      };
+    };
+    tis.addMethod = function(name,methodkind,params,result,options){
+      var t = this.$addMember(name,rtl.tTypeMemberMethod,options);
+      t.methodkind = methodkind;
+      t.procsig = rtl.newTIProcSig(params);
+      t.procsig.resulttype = result?result:null;
+      this.methods.push(name);
+      return t;
+    };
+    tis.addProperty = function(name,flags,result,getter,setter,options){
+      var t = this.$addMember(name,rtl.tTypeMemberProperty,options);
+      t.flags = flags;
+      t.typeinfo = result;
+      t.getter = getter;
+      t.setter = setter;
+      // Note: in options: params, stored, defaultvalue
+      if (rtl.isArray(t.params)) t.params = rtl.newTIParams(t.params);
+      this.properties.push(name);
+      if (!rtl.isString(t.stored)) t.stored = "";
+      return t;
+    };
+    tis.getField = function(index){
+      return this.members[this.fields[index]];
+    };
+    tis.getMethod = function(index){
+      return this.members[this.methods[index]];
+    };
+    tis.getProperty = function(index){
+      return this.members[this.properties[index]];
+    };
+
+    newBaseTI("tTypeInfoRecord",12 /* tkRecord */,rtl.tTypeInfoStruct);
+    newBaseTI("tTypeInfoClass",13 /* tkClass */,rtl.tTypeInfoStruct);
+    newBaseTI("tTypeInfoClassRef",14 /* tkClassRef */);
+    newBaseTI("tTypeInfoInterface",15 /* tkInterface */,rtl.tTypeInfoStruct);
+  },
+
+  tSectionRTTI: {
+    $module: null,
+    $inherited: function(name,ancestor,o){
+      if (rtl.debug_rtti){
+        rtl.debug('tSectionRTTI.newTI "'+(this.$module?this.$module.$name:"(no module)")
+          +'"."'+name+'" ('+ancestor.name+') '+(o?'init':'forward'));
+      };
+      var t = this[name];
+      if (t){
+        if (!t.$forward) throw 'duplicate type "'+name+'"';
+        if (!ancestor.isPrototypeOf(t)) throw 'typeinfo ancestor mismatch "'+name+'" ancestor="'+ancestor.name+'" t.name="'+t.name+'"';
+      } else {
+        t = Object.create(ancestor);
+        t.name = name;
+        t.$module = this.$module;
+        this[name] = t;
+      }
+      if (o){
+        delete t.$forward;
+        for (var key in o) if (o.hasOwnProperty(key)) t[key]=o[key];
+      } else {
+        t.$forward = true;
+      }
+      return t;
+    },
+    $Scope: function(name,ancestor,o){
+      var t=this.$inherited(name,ancestor,o);
+      t.members = {};
+      t.names = [];
+      t.fields = [];
+      t.methods = [];
+      t.properties = [];
+      return t;
+    },
+    $TI: function(name,kind,o){ var t=this.$inherited(name,rtl.tTypeInfo,o); t.kind = kind; return t; },
+    $Int: function(name,o){ return this.$inherited(name,rtl.tTypeInfoInteger,o); },
+    $Enum: function(name,o){ return this.$inherited(name,rtl.tTypeInfoEnum,o); },
+    $Set: function(name,o){ return this.$inherited(name,rtl.tTypeInfoSet,o); },
+    $StaticArray: function(name,o){ return this.$inherited(name,rtl.tTypeInfoArray,o); },
+    $DynArray: function(name,o){ return this.$inherited(name,rtl.tTypeInfoDynArray,o); },
+    $ProcVar: function(name,o){ return this.$inherited(name,rtl.tTypeInfoProcVar,o); },
+    $RefToProcVar: function(name,o){ return this.$inherited(name,rtl.tTypeInfoRefToProcVar,o); },
+    $MethodVar: function(name,o){ return this.$inherited(name,rtl.tTypeInfoMethodVar,o); },
+    $Record: function(name,o){ return this.$Scope(name,rtl.tTypeInfoRecord,o); },
+    $Class: function(name,o){ return this.$Scope(name,rtl.tTypeInfoClass,o); },
+    $ClassRef: function(name,o){ return this.$inherited(name,rtl.tTypeInfoClassRef,o); },
+    $Pointer: function(name,o){ return this.$inherited(name,rtl.tTypeInfoPointer,o); },
+    $Interface: function(name,o){ return this.$Scope(name,rtl.tTypeInfoInterface,o); }
+  },
+
+  newTIParam: function(param){
+    // param is an array, 0=name, 1=type, 2=optional flags
+    var t = {
+      name: param[0],
+      typeinfo: param[1],
+      flags: (rtl.isNumber(param[2]) ? param[2] : 0)
+    };
+    return t;
+  },
+
+  newTIParams: function(list){
+    // list: optional array of [paramname,typeinfo,optional flags]
+    var params = [];
+    if (rtl.isArray(list)){
+      for (var i=0; i<list.length; i++) params.push(rtl.newTIParam(list[i]));
+    };
+    return params;
+  },
+
+  newTIProcSig: function(params,result,flags){
+    var s = {
+      params: rtl.newTIParams(params),
+      resulttype: result,
+      flags: flags
+    };
+    return s;
+  }
+}
+rtl.module("System",[],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.LineEnding = "\n";
+  this.sLineBreak = $mod.LineEnding;
+  this.PathDelim = "\/";
+  this.AllowDirectorySeparators = rtl.createSet(47);
+  this.AllowDriveSeparators = rtl.createSet(58);
+  this.ExtensionSeparator = ".";
+  this.MaxSmallint = 32767;
+  this.MinSmallint = -32768;
+  this.MaxShortInt = 127;
+  this.MinShortInt = -128;
+  this.MaxByte = 0xFF;
+  this.MaxWord = 0xFFFF;
+  this.MaxLongint = 0x7fffffff;
+  this.MaxCardinal = 0xffffffff;
+  this.Maxint = 2147483647;
+  this.IsMultiThread = false;
+  $mod.$rtti.$inherited("Real",rtl.double,{});
+  $mod.$rtti.$inherited("Extended",rtl.double,{});
+  $mod.$rtti.$inherited("TDateTime",rtl.double,{});
+  $mod.$rtti.$inherited("TTime",$mod.$rtti["TDateTime"],{});
+  $mod.$rtti.$inherited("TDate",$mod.$rtti["TDateTime"],{});
+  $mod.$rtti.$inherited("Int64",rtl.nativeint,{});
+  $mod.$rtti.$inherited("UInt64",rtl.nativeuint,{});
+  $mod.$rtti.$inherited("QWord",rtl.nativeuint,{});
+  $mod.$rtti.$inherited("Single",rtl.double,{});
+  $mod.$rtti.$inherited("Comp",rtl.nativeint,{});
+  $mod.$rtti.$inherited("UnicodeString",rtl.string,{});
+  $mod.$rtti.$inherited("WideString",rtl.string,{});
+  this.TTextLineBreakStyle = {"0": "tlbsLF", tlbsLF: 0, "1": "tlbsCRLF", tlbsCRLF: 1, "2": "tlbsCR", tlbsCR: 2};
+  $mod.$rtti.$Enum("TTextLineBreakStyle",{minvalue: 0, maxvalue: 2, ordtype: 1, enumtype: this.TTextLineBreakStyle});
+  this.TGuid = function (s) {
+    if (s) {
+      this.D1 = s.D1;
+      this.D2 = s.D2;
+      this.D3 = s.D3;
+      this.D4 = s.D4.slice(0);
+    } else {
+      this.D1 = 0;
+      this.D2 = 0;
+      this.D3 = 0;
+      this.D4 = rtl.arraySetLength(null,0,8);
+    };
+    this.$equal = function (b) {
+      return (this.D1 === b.D1) && ((this.D2 === b.D2) && ((this.D3 === b.D3) && rtl.arrayEq(this.D4,b.D4)));
+    };
+  };
+  $mod.$rtti.$StaticArray("TGuid.D4$a",{dims: [8], eltype: rtl.byte});
+  $mod.$rtti.$Record("TGuid",{}).addFields("D1",rtl.longword,"D2",rtl.word,"D3",rtl.word,"D4",$mod.$rtti["TGuid.D4$a"]);
+  $mod.$rtti.$inherited("TGUIDString",rtl.string,{});
+  $mod.$rtti.$Class("TObject");
+  $mod.$rtti.$ClassRef("TClass",{instancetype: $mod.$rtti["TObject"]});
+  rtl.createClass($mod,"TObject",null,function () {
+    this.$init = function () {
+    };
+    this.$final = function () {
+    };
+    this.Create = function () {
+    };
+    this.Destroy = function () {
+    };
+    this.Free = function () {
+      this.$destroy("Destroy");
+    };
+    this.ClassType = function () {
+      return this;
+    };
+    this.ClassNameIs = function (Name) {
+      var Result = false;
+      Result = $impl.SameText(Name,this.$classname);
+      return Result;
+    };
+    this.InheritsFrom = function (aClass) {
+      return (aClass!=null) && ((this==aClass) || aClass.isPrototypeOf(this));
+    };
+    this.AfterConstruction = function () {
+    };
+    this.BeforeDestruction = function () {
+    };
+    this.GetInterface = function (iid, obj) {
+      var Result = false;
+      var i = iid.$intf;
+      if (i){
+        i = rtl.getIntfG(this,i.$guid,2);
+        if (i){
+          obj.set(i);
+          return true;
+        }
+      };
+      Result = this.GetInterfaceByStr(rtl.guidrToStr(iid),obj);
+      return Result;
+    };
+    this.GetInterface$1 = function (iidstr, obj) {
+      var Result = false;
+      Result = this.GetInterfaceByStr(iidstr,obj);
+      return Result;
+    };
+    this.GetInterfaceByStr = function (iidstr, obj) {
+      var Result = false;
+      if ($mod.IObjectInstance.$equal(rtl.createTGUID(iidstr))) {
+        obj.set(this);
+        return true;
+      };
+      var i = rtl.getIntfG(this,iidstr,2);
+      obj.set(i);
+      return i!==null;
+      Result = false;
+      return Result;
+    };
+    this.GetInterfaceWeak = function (iid, obj) {
+      var Result = false;
+      Result = this.GetInterface(iid,obj);
+      if (Result){
+        var o = obj.get();
+        if (o.$kind==='com'){
+          o._Release();
+        }
+      };
+      return Result;
+    };
+    this.Equals = function (Obj) {
+      var Result = false;
+      Result = Obj === this;
+      return Result;
+    };
+    this.ToString = function () {
+      var Result = "";
+      Result = this.$classname;
+      return Result;
+    };
+  });
+  this.S_OK = 0;
+  this.S_FALSE = 1;
+  this.E_NOINTERFACE = -2147467262;
+  this.E_UNEXPECTED = -2147418113;
+  this.E_NOTIMPL = -2147467263;
+  rtl.createInterface($mod,"IUnknown","{00000000-0000-0000-C000-000000000046}",["QueryInterface","_AddRef","_Release"],null,function () {
+    this.$kind = "com";
+    var $r = this.$rtti;
+    $r.addMethod("QueryInterface",1,[["iid",$mod.$rtti["TGuid"],2],["obj",null,4]],rtl.longint);
+    $r.addMethod("_AddRef",1,null,rtl.longint);
+    $r.addMethod("_Release",1,null,rtl.longint);
+  });
+  rtl.createInterface($mod,"IInvokable","{88387EF6-BCEE-3E17-9E85-5D491ED4FC10}",[],$mod.IUnknown,function () {
+  });
+  rtl.createInterface($mod,"IEnumerator","{ECEC7568-4E50-30C9-A2F0-439342DE2ADB}",["GetCurrent","MoveNext","Reset"],$mod.IUnknown,function () {
+    var $r = this.$rtti;
+    $r.addMethod("GetCurrent",1,null,$mod.$rtti["TObject"]);
+    $r.addMethod("MoveNext",1,null,rtl.boolean);
+    $r.addMethod("Reset",0,null);
+    $r.addProperty("Current",1,$mod.$rtti["TObject"],"GetCurrent","");
+  });
+  rtl.createInterface($mod,"IEnumerable","{9791C368-4E51-3424-A3CE-D4911D54F385}",["GetEnumerator"],$mod.IUnknown,function () {
+    var $r = this.$rtti;
+    $r.addMethod("GetEnumerator",1,null,$mod.$rtti["IEnumerator"]);
+  });
+  rtl.createClass($mod,"TInterfacedObject",$mod.TObject,function () {
+    this.$init = function () {
+      $mod.TObject.$init.call(this);
+      this.fRefCount = 0;
+    };
+    this.QueryInterface = function (iid, obj) {
+      var Result = 0;
+      if (this.GetInterface(iid,obj)) {
+        Result = 0}
+       else Result = -2147467262;
+      return Result;
+    };
+    this._AddRef = function () {
+      var Result = 0;
+      this.fRefCount += 1;
+      Result = this.fRefCount;
+      return Result;
+    };
+    this._Release = function () {
+      var Result = 0;
+      this.fRefCount -= 1;
+      Result = this.fRefCount;
+      if (this.fRefCount === 0) this.$destroy("Destroy");
+      return Result;
+    };
+    this.BeforeDestruction = function () {
+      if (this.fRefCount !== 0) rtl.raiseE('EHeapMemoryError');
+    };
+    rtl.addIntf(this,$mod.IUnknown);
+  });
+  $mod.$rtti.$ClassRef("TInterfacedClass",{instancetype: $mod.$rtti["TInterfacedObject"]});
+  rtl.createClass($mod,"TAggregatedObject",$mod.TObject,function () {
+    this.$init = function () {
+      $mod.TObject.$init.call(this);
+      this.fController = null;
+    };
+    this.GetController = function () {
+      var Result = null;
+      var $ok = false;
+      try {
+        Result = rtl.setIntfL(Result,this.fController);
+        $ok = true;
+      } finally {
+        if (!$ok) rtl._Release(Result);
+      };
+      return Result;
+    };
+    this.QueryInterface = function (iid, obj) {
+      var Result = 0;
+      Result = this.fController.QueryInterface(iid,obj);
+      return Result;
+    };
+    this._AddRef = function () {
+      var Result = 0;
+      Result = this.fController._AddRef();
+      return Result;
+    };
+    this._Release = function () {
+      var Result = 0;
+      Result = this.fController._Release();
+      return Result;
+    };
+    this.Create$1 = function (aController) {
+      $mod.TObject.Create.call(this);
+      this.fController = aController;
+    };
+  });
+  rtl.createClass($mod,"TContainedObject",$mod.TAggregatedObject,function () {
+    this.QueryInterface = function (iid, obj) {
+      var Result = 0;
+      if (this.GetInterface(iid,obj)) {
+        Result = 0}
+       else Result = -2147467262;
+      return Result;
+    };
+    rtl.addIntf(this,$mod.IUnknown);
+  });
+  this.IObjectInstance = new $mod.TGuid({D1: 0xD91C9AF4, D2: 0x3C93, D3: 0x420F, D4: [0xA3,0x03,0xBF,0x5B,0xA8,0x2B,0xFD,0x23]});
+  this.IsConsole = false;
+  this.FirstDotAtFileNameStartIsExtension = false;
+  $mod.$rtti.$ProcVar("TOnParamCount",{procsig: rtl.newTIProcSig(null,rtl.longint)});
+  $mod.$rtti.$ProcVar("TOnParamStr",{procsig: rtl.newTIProcSig([["Index",rtl.longint]],rtl.string)});
+  this.OnParamCount = null;
+  this.OnParamStr = null;
+  this.ParamCount = function () {
+    var Result = 0;
+    if ($mod.OnParamCount != null) {
+      Result = $mod.OnParamCount()}
+     else Result = 0;
+    return Result;
+  };
+  this.ParamStr = function (Index) {
+    var Result = "";
+    if ($mod.OnParamStr != null) {
+      Result = $mod.OnParamStr(Index)}
+     else if (Index === 0) {
+      Result = "js"}
+     else Result = "";
+    return Result;
+  };
+  this.Frac = function (A) {
+    return A % 1;
+  };
+  this.Odd = function (A) {
+    return A&1 != 0;
+  };
+  this.Random = function (Range) {
+    return Math.floor(Math.random()*Range);
+  };
+  this.Sqr = function (A) {
+    return A*A;
+  };
+  this.Sqr$1 = function (A) {
+    return A*A;
+  };
+  this.Trunc = function (A) {
+    if (!Math.trunc) {
+      Math.trunc = function(v) {
+        v = +v;
+        if (!isFinite(v)) return v;
+        return (v - v % 1) || (v < 0 ? -0 : v === 0 ? v : 0);
+      };
+    }
+    $mod.Trunc = Math.trunc;
+    return Math.trunc(A);
+  };
+  this.DefaultTextLineBreakStyle = $mod.TTextLineBreakStyle.tlbsLF;
+  this.Int = function (A) {
+    var Result = 0.0;
+    Result = $mod.Trunc(A);
+    return Result;
+  };
+  this.Copy = function (S, Index, Size) {
+    if (Index<1) Index = 1;
+    return (Size>0) ? S.substring(Index-1,Index+Size-1) : "";
+  };
+  this.Copy$1 = function (S, Index) {
+    if (Index<1) Index = 1;
+    return S.substr(Index-1);
+  };
+  this.Delete = function (S, Index, Size) {
+    var h = "";
+    if (((Index < 1) || (Index > S.get().length)) || (Size <= 0)) return;
+    h = S.get();
+    S.set($mod.Copy(h,1,Index - 1) + $mod.Copy$1(h,Index + Size));
+  };
+  this.Pos = function (Search, InString) {
+    return InString.indexOf(Search)+1;
+  };
+  this.Pos$1 = function (Search, InString, StartAt) {
+    return InString.indexOf(Search,StartAt-1)+1;
+  };
+  this.Insert = function (Insertion, Target, Index) {
+    var t = "";
+    if (Insertion === "") return;
+    t = Target.get();
+    if (Index < 1) {
+      Target.set(Insertion + t)}
+     else if (Index > t.length) {
+      Target.set(t + Insertion)}
+     else Target.set(($mod.Copy(t,1,Index - 1) + Insertion) + $mod.Copy(t,Index,t.length));
+  };
+  this.upcase = function (c) {
+    return c.toUpperCase();
+  };
+  this.val = function (S, NI, Code) {
+    var x = 0.0;
+    Code.set(0);
+    x = Number(S);
+    if (isNaN(x)) {
+      var $tmp1 = $mod.Copy(S,1,1);
+      if ($tmp1 === "$") {
+        x = Number("0x" + $mod.Copy$1(S,2))}
+       else if ($tmp1 === "&") {
+        x = Number("0o" + $mod.Copy$1(S,2))}
+       else if ($tmp1 === "%") {
+        x = Number("0b" + $mod.Copy$1(S,2))}
+       else {
+        Code.set(1);
+        return;
+      };
+    };
+    if (isNaN(x) || (x !== $mod.Int(x))) {
+      Code.set(1)}
+     else NI.set($mod.Trunc(x));
+  };
+  this.val$1 = function (S, NI, Code) {
+    var x = 0.0;
+    Code.set(0);
+    x = Number(S);
+    if ((isNaN(x) || (x !== $mod.Int(x))) || (x < 0)) {
+      Code.set(1)}
+     else NI.set($mod.Trunc(x));
+  };
+  this.val$2 = function (S, SI, Code) {
+    var X = 0.0;
+    Code.set(0);
+    X = Number(S);
+    if (isNaN(X) || (X !== $mod.Int(X))) {
+      Code.set(1)}
+     else if ((X < -128) || (X > 127)) {
+      Code.set(2)}
+     else SI.set($mod.Trunc(X));
+  };
+  this.val$3 = function (S, B, Code) {
+    var x = 0.0;
+    Code.set(0);
+    x = Number(S);
+    if (isNaN(x) || (x !== $mod.Int(x))) {
+      Code.set(1)}
+     else if ((x < 0) || (x > 255)) {
+      Code.set(2)}
+     else B.set($mod.Trunc(x));
+  };
+  this.val$4 = function (S, SI, Code) {
+    var x = 0.0;
+    Code.set(0);
+    x = Number(S);
+    if (isNaN(x) || (x !== $mod.Int(x))) {
+      Code.set(1)}
+     else if ((x < -32768) || (x > 32767)) {
+      Code.set(2)}
+     else SI.set($mod.Trunc(x));
+  };
+  this.val$5 = function (S, W, Code) {
+    var x = 0.0;
+    Code.set(0);
+    x = Number(S);
+    if (isNaN(x)) {
+      Code.set(1)}
+     else if ((x < 0) || (x > 65535)) {
+      Code.set(2)}
+     else W.set($mod.Trunc(x));
+  };
+  this.val$6 = function (S, I, Code) {
+    var x = 0.0;
+    Code.set(0);
+    x = Number(S);
+    if (isNaN(x)) {
+      Code.set(1)}
+     else if (x > 2147483647) {
+      Code.set(2)}
+     else I.set($mod.Trunc(x));
+  };
+  this.val$7 = function (S, C, Code) {
+    var x = 0.0;
+    Code.set(0);
+    x = Number(S);
+    if (isNaN(x) || (x !== $mod.Int(x))) {
+      Code.set(1)}
+     else if ((x < 0) || (x > 4294967295)) {
+      Code.set(2)}
+     else C.set($mod.Trunc(x));
+  };
+  this.val$8 = function (S, d, Code) {
+    var x = 0.0;
+    x = Number(S);
+    if (isNaN(x)) {
+      Code.set(1)}
+     else {
+      Code.set(0);
+      d.set(x);
+    };
+  };
+  this.StringOfChar = function (c, l) {
+    var Result = "";
+    var i = 0;
+    if ((l>0) && c.repeat) return c.repeat(l);
+    Result = "";
+    for (var $l1 = 1, $end2 = l; $l1 <= $end2; $l1++) {
+      i = $l1;
+      Result = Result + c;
+    };
+    return Result;
+  };
+  this.Write = function () {
+    var i = 0;
+    for (var $l1 = 0, $end2 = rtl.length(arguments) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if ($impl.WriteCallBack != null) {
+        $impl.WriteCallBack(arguments[i],false)}
+       else $impl.WriteBuf = $impl.WriteBuf + ("" + arguments[i]);
+    };
+  };
+  this.Writeln = function () {
+    var i = 0;
+    var l = 0;
+    var s = "";
+    l = rtl.length(arguments) - 1;
+    if ($impl.WriteCallBack != null) {
+      for (var $l1 = 0, $end2 = l; $l1 <= $end2; $l1++) {
+        i = $l1;
+        $impl.WriteCallBack(arguments[i],i === l);
+      };
+    } else {
+      s = $impl.WriteBuf;
+      for (var $l3 = 0, $end4 = l; $l3 <= $end4; $l3++) {
+        i = $l3;
+        s = s + ("" + arguments[i]);
+      };
+      console.log(s);
+      $impl.WriteBuf = "";
+    };
+  };
+  $mod.$rtti.$ProcVar("TConsoleHandler",{procsig: rtl.newTIProcSig([["S",rtl.jsvalue],["NewLine",rtl.boolean]])});
+  this.SetWriteCallBack = function (H) {
+    var Result = null;
+    Result = $impl.WriteCallBack;
+    $impl.WriteCallBack = H;
+    return Result;
+  };
+  this.Assigned = function (V) {
+    return (V!=undefined) && (V!=null) && (!rtl.isArray(V) || (V.length > 0));
+  };
+  this.StrictEqual = function (A, B) {
+    return A === B;
+  };
+  this.StrictInequal = function (A, B) {
+    return A !== B;
+  };
+  $mod.$init = function () {
+    rtl.exitcode = 0;
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.SameText = function (s1, s2) {
+    return s1.toLowerCase() == s2.toLowerCase();
+  };
+  $impl.WriteBuf = "";
+  $impl.WriteCallBack = null;
+});
+rtl.module("RTLConsts",["System"],function () {
+  "use strict";
+  var $mod = this;
+  this.SArgumentMissing = 'Missing argument in format "%s"';
+  this.SInvalidFormat = 'Invalid format specifier : "%s"';
+  this.SInvalidArgIndex = 'Invalid argument index in format: "%s"';
+  this.SListCapacityError = "List capacity (%s) exceeded.";
+  this.SListCountError = "List count (%s) out of bounds.";
+  this.SListIndexError = "List index (%s) out of bounds";
+  this.SSortedListError = "Operation not allowed on sorted list";
+  this.SDuplicateString = "String list does not allow duplicates";
+  this.SErrFindNeedsSortedList = "Cannot use find on unsorted list";
+  this.SInvalidName = 'Invalid component name: "%s"';
+  this.SInvalidBoolean = '"%s" is not a valid boolean.';
+  this.SDuplicateName = 'Duplicate component name: "%s"';
+  this.SErrInvalidDate = 'Invalid date: "%s"';
+  this.SErrInvalidTimeFormat = 'Invalid time format: "%s"';
+  this.SInvalidDateFormat = 'Invalid date format: "%s"';
+  this.SCantReadPropertyS = 'Cannot read property "%s"';
+  this.SCantWritePropertyS = 'Cannot write property "%s"';
+  this.SErrPropertyNotFound = 'Unknown property: "%s"';
+  this.SIndexedPropertyNeedsParams = 'Indexed property "%s" needs parameters';
+  this.SErrInvalidInteger = 'Invalid integer value: "%s"';
+  this.SErrInvalidFloat = 'Invalid floating-point value: "%s"';
+  this.SInvalidDateTime = "Invalid date-time value: %s";
+  this.SInvalidCurrency = "Invalid currency value: %s";
+  this.SErrInvalidDayOfWeek = "%d is not a valid day of the week";
+  this.SErrInvalidTimeStamp = 'Invalid date\/timestamp : "%s"';
+  this.SErrInvalidDateWeek = "%d %d %d is not a valid dateweek";
+  this.SErrInvalidDayOfYear = "Year %d does not have a day number %d";
+  this.SErrInvalidDateMonthWeek = "Year %d, month %d, Week %d and day %d is not a valid date.";
+  this.SErrInvalidDayOfWeekInMonth = "Year %d Month %d NDow %d DOW %d is not a valid date";
+  this.SInvalidJulianDate = "%f Julian cannot be represented as a DateTime";
+  this.SErrInvalidHourMinuteSecMsec = "%d:%d:%d.%d is not a valid time specification";
+  this.SInvalidGUID = '"%s" is not a valid GUID value';
+});
+rtl.module("Types",["System"],function () {
+  "use strict";
+  var $mod = this;
+  this.TDirection = {"0": "FromBeginning", FromBeginning: 0, "1": "FromEnd", FromEnd: 1};
+  $mod.$rtti.$Enum("TDirection",{minvalue: 0, maxvalue: 1, ordtype: 1, enumtype: this.TDirection});
+  $mod.$rtti.$DynArray("TBooleanDynArray",{eltype: rtl.boolean});
+  $mod.$rtti.$DynArray("TIntegerDynArray",{eltype: rtl.longint});
+  $mod.$rtti.$DynArray("TNativeIntDynArray",{eltype: rtl.nativeint});
+  $mod.$rtti.$DynArray("TStringDynArray",{eltype: rtl.string});
+  $mod.$rtti.$DynArray("TDoubleDynArray",{eltype: rtl.double});
+  $mod.$rtti.$DynArray("TJSValueDynArray",{eltype: rtl.jsvalue});
+  this.TDuplicates = {"0": "dupIgnore", dupIgnore: 0, "1": "dupAccept", dupAccept: 1, "2": "dupError", dupError: 2};
+  $mod.$rtti.$Enum("TDuplicates",{minvalue: 0, maxvalue: 2, ordtype: 1, enumtype: this.TDuplicates});
+  $mod.$rtti.$MethodVar("TListCallback",{procsig: rtl.newTIProcSig([["data",rtl.jsvalue],["arg",rtl.jsvalue]]), methodkind: 0});
+  $mod.$rtti.$ProcVar("TListStaticCallback",{procsig: rtl.newTIProcSig([["data",rtl.jsvalue],["arg",rtl.jsvalue]])});
+  this.TSize = function (s) {
+    if (s) {
+      this.cx = s.cx;
+      this.cy = s.cy;
+    } else {
+      this.cx = 0;
+      this.cy = 0;
+    };
+    this.$equal = function (b) {
+      return (this.cx === b.cx) && (this.cy === b.cy);
+    };
+  };
+  $mod.$rtti.$Record("TSize",{}).addFields("cx",rtl.longint,"cy",rtl.longint);
+  this.TPoint = function (s) {
+    if (s) {
+      this.x = s.x;
+      this.y = s.y;
+    } else {
+      this.x = 0;
+      this.y = 0;
+    };
+    this.$equal = function (b) {
+      return (this.x === b.x) && (this.y === b.y);
+    };
+  };
+  $mod.$rtti.$Record("TPoint",{}).addFields("x",rtl.longint,"y",rtl.longint);
+  this.TRect = function (s) {
+    if (s) {
+      this.Left = s.Left;
+      this.Top = s.Top;
+      this.Right = s.Right;
+      this.Bottom = s.Bottom;
+    } else {
+      this.Left = 0;
+      this.Top = 0;
+      this.Right = 0;
+      this.Bottom = 0;
+    };
+    this.$equal = function (b) {
+      return (this.Left === b.Left) && ((this.Top === b.Top) && ((this.Right === b.Right) && (this.Bottom === b.Bottom)));
+    };
+  };
+  $mod.$rtti.$Record("TRect",{}).addFields("Left",rtl.longint,"Top",rtl.longint,"Right",rtl.longint,"Bottom",rtl.longint);
+  this.EqualRect = function (r1, r2) {
+    var Result = false;
+    Result = (((r1.Left === r2.Left) && (r1.Right === r2.Right)) && (r1.Top === r2.Top)) && (r1.Bottom === r2.Bottom);
+    return Result;
+  };
+  this.Rect = function (Left, Top, Right, Bottom) {
+    var Result = new $mod.TRect();
+    Result.Left = Left;
+    Result.Top = Top;
+    Result.Right = Right;
+    Result.Bottom = Bottom;
+    return Result;
+  };
+  this.Bounds = function (ALeft, ATop, AWidth, AHeight) {
+    var Result = new $mod.TRect();
+    Result.Left = ALeft;
+    Result.Top = ATop;
+    Result.Right = ALeft + AWidth;
+    Result.Bottom = ATop + AHeight;
+    return Result;
+  };
+  this.Point = function (x, y) {
+    var Result = new $mod.TPoint();
+    Result.x = x;
+    Result.y = y;
+    return Result;
+  };
+  this.PtInRect = function (aRect, p) {
+    var Result = false;
+    Result = (((p.y >= aRect.Top) && (p.y < aRect.Bottom)) && (p.x >= aRect.Left)) && (p.x < aRect.Right);
+    return Result;
+  };
+  this.IntersectRect = function (aRect, R1, R2) {
+    var Result = false;
+    var lRect = new $mod.TRect();
+    lRect = new $mod.TRect(R1);
+    if (R2.Left > R1.Left) lRect.Left = R2.Left;
+    if (R2.Top > R1.Top) lRect.Top = R2.Top;
+    if (R2.Right < R1.Right) lRect.Right = R2.Right;
+    if (R2.Bottom < R1.Bottom) lRect.Bottom = R2.Bottom;
+    if ($mod.IsRectEmpty(lRect)) {
+      aRect.set(new $mod.TRect($mod.Rect(0,0,0,0)));
+      Result = false;
+    } else {
+      Result = true;
+      aRect.set(new $mod.TRect(lRect));
+    };
+    return Result;
+  };
+  this.UnionRect = function (aRect, R1, R2) {
+    var Result = false;
+    var lRect = new $mod.TRect();
+    lRect = new $mod.TRect(R1);
+    if (R2.Left < R1.Left) lRect.Left = R2.Left;
+    if (R2.Top < R1.Top) lRect.Top = R2.Top;
+    if (R2.Right > R1.Right) lRect.Right = R2.Right;
+    if (R2.Bottom > R1.Bottom) lRect.Bottom = R2.Bottom;
+    if ($mod.IsRectEmpty(lRect)) {
+      aRect.set(new $mod.TRect($mod.Rect(0,0,0,0)));
+      Result = false;
+    } else {
+      aRect.set(new $mod.TRect(lRect));
+      Result = true;
+    };
+    return Result;
+  };
+  this.IsRectEmpty = function (aRect) {
+    var Result = false;
+    Result = (aRect.Right <= aRect.Left) || (aRect.Bottom <= aRect.Top);
+    return Result;
+  };
+  this.OffsetRect = function (aRect, DX, DY) {
+    var Result = false;
+    var $with1 = aRect.get();
+    $with1.Left += DX;
+    $with1.Top += DY;
+    $with1.Right += DX;
+    $with1.Bottom += DY;
+    Result = true;
+    return Result;
+  };
+  this.CenterPoint = function (aRect) {
+    var Result = new $mod.TPoint();
+    function Avg(a, b) {
+      var Result = 0;
+      if (a < b) {
+        Result = a + ((b - a) >>> 1)}
+       else Result = b + ((a - b) >>> 1);
+      return Result;
+    };
+    Result.x = Avg(aRect.Left,aRect.Right);
+    Result.y = Avg(aRect.Top,aRect.Bottom);
+    return Result;
+  };
+  this.InflateRect = function (aRect, dx, dy) {
+    var Result = false;
+    var $with1 = aRect.get();
+    $with1.Left -= dx;
+    $with1.Top -= dy;
+    $with1.Right += dx;
+    $with1.Bottom += dy;
+    Result = true;
+    return Result;
+  };
+  this.Size = function (AWidth, AHeight) {
+    var Result = new $mod.TSize();
+    Result.cx = AWidth;
+    Result.cy = AHeight;
+    return Result;
+  };
+  this.Size$1 = function (aRect) {
+    var Result = new $mod.TSize();
+    Result.cx = aRect.Right - aRect.Left;
+    Result.cy = aRect.Bottom - aRect.Top;
+    return Result;
+  };
+});
+rtl.module("JS",["System","Types"],function () {
+  "use strict";
+  var $mod = this;
+  rtl.createClass($mod,"EJS",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.FMessage = "";
+    };
+    this.Create$1 = function (Msg) {
+      this.FMessage = Msg;
+    };
+  });
+  $mod.$rtti.$DynArray("TJSObjectDynArray",{eltype: $mod.$rtti["TJSObject"]});
+  $mod.$rtti.$DynArray("TJSObjectDynArrayArray",{eltype: $mod.$rtti["TJSObjectDynArray"]});
+  $mod.$rtti.$DynArray("TJSStringDynArray",{eltype: rtl.string});
+  this.TLocaleCompareOptions = function (s) {
+    if (s) {
+      this.localematched = s.localematched;
+      this.usage = s.usage;
+      this.sensitivity = s.sensitivity;
+      this.ignorePunctuation = s.ignorePunctuation;
+      this.numeric = s.numeric;
+      this.caseFirst = s.caseFirst;
+    } else {
+      this.localematched = "";
+      this.usage = "";
+      this.sensitivity = "";
+      this.ignorePunctuation = false;
+      this.numeric = false;
+      this.caseFirst = "";
+    };
+    this.$equal = function (b) {
+      return (this.localematched === b.localematched) && ((this.usage === b.usage) && ((this.sensitivity === b.sensitivity) && ((this.ignorePunctuation === b.ignorePunctuation) && ((this.numeric === b.numeric) && (this.caseFirst === b.caseFirst)))));
+    };
+  };
+  $mod.$rtti.$Record("TLocaleCompareOptions",{}).addFields("localematched",rtl.string,"usage",rtl.string,"sensitivity",rtl.string,"ignorePunctuation",rtl.boolean,"numeric",rtl.boolean,"caseFirst",rtl.string);
+  $mod.$rtti.$ProcVar("TReplaceCallBack",{procsig: rtl.newTIProcSig(null,rtl.string,2)});
+  $mod.$rtti.$RefToProcVar("TJSArrayEvent",{procsig: rtl.newTIProcSig([["element",rtl.jsvalue],["index",rtl.nativeint],["anArray",$mod.$rtti["TJSArray"]]],rtl.boolean)});
+  $mod.$rtti.$RefToProcVar("TJSArrayMapEvent",{procsig: rtl.newTIProcSig([["element",rtl.jsvalue],["index",rtl.nativeint],["anArray",$mod.$rtti["TJSArray"]]],rtl.jsvalue)});
+  $mod.$rtti.$RefToProcVar("TJSArrayReduceEvent",{procsig: rtl.newTIProcSig([["accumulator",rtl.jsvalue],["currentValue",rtl.jsvalue],["currentIndex",rtl.nativeint],["anArray",$mod.$rtti["TJSArray"]]],rtl.jsvalue)});
+  $mod.$rtti.$RefToProcVar("TJSArrayCompareEvent",{procsig: rtl.newTIProcSig([["a",rtl.jsvalue],["b",rtl.jsvalue]],rtl.nativeint)});
+  $mod.$rtti.$ProcVar("TJSTypedArrayCallBack",{procsig: rtl.newTIProcSig([["element",rtl.jsvalue],["index",rtl.nativeint],["anArray",$mod.$rtti["TJSTypedArray"]]],rtl.boolean)});
+  $mod.$rtti.$MethodVar("TJSTypedArrayEvent",{procsig: rtl.newTIProcSig([["element",rtl.jsvalue],["index",rtl.nativeint],["anArray",$mod.$rtti["TJSTypedArray"]]],rtl.boolean), methodkind: 1});
+  $mod.$rtti.$ProcVar("TJSTypedArrayMapCallBack",{procsig: rtl.newTIProcSig([["element",rtl.jsvalue],["index",rtl.nativeint],["anArray",$mod.$rtti["TJSTypedArray"]]],rtl.jsvalue)});
+  $mod.$rtti.$MethodVar("TJSTypedArrayMapEvent",{procsig: rtl.newTIProcSig([["element",rtl.jsvalue],["index",rtl.nativeint],["anArray",$mod.$rtti["TJSTypedArray"]]],rtl.jsvalue), methodkind: 1});
+  $mod.$rtti.$ProcVar("TJSTypedArrayReduceCallBack",{procsig: rtl.newTIProcSig([["accumulator",rtl.jsvalue],["currentValue",rtl.jsvalue],["currentIndex",rtl.nativeint],["anArray",$mod.$rtti["TJSTypedArray"]]],rtl.jsvalue)});
+  $mod.$rtti.$ProcVar("TJSTypedArrayCompareCallBack",{procsig: rtl.newTIProcSig([["a",rtl.jsvalue],["b",rtl.jsvalue]],rtl.nativeint)});
+  $mod.$rtti.$RefToProcVar("TJSPromiseResolver",{procsig: rtl.newTIProcSig([["aValue",rtl.jsvalue]],rtl.jsvalue)});
+  $mod.$rtti.$RefToProcVar("TJSPromiseExecutor",{procsig: rtl.newTIProcSig([["resolve",$mod.$rtti["TJSPromiseResolver"]],["reject",$mod.$rtti["TJSPromiseResolver"]]])});
+  $mod.$rtti.$RefToProcVar("TJSPromiseFinallyHandler",{procsig: rtl.newTIProcSig(null)});
+  this.New = function (aElements) {
+    var Result = null;
+    var L = 0;
+    var I = 0;
+    var S = "";
+    L = rtl.length(aElements);
+    if ((L % 2) === 1) throw $mod.EJS.$create("Create$1",["Number of arguments must be even"]);
+    I = 0;
+    while (I < L) {
+      if (!rtl.isString(aElements[I])) {
+        S = String(I);
+        throw $mod.EJS.$create("Create$1",[("Argument " + S) + " must be a string."]);
+      };
+      I += 2;
+    };
+    I = 0;
+    Result = new Object();
+    while (I < L) {
+      S = "" + aElements[I];
+      Result[S] = aElements[I + 1];
+      I += 2;
+    };
+    return Result;
+  };
+  this.JSDelete = function (Obj, PropName) {
+    return delete Obj[PropName];
+  };
+  this.hasValue = function (v) {
+    if(v){ return true; } else { return false; };
+  };
+  this.isBoolean = function (v) {
+    return typeof(v) == 'boolean';
+  };
+  this.isCallback = function (v) {
+    return rtl.isObject(v) && rtl.isObject(v.scope) && (rtl.isString(v.fn) || rtl.isFunction(v.fn));
+  };
+  this.isChar = function (v) {
+    return (typeof(v)!="string") && (v.length==1);
+  };
+  this.isClass = function (v) {
+    return (typeof(v)=="object") && (v!=null) && (v.$class == v);
+  };
+  this.isClassInstance = function (v) {
+    return (typeof(v)=="object") && (v!=null) && (v.$class == Object.getPrototypeOf(v));
+  };
+  this.isInteger = function (v) {
+    return Math.floor(v)===v;
+  };
+  this.isNull = function (v) {
+    return v === null;
+  };
+  this.isRecord = function (v) {
+    return (typeof(v)=="function") && (typeof(v.$create) == "function");
+  };
+  this.isUndefined = function (v) {
+    return v == undefined;
+  };
+  this.isDefined = function (v) {
+    return !(v == undefined);
+  };
+  this.isUTF16Char = function (v) {
+    if (typeof(v)!="string") return false;
+    if ((v.length==0) || (v.length>2)) return false;
+    var code = v.charCodeAt(0);
+    if (code < 0xD800){
+      if (v.length == 1) return true;
+    } else if (code <= 0xDBFF){
+      if (v.length==2){
+        code = v.charCodeAt(1);
+        if (code >= 0xDC00 && code <= 0xDFFF) return true;
+      };
+    };
+    return false;
+  };
+  this.jsInstanceOf = function (aFunction, aFunctionWithPrototype) {
+    return aFunction instanceof aFunctionWithPrototype;
+  };
+  this.toNumber = function (v) {
+    return v-0;
+  };
+  this.toInteger = function (v) {
+    var Result = 0;
+    if ($mod.isInteger(v)) {
+      Result = Math.floor(v)}
+     else Result = 0;
+    return Result;
+  };
+  this.toObject = function (Value) {
+    var Result = null;
+    if (rtl.isObject(Value)) {
+      Result = rtl.getObject(Value)}
+     else Result = null;
+    return Result;
+  };
+  this.toArray = function (Value) {
+    var Result = null;
+    if (rtl.isArray(Value)) {
+      Result = rtl.getObject(Value)}
+     else Result = null;
+    return Result;
+  };
+  this.toBoolean = function (Value) {
+    var Result = false;
+    if ($mod.isBoolean(Value)) {
+      Result = !(Value == false)}
+     else Result = false;
+    return Result;
+  };
+  this.ToString = function (Value) {
+    var Result = "";
+    if (rtl.isString(Value)) {
+      Result = "" + Value}
+     else Result = "";
+    return Result;
+  };
+  this.TJSValueType = {"0": "jvtNull", jvtNull: 0, "1": "jvtBoolean", jvtBoolean: 1, "2": "jvtInteger", jvtInteger: 2, "3": "jvtFloat", jvtFloat: 3, "4": "jvtString", jvtString: 4, "5": "jvtObject", jvtObject: 5, "6": "jvtArray", jvtArray: 6};
+  $mod.$rtti.$Enum("TJSValueType",{minvalue: 0, maxvalue: 6, ordtype: 1, enumtype: this.TJSValueType});
+  this.GetValueType = function (JS) {
+    var Result = 0;
+    var t = "";
+    if ($mod.isNull(JS)) {
+      Result = $mod.TJSValueType.jvtNull}
+     else {
+      t = typeof(JS);
+      if (t === "string") {
+        Result = $mod.TJSValueType.jvtString}
+       else if (t === "boolean") {
+        Result = $mod.TJSValueType.jvtBoolean}
+       else if (t === "object") {
+        if (rtl.isArray(JS)) {
+          Result = $mod.TJSValueType.jvtArray}
+         else Result = $mod.TJSValueType.jvtObject;
+      } else if (t === "number") if ($mod.isInteger(JS)) {
+        Result = $mod.TJSValueType.jvtInteger}
+       else Result = $mod.TJSValueType.jvtFloat;
+    };
+    return Result;
+  };
+});
+rtl.module("SysUtils",["System","RTLConsts","JS"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.FreeAndNil = function (Obj) {
+    var o = null;
+    o = Obj.get();
+    if (o === null) return;
+    Obj.set(null);
+    o.$destroy("Destroy");
+  };
+  $mod.$rtti.$ProcVar("TProcedure",{procsig: rtl.newTIProcSig(null)});
+  this.FloatRecDigits = 19;
+  this.TFloatRec = function (s) {
+    if (s) {
+      this.Exponent = s.Exponent;
+      this.Negative = s.Negative;
+      this.Digits = s.Digits.slice(0);
+    } else {
+      this.Exponent = 0;
+      this.Negative = false;
+      this.Digits = rtl.arraySetLength(null,"",19);
+    };
+    this.$equal = function (b) {
+      return (this.Exponent === b.Exponent) && ((this.Negative === b.Negative) && rtl.arrayEq(this.Digits,b.Digits));
+    };
+  };
+  $mod.$rtti.$StaticArray("TFloatRec.Digits$a",{dims: [19], eltype: rtl.char});
+  $mod.$rtti.$Record("TFloatRec",{}).addFields("Exponent",rtl.longint,"Negative",rtl.boolean,"Digits",$mod.$rtti["TFloatRec.Digits$a"]);
+  this.TEndian = {"0": "Little", Little: 0, "1": "Big", Big: 1};
+  $mod.$rtti.$Enum("TEndian",{minvalue: 0, maxvalue: 1, ordtype: 1, enumtype: this.TEndian});
+  $mod.$rtti.$StaticArray("TByteArray",{dims: [32768], eltype: rtl.byte});
+  $mod.$rtti.$StaticArray("TWordArray",{dims: [16384], eltype: rtl.word});
+  $mod.$rtti.$DynArray("TBytes",{eltype: rtl.byte});
+  $mod.$rtti.$DynArray("TStringArray",{eltype: rtl.string});
+  $mod.$rtti.$StaticArray("TMonthNameArray",{dims: [12], eltype: rtl.string});
+  $mod.$rtti.$StaticArray("TDayTable",{dims: [12], eltype: rtl.word});
+  $mod.$rtti.$StaticArray("TWeekNameArray",{dims: [7], eltype: rtl.string});
+  $mod.$rtti.$StaticArray("TDayNames",{dims: [7], eltype: rtl.string});
+  rtl.createClass($mod,"Exception",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.fMessage = "";
+      this.fHelpContext = 0;
+    };
+    this.Create$1 = function (Msg) {
+      this.fMessage = Msg;
+    };
+    this.CreateFmt = function (Msg, Args) {
+      this.Create$1($mod.Format(Msg,Args));
+    };
+    this.CreateHelp = function (Msg, AHelpContext) {
+      this.Create$1(Msg);
+      this.fHelpContext = AHelpContext;
+    };
+    this.CreateFmtHelp = function (Msg, Args, AHelpContext) {
+      this.Create$1($mod.Format(Msg,Args));
+      this.fHelpContext = AHelpContext;
+    };
+    this.ToString = function () {
+      var Result = "";
+      Result = (this.$classname + ": ") + this.fMessage;
+      return Result;
+    };
+  });
+  $mod.$rtti.$ClassRef("ExceptClass",{instancetype: $mod.$rtti["Exception"]});
+  rtl.createClass($mod,"EExternal",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EMathError",$mod.EExternal,function () {
+  });
+  rtl.createClass($mod,"EInvalidOp",$mod.EMathError,function () {
+  });
+  rtl.createClass($mod,"EZeroDivide",$mod.EMathError,function () {
+  });
+  rtl.createClass($mod,"EOverflow",$mod.EMathError,function () {
+  });
+  rtl.createClass($mod,"EUnderflow",$mod.EMathError,function () {
+  });
+  rtl.createClass($mod,"EAbort",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EInvalidCast",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EAssertionFailed",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EObjectCheck",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EConvertError",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EFormatError",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EIntError",$mod.EExternal,function () {
+  });
+  rtl.createClass($mod,"EDivByZero",$mod.EIntError,function () {
+  });
+  rtl.createClass($mod,"ERangeError",$mod.EIntError,function () {
+  });
+  rtl.createClass($mod,"EIntOverflow",$mod.EIntError,function () {
+  });
+  rtl.createClass($mod,"EInOutError",$mod.Exception,function () {
+    this.$init = function () {
+      $mod.Exception.$init.call(this);
+      this.ErrorCode = 0;
+    };
+  });
+  rtl.createClass($mod,"EHeapMemoryError",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EExternalException",$mod.EExternal,function () {
+  });
+  rtl.createClass($mod,"EInvalidPointer",$mod.EHeapMemoryError,function () {
+  });
+  rtl.createClass($mod,"EOutOfMemory",$mod.EHeapMemoryError,function () {
+  });
+  rtl.createClass($mod,"EVariantError",$mod.Exception,function () {
+    this.$init = function () {
+      $mod.Exception.$init.call(this);
+      this.ErrCode = 0;
+    };
+    this.CreateCode = function (Code) {
+      this.ErrCode = Code;
+    };
+  });
+  rtl.createClass($mod,"EAccessViolation",$mod.EExternal,function () {
+  });
+  rtl.createClass($mod,"EBusError",$mod.EAccessViolation,function () {
+  });
+  rtl.createClass($mod,"EPrivilege",$mod.EExternal,function () {
+  });
+  rtl.createClass($mod,"EStackOverflow",$mod.EExternal,function () {
+  });
+  rtl.createClass($mod,"EControlC",$mod.EExternal,function () {
+  });
+  rtl.createClass($mod,"EAbstractError",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EPropReadOnly",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EPropWriteOnly",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EIntfCastError",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EInvalidContainer",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EInvalidInsert",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EPackageError",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EOSError",$mod.Exception,function () {
+    this.$init = function () {
+      $mod.Exception.$init.call(this);
+      this.ErrorCode = 0;
+    };
+  });
+  rtl.createClass($mod,"ESafecallException",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"ENoThreadSupport",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"ENoWideStringSupport",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"ENotImplemented",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EArgumentException",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EArgumentOutOfRangeException",$mod.EArgumentException,function () {
+  });
+  rtl.createClass($mod,"EArgumentNilException",$mod.EArgumentException,function () {
+  });
+  rtl.createClass($mod,"EPathTooLongException",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"ENotSupportedException",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EDirectoryNotFoundException",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EFileNotFoundException",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"EPathNotFoundException",$mod.Exception,function () {
+  });
+  rtl.createClass($mod,"ENoConstructException",$mod.Exception,function () {
+  });
+  this.EmptyStr = "";
+  this.EmptyWideStr = "";
+  this.HexDisplayPrefix = "$";
+  this.LeadBytes = {};
+  this.CharInSet = function (Ch, CSet) {
+    var Result = false;
+    var I = 0;
+    Result = false;
+    I = rtl.length(CSet) - 1;
+    while (!Result && (I >= 0)) {
+      Result = Ch === CSet[I];
+      I -= 1;
+    };
+    return Result;
+  };
+  this.LeftStr = function (S, Count) {
+    return (Count>0) ? S.substr(0,Count) : "";
+  };
+  this.RightStr = function (S, Count) {
+    var l = S.length;
+    return (Count<1) ? "" : ( Count>=l ? S : S.substr(l-Count));
+  };
+  this.Trim = function (S) {
+    return S.trim();
+  };
+  this.TrimLeft = function (S) {
+    return S.replace(/^[\s\uFEFF\xA0\x00-\x1f]+/,'');
+  };
+  this.TrimRight = function (S) {
+    return S.replace(/[\s\uFEFF\xA0\x00-\x1f]+$/,'');
+  };
+  this.UpperCase = function (s) {
+    return s.toUpperCase();
+  };
+  this.LowerCase = function (s) {
+    return s.toLowerCase();
+  };
+  this.CompareStr = function (s1, s2) {
+    var l1 = s1.length;
+    var l2 = s2.length;
+    if (l1<=l2){
+      var s = s2.substr(0,l1);
+      if (s1<s){ return -1;
+      } else if (s1>s){ return 1;
+      } else { return l1<l2 ? -1 : 0; };
+    } else {
+      var s = s1.substr(0,l2);
+      if (s<s2){ return -1;
+      } else { return 1; };
+    };
+  };
+  this.SameStr = function (s1, s2) {
+    return s1 == s2;
+  };
+  this.CompareText = function (s1, s2) {
+    var l1 = s1.toLowerCase();
+    var l2 = s2.toLowerCase();
+    if (l1>l2){ return 1;
+    } else if (l1<l2){ return -1;
+    } else { return 0; };
+  };
+  this.SameText = function (s1, s2) {
+    return s1.toLowerCase() == s2.toLowerCase();
+  };
+  this.AnsiCompareText = function (s1, s2) {
+    return s1.localeCompare(s2);
+  };
+  this.AnsiSameText = function (s1, s2) {
+    return s1.localeCompare(s2) == 0;
+  };
+  this.AnsiCompareStr = function (s1, s2) {
+    var Result = 0;
+    Result = $mod.CompareText(s1,s2);
+    return Result;
+  };
+  this.AppendStr = function (Dest, S) {
+    Dest.set(Dest.get() + S);
+  };
+  this.Format = function (Fmt, Args) {
+    var Result = "";
+    var ChPos = 0;
+    var OldPos = 0;
+    var ArgPos = 0;
+    var DoArg = 0;
+    var Len = 0;
+    var Hs = "";
+    var ToAdd = "";
+    var Index = 0;
+    var Width = 0;
+    var Prec = 0;
+    var Left = false;
+    var Fchar = "";
+    var vq = 0;
+    function ReadFormat() {
+      var Result = "";
+      var Value = 0;
+      function ReadInteger() {
+        var Code = 0;
+        var ArgN = 0;
+        if (Value !== -1) return;
+        OldPos = ChPos;
+        while (((ChPos <= Len) && (Fmt.charAt(ChPos - 1) <= "9")) && (Fmt.charAt(ChPos - 1) >= "0")) ChPos += 1;
+        if (ChPos > Len) $impl.DoFormatError(1,Fmt);
+        if (Fmt.charAt(ChPos - 1) === "*") {
+          if (Index === -1) {
+            ArgN = ArgPos}
+           else {
+            ArgN = Index;
+            Index += 1;
+          };
+          if ((ChPos > OldPos) || (ArgN > (rtl.length(Args) - 1))) $impl.DoFormatError(1,Fmt);
+          ArgPos = ArgN + 1;
+          if (rtl.isNumber(Args[ArgN]) && pas.JS.isInteger(Args[ArgN])) {
+            Value = Math.floor(Args[ArgN])}
+           else $impl.DoFormatError(1,Fmt);
+          ChPos += 1;
+        } else {
+          if (OldPos < ChPos) {
+            pas.System.val(pas.System.Copy(Fmt,OldPos,ChPos - OldPos),{get: function () {
+                return Value;
+              }, set: function (v) {
+                Value = v;
+              }},{get: function () {
+                return Code;
+              }, set: function (v) {
+                Code = v;
+              }});
+            if (Code > 0) $impl.DoFormatError(1,Fmt);
+          } else Value = -1;
+        };
+      };
+      function ReadIndex() {
+        if (Fmt.charAt(ChPos - 1) !== ":") {
+          ReadInteger()}
+         else Value = 0;
+        if (Fmt.charAt(ChPos - 1) === ":") {
+          if (Value === -1) $impl.DoFormatError(2,Fmt);
+          Index = Value;
+          Value = -1;
+          ChPos += 1;
+        };
+      };
+      function ReadLeft() {
+        if (Fmt.charAt(ChPos - 1) === "-") {
+          Left = true;
+          ChPos += 1;
+        } else Left = false;
+      };
+      function ReadWidth() {
+        ReadInteger();
+        if (Value !== -1) {
+          Width = Value;
+          Value = -1;
+        };
+      };
+      function ReadPrec() {
+        if (Fmt.charAt(ChPos - 1) === ".") {
+          ChPos += 1;
+          ReadInteger();
+          if (Value === -1) Value = 0;
+          Prec = Value;
+        };
+      };
+      Index = -1;
+      Width = -1;
+      Prec = -1;
+      Value = -1;
+      ChPos += 1;
+      if (Fmt.charAt(ChPos - 1) === "%") {
+        Result = "%";
+        return Result;
+      };
+      ReadIndex();
+      ReadLeft();
+      ReadWidth();
+      ReadPrec();
+      Result = pas.System.upcase(Fmt.charAt(ChPos - 1));
+      return Result;
+    };
+    function Checkarg(AT, err) {
+      var Result = false;
+      Result = false;
+      if (Index === -1) {
+        DoArg = ArgPos}
+       else DoArg = Index;
+      ArgPos = DoArg + 1;
+      if ((DoArg > (rtl.length(Args) - 1)) || (pas.JS.GetValueType(Args[DoArg]) !== AT)) {
+        if (err) $impl.DoFormatError(3,Fmt);
+        ArgPos -= 1;
+        return Result;
+      };
+      Result = true;
+      return Result;
+    };
+    Result = "";
+    Len = Fmt.length;
+    ChPos = 1;
+    OldPos = 1;
+    ArgPos = 0;
+    while (ChPos <= Len) {
+      while ((ChPos <= Len) && (Fmt.charAt(ChPos - 1) !== "%")) ChPos += 1;
+      if (ChPos > OldPos) Result = Result + pas.System.Copy(Fmt,OldPos,ChPos - OldPos);
+      if (ChPos < Len) {
+        Fchar = ReadFormat();
+        var $tmp1 = Fchar;
+        if ($tmp1 === "D") {
+          Checkarg(pas.JS.TJSValueType.jvtInteger,true);
+          ToAdd = $mod.IntToStr(Math.floor(Args[DoArg]));
+          Width = Math.abs(Width);
+          Index = Prec - ToAdd.length;
+          if (ToAdd.charAt(0) !== "-") {
+            ToAdd = pas.System.StringOfChar("0",Index) + ToAdd}
+           else pas.System.Insert(pas.System.StringOfChar("0",Index + 1),{get: function () {
+              return ToAdd;
+            }, set: function (v) {
+              ToAdd = v;
+            }},2);
+        } else if ($tmp1 === "U") {
+          Checkarg(pas.JS.TJSValueType.jvtInteger,true);
+          if (Math.floor(Args[DoArg]) < 0) $impl.DoFormatError(3,Fmt);
+          ToAdd = $mod.IntToStr(Math.floor(Args[DoArg]));
+          Width = Math.abs(Width);
+          Index = Prec - ToAdd.length;
+          ToAdd = pas.System.StringOfChar("0",Index) + ToAdd;
+        } else if ($tmp1 === "E") {
+          if (Checkarg(pas.JS.TJSValueType.jvtFloat,false) || Checkarg(pas.JS.TJSValueType.jvtInteger,true)) ToAdd = $mod.FloatToStrF(rtl.getNumber(Args[DoArg]),$mod.TFloatFormat.ffFixed,9999,Prec);
+        } else if ($tmp1 === "F") {
+          if (Checkarg(pas.JS.TJSValueType.jvtFloat,false) || Checkarg(pas.JS.TJSValueType.jvtInteger,true)) ToAdd = $mod.FloatToStrF(rtl.getNumber(Args[DoArg]),$mod.TFloatFormat.ffFixed,9999,Prec);
+        } else if ($tmp1 === "G") {
+          if (Checkarg(pas.JS.TJSValueType.jvtFloat,false) || Checkarg(pas.JS.TJSValueType.jvtInteger,true)) ToAdd = $mod.FloatToStrF(rtl.getNumber(Args[DoArg]),$mod.TFloatFormat.ffGeneral,Prec,3);
+        } else if ($tmp1 === "N") {
+          if (Checkarg(pas.JS.TJSValueType.jvtFloat,false) || Checkarg(pas.JS.TJSValueType.jvtInteger,true)) ToAdd = $mod.FloatToStrF(rtl.getNumber(Args[DoArg]),$mod.TFloatFormat.ffNumber,9999,Prec);
+        } else if ($tmp1 === "M") {
+          if (Checkarg(pas.JS.TJSValueType.jvtFloat,false) || Checkarg(pas.JS.TJSValueType.jvtInteger,true)) ToAdd = $mod.FloatToStrF(rtl.getNumber(Args[DoArg]),$mod.TFloatFormat.ffCurrency,9999,Prec);
+        } else if ($tmp1 === "S") {
+          Checkarg(pas.JS.TJSValueType.jvtString,true);
+          Hs = "" + Args[DoArg];
+          Index = Hs.length;
+          if ((Prec !== -1) && (Index > Prec)) Index = Prec;
+          ToAdd = pas.System.Copy(Hs,1,Index);
+        } else if ($tmp1 === "P") {
+          Checkarg(pas.JS.TJSValueType.jvtInteger,true);
+          ToAdd = $mod.IntToHex(Math.floor(Args[DoArg]),31);
+        } else if ($tmp1 === "X") {
+          Checkarg(pas.JS.TJSValueType.jvtInteger,true);
+          vq = Math.floor(Args[DoArg]);
+          Index = 31;
+          if (Prec > Index) {
+            ToAdd = $mod.IntToHex(vq,Index)}
+           else {
+            Index = 1;
+            while (((1 << (Index * 4)) <= vq) && (Index < 16)) Index += 1;
+            if (Index > Prec) Prec = Index;
+            ToAdd = $mod.IntToHex(vq,Prec);
+          };
+        } else if ($tmp1 === "%") ToAdd = "%";
+        if (Width !== -1) if (ToAdd.length < Width) if (!Left) {
+          ToAdd = pas.System.StringOfChar(" ",Width - ToAdd.length) + ToAdd}
+         else ToAdd = ToAdd + pas.System.StringOfChar(" ",Width - ToAdd.length);
+        Result = Result + ToAdd;
+      };
+      ChPos += 1;
+      OldPos = ChPos;
+    };
+    return Result;
+  };
+  this.BytesOf = function (AVal) {
+    var Result = [];
+    var I = 0;
+    Result = rtl.arraySetLength(Result,0,AVal.length);
+    for (var $l1 = 0, $end2 = AVal.length - 1; $l1 <= $end2; $l1++) {
+      I = $l1;
+      Result[I] = AVal.charCodeAt((I + 1) - 1);
+    };
+    return Result;
+  };
+  this.StringOf = function (ABytes) {
+    var Result = "";
+    var I = 0;
+    Result = "";
+    for (var $l1 = 0, $end2 = rtl.length(ABytes) - 1; $l1 <= $end2; $l1++) {
+      I = $l1;
+      Result = Result + String.fromCharCode(ABytes[I]);
+    };
+    return Result;
+  };
+  this.LocaleCompare = function (s1, s2, locales) {
+    return s1.localeCompare(s2,locales) == 0;
+  };
+  this.NormalizeStr = function (S, Norm) {
+    return S.normalize(Norm);
+  };
+  var Alpha = rtl.createSet(null,65,90,null,97,122,95);
+  var AlphaNum = rtl.unionSet(Alpha,rtl.createSet(null,48,57));
+  var Dot = ".";
+  this.IsValidIdent = function (Ident, AllowDots, StrictDots) {
+    var Result = false;
+    var First = false;
+    var I = 0;
+    var Len = 0;
+    Len = Ident.length;
+    if (Len < 1) return false;
+    First = true;
+    Result = false;
+    I = 1;
+    while (I <= Len) {
+      if (First) {
+        if (!(Ident.charCodeAt(I - 1) in Alpha)) return Result;
+        First = false;
+      } else if (AllowDots && (Ident.charAt(I - 1) === Dot)) {
+        if (StrictDots) {
+          if (I >= Len) return Result;
+          First = true;
+        };
+      } else if (!(Ident.charCodeAt(I - 1) in AlphaNum)) return Result;
+      I = I + 1;
+    };
+    Result = true;
+    return Result;
+  };
+  this.TStringReplaceFlag = {"0": "rfReplaceAll", rfReplaceAll: 0, "1": "rfIgnoreCase", rfIgnoreCase: 1};
+  $mod.$rtti.$Enum("TStringReplaceFlag",{minvalue: 0, maxvalue: 1, ordtype: 1, enumtype: this.TStringReplaceFlag});
+  $mod.$rtti.$Set("TStringReplaceFlags",{comptype: $mod.$rtti["TStringReplaceFlag"]});
+  this.StringReplace = function (aOriginal, aSearch, aReplace, Flags) {
+    var Result = "";
+    var REFlags = "";
+    var REString = "";
+    REFlags = "";
+    if ($mod.TStringReplaceFlag.rfReplaceAll in Flags) REFlags = "g";
+    if ($mod.TStringReplaceFlag.rfIgnoreCase in Flags) REFlags = REFlags + "i";
+    REString = aSearch.replace(new RegExp($impl.RESpecials,"g"),"\\$1");
+    Result = aOriginal.replace(new RegExp(REString,REFlags),aReplace);
+    return Result;
+  };
+  this.QuoteString = function (aOriginal, AQuote) {
+    var Result = "";
+    Result = (AQuote + $mod.StringReplace(aOriginal,AQuote,AQuote + AQuote,rtl.createSet($mod.TStringReplaceFlag.rfReplaceAll))) + AQuote;
+    return Result;
+  };
+  this.QuotedStr = function (s, QuoteChar) {
+    var Result = "";
+    Result = $mod.QuoteString(s,QuoteChar);
+    return Result;
+  };
+  this.DeQuoteString = function (aQuoted, AQuote) {
+    var Result = "";
+    var i = 0;
+    Result = aQuoted;
+    if (Result.substr(0,1) !== AQuote) return Result;
+    Result = Result.slice(1);
+    i = 1;
+    while (i <= Result.length) {
+      if (Result.charAt(i - 1) === AQuote) {
+        if ((i === Result.length) || (Result.charAt((i + 1) - 1) !== AQuote)) {
+          Result = Result.slice(0,i - 1);
+          return Result;
+        } else Result = Result.slice(0,i - 1) + Result.slice(i);
+      } else i += 1;
+    };
+    return Result;
+  };
+  this.IsDelimiter = function (Delimiters, S, Index) {
+    var Result = false;
+    Result = false;
+    if ((Index > 0) && (Index <= S.length)) Result = pas.System.Pos(S.charAt(Index - 1),Delimiters) !== 0;
+    return Result;
+  };
+  this.AdjustLineBreaks = function (S) {
+    var Result = "";
+    Result = $mod.AdjustLineBreaks$1(S,pas.System.DefaultTextLineBreakStyle);
+    return Result;
+  };
+  this.AdjustLineBreaks$1 = function (S, Style) {
+    var Result = "";
+    var I = 0;
+    var L = 0;
+    var Res = "";
+    function Add(C) {
+      Res = Res + C;
+    };
+    I = 0;
+    L = S.length;
+    Result = "";
+    while (I <= L) {
+      var $tmp1 = S.charAt(I - 1);
+      if ($tmp1 === "\n") {
+        if (Style in rtl.createSet(pas.System.TTextLineBreakStyle.tlbsCRLF,pas.System.TTextLineBreakStyle.tlbsCR)) Add("\r");
+        if (Style === pas.System.TTextLineBreakStyle.tlbsCRLF) Add("\n");
+        I += 1;
+      } else if ($tmp1 === "\r") {
+        if (Style === pas.System.TTextLineBreakStyle.tlbsCRLF) Add("\r");
+        Add("\n");
+        I += 1;
+        if (S.charAt(I - 1) === "\n") I += 1;
+      } else {
+        Add(S.charAt(I - 1));
+        I += 1;
+      };
+    };
+    Result = Res;
+    return Result;
+  };
+  var Quotes = rtl.createSet(39,34);
+  this.WrapText = function (Line, BreakStr, BreakChars, MaxCol) {
+    var Result = "";
+    var L = "";
+    var C = "";
+    var LQ = "";
+    var BC = "";
+    var P = 0;
+    var BLen = 0;
+    var Len = 0;
+    var HB = false;
+    var IBC = false;
+    Result = "";
+    L = Line;
+    BLen = BreakStr.length;
+    if (BLen > 0) {
+      BC = BreakStr.charAt(0)}
+     else BC = "\x00";
+    Len = L.length;
+    while (Len > 0) {
+      P = 1;
+      LQ = "\x00";
+      HB = false;
+      IBC = false;
+      while (((P <= Len) && ((P <= MaxCol) || !IBC)) && ((LQ !== "\x00") || !HB)) {
+        C = L.charAt(P - 1);
+        if (C === LQ) {
+          LQ = "\x00"}
+         else if (C.charCodeAt() in Quotes) LQ = C;
+        if (LQ !== "\x00") {
+          P += 1}
+         else {
+          HB = (C === BC) && (BreakStr === pas.System.Copy(L,P,BLen));
+          if (HB) {
+            P += BLen}
+           else {
+            if (P >= MaxCol) IBC = $mod.CharInSet(C,BreakChars);
+            P += 1;
+          };
+        };
+      };
+      Result = Result + pas.System.Copy(L,1,P - 1);
+      pas.System.Delete({get: function () {
+          return L;
+        }, set: function (v) {
+          L = v;
+        }},1,P - 1);
+      Len = L.length;
+      if ((Len > 0) && !HB) Result = Result + BreakStr;
+    };
+    return Result;
+  };
+  this.WrapText$1 = function (Line, MaxCol) {
+    var Result = "";
+    Result = $mod.WrapText(Line,pas.System.sLineBreak,[" ","-","\t"],MaxCol);
+    return Result;
+  };
+  this.IntToStr = function (Value) {
+    var Result = "";
+    Result = "" + Value;
+    return Result;
+  };
+  this.TryStrToInt = function (S, res) {
+    var Result = false;
+    var NI = 0;
+    Result = $mod.TryStrToInt$1(S,{get: function () {
+        return NI;
+      }, set: function (v) {
+        NI = v;
+      }});
+    if (Result) res.set(NI);
+    return Result;
+  };
+  this.TryStrToInt$1 = function (S, res) {
+    var Result = false;
+    var Radix = 10;
+    var N = "";
+    var J = undefined;
+    N = S;
+    var $tmp1 = pas.System.Copy(N,1,1);
+    if ($tmp1 === "$") {
+      Radix = 16}
+     else if ($tmp1 === "&") {
+      Radix = 8}
+     else if ($tmp1 === "%") Radix = 2;
+    if (Radix !== 10) pas.System.Delete({get: function () {
+        return N;
+      }, set: function (v) {
+        N = v;
+      }},1,1);
+    J = parseInt(N,Radix);
+    Result = !isNaN(J);
+    if (Result) res.set(Math.floor(J));
+    return Result;
+  };
+  this.StrToIntDef = function (S, aDef) {
+    var Result = 0;
+    var R = 0;
+    if ($mod.TryStrToInt$1(S,{get: function () {
+        return R;
+      }, set: function (v) {
+        R = v;
+      }})) {
+      Result = R}
+     else Result = aDef;
+    return Result;
+  };
+  this.StrToIntDef$1 = function (S, aDef) {
+    var Result = 0;
+    var R = 0;
+    if ($mod.TryStrToInt$1(S,{get: function () {
+        return R;
+      }, set: function (v) {
+        R = v;
+      }})) {
+      Result = R}
+     else Result = aDef;
+    return Result;
+  };
+  this.StrToInt = function (S) {
+    var Result = 0;
+    var R = 0;
+    if (!$mod.TryStrToInt$1(S,{get: function () {
+        return R;
+      }, set: function (v) {
+        R = v;
+      }})) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SErrInvalidInteger,[S]]);
+    Result = R;
+    return Result;
+  };
+  this.StrToNativeInt = function (S) {
+    var Result = 0;
+    if (!$mod.TryStrToInt$1(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SErrInvalidInteger,[S]]);
+    return Result;
+  };
+  this.StrToInt64 = function (S) {
+    var Result = 0;
+    var N = 0;
+    if (!$mod.TryStrToInt$1(S,{get: function () {
+        return N;
+      }, set: function (v) {
+        N = v;
+      }})) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SErrInvalidInteger,[S]]);
+    Result = N;
+    return Result;
+  };
+  this.StrToInt64Def = function (S, ADefault) {
+    var Result = 0;
+    if ($mod.TryStrToInt64(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) Result = ADefault;
+    return Result;
+  };
+  this.TryStrToInt64 = function (S, res) {
+    var Result = false;
+    var R = 0;
+    Result = $mod.TryStrToInt$1(S,{get: function () {
+        return R;
+      }, set: function (v) {
+        R = v;
+      }});
+    if (Result) res.set(R);
+    return Result;
+  };
+  this.StrToQWord = function (S) {
+    var Result = 0;
+    var N = 0;
+    if (!$mod.TryStrToInt$1(S,{get: function () {
+        return N;
+      }, set: function (v) {
+        N = v;
+      }}) || (N < 0)) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SErrInvalidInteger,[S]]);
+    Result = N;
+    return Result;
+  };
+  this.StrToQWordDef = function (S, ADefault) {
+    var Result = 0;
+    if (!$mod.TryStrToQWord(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) Result = ADefault;
+    return Result;
+  };
+  this.TryStrToQWord = function (S, res) {
+    var Result = false;
+    var R = 0;
+    Result = $mod.TryStrToInt$1(S,{get: function () {
+        return R;
+      }, set: function (v) {
+        R = v;
+      }}) && (R >= 0);
+    if (Result) res.set(R);
+    return Result;
+  };
+  this.StrToUInt64 = function (S) {
+    var Result = 0;
+    var N = 0;
+    if (!$mod.TryStrToInt$1(S,{get: function () {
+        return N;
+      }, set: function (v) {
+        N = v;
+      }}) || (N < 0)) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SErrInvalidInteger,[S]]);
+    Result = N;
+    return Result;
+  };
+  this.StrToUInt64Def = function (S, ADefault) {
+    var Result = 0;
+    if (!$mod.TryStrToUInt64(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) Result = ADefault;
+    return Result;
+  };
+  this.TryStrToUInt64 = function (S, res) {
+    var Result = false;
+    var R = 0;
+    Result = $mod.TryStrToInt$1(S,{get: function () {
+        return R;
+      }, set: function (v) {
+        R = v;
+      }}) && (R >= 0);
+    if (Result) res.set(R);
+    return Result;
+  };
+  this.StrToDWord = function (S) {
+    var Result = 0;
+    if (!$mod.TryStrToDWord(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SErrInvalidInteger,[S]]);
+    return Result;
+  };
+  this.StrToDWordDef = function (S, ADefault) {
+    var Result = 0;
+    if (!$mod.TryStrToDWord(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) Result = ADefault;
+    return Result;
+  };
+  this.TryStrToDWord = function (S, res) {
+    var Result = false;
+    var R = 0;
+    Result = ($mod.TryStrToInt$1(S,{get: function () {
+        return R;
+      }, set: function (v) {
+        R = v;
+      }}) && (R >= 0)) && (R <= 0xFFFFFFFF);
+    if (Result) res.set(R);
+    return Result;
+  };
+  var HexDigits = "0123456789ABCDEF";
+  this.IntToHex = function (Value, Digits) {
+    var Result = "";
+    if (Digits === 0) Digits = 1;
+    Result = "";
+    while (Value > 0) {
+      Result = HexDigits.charAt(((Value & 15) + 1) - 1) + Result;
+      Value = Value >>> 4;
+    };
+    while (Result.length < Digits) Result = "0" + Result;
+    return Result;
+  };
+  this.MaxCurrency = 450359962737.0495;
+  this.MinCurrency = -450359962737.0496;
+  this.TFloatFormat = {"0": "ffFixed", ffFixed: 0, "1": "ffGeneral", ffGeneral: 1, "2": "ffExponent", ffExponent: 2, "3": "ffNumber", ffNumber: 3, "4": "ffCurrency", ffCurrency: 4};
+  var Rounds = "123456789:";
+  this.FloatToDecimal = function (Value, Precision, Decimals) {
+    var Result = new $mod.TFloatRec();
+    var Buffer = "";
+    var InfNan = "";
+    var OutPos = 0;
+    var error = 0;
+    var N = 0;
+    var L = 0;
+    var C = 0;
+    var GotNonZeroBeforeDot = false;
+    var BeforeDot = false;
+    Result.Negative = false;
+    Result.Exponent = 0;
+    for (C = 0; C <= 19; C++) Result.Digits[C] = "0";
+    if (Value === 0) return Result;
+    Buffer=Value.toPrecision(21); // Double precision;
+    N = 1;
+    L = Buffer.length;
+    while (Buffer.charAt(N - 1) === " ") N += 1;
+    Result.Negative = Buffer.charAt(N - 1) === "-";
+    if (Result.Negative) {
+      N += 1}
+     else if (Buffer.charAt(N - 1) === "+") N += 1;
+    if (L >= (N + 2)) {
+      InfNan = pas.System.Copy(Buffer,N,3);
+      if (InfNan === "Inf") {
+        Result.Digits[0] = "\x00";
+        Result.Exponent = 32767;
+        return Result;
+      };
+      if (InfNan === "Nan") {
+        Result.Digits[0] = "\x00";
+        Result.Exponent = -32768;
+        return Result;
+      };
+    };
+    OutPos = 0;
+    Result.Exponent = 0;
+    BeforeDot = true;
+    GotNonZeroBeforeDot = false;
+    while ((L >= N) && (Buffer.charAt(N - 1) !== "E")) {
+      if (Buffer.charAt(N - 1) === ".") {
+        BeforeDot = false}
+       else {
+        if (BeforeDot) {
+          Result.Exponent += 1;
+          Result.Digits[OutPos] = Buffer.charAt(N - 1);
+          if (Buffer.charAt(N - 1) !== "0") GotNonZeroBeforeDot = true;
+        } else Result.Digits[OutPos] = Buffer.charAt(N - 1);
+        OutPos += 1;
+      };
+      N += 1;
+    };
+    N += 1;
+    if (N <= L) {
+      pas.System.val$6(pas.System.Copy(Buffer,N,(L - N) + 1),{get: function () {
+          return C;
+        }, set: function (v) {
+          C = v;
+        }},{get: function () {
+          return error;
+        }, set: function (v) {
+          error = v;
+        }});
+      Result.Exponent += C;
+    };
+    N = OutPos;
+    L = 19;
+    while (N < L) {
+      Result.Digits[N] = "0";
+      N += 1;
+    };
+    if ((Decimals + Result.Exponent) < Precision) {
+      N = Decimals + Result.Exponent}
+     else N = Precision;
+    if (N >= L) N = L - 1;
+    if (N === 0) {
+      if (Result.Digits[0] >= "5") {
+        Result.Digits[0] = "1";
+        Result.Digits[1] = "\x00";
+        Result.Exponent += 1;
+      } else Result.Digits[0] = "\x00";
+    } else if (N > 0) {
+      if (Result.Digits[N] >= "5") {
+        do {
+          Result.Digits[N] = "\x00";
+          N -= 1;
+          Result.Digits[N] = Rounds.charAt(($mod.StrToInt(Result.Digits[N]) + 1) - 1);
+        } while (!((N === 0) || (Result.Digits[N] < ":")));
+        if (Result.Digits[0] === ":") {
+          Result.Digits[0] = "1";
+          Result.Exponent += 1;
+        };
+      } else {
+        Result.Digits[N] = "0";
+        while ((N > -1) && (Result.Digits[N] === "0")) {
+          Result.Digits[N] = "\x00";
+          N -= 1;
+        };
+      };
+    } else Result.Digits[0] = "\x00";
+    if ((Result.Digits[0] === "\x00") && !GotNonZeroBeforeDot) {
+      Result.Exponent = 0;
+      Result.Negative = false;
+    };
+    return Result;
+  };
+  this.FloatToStr = function (Value) {
+    var Result = "";
+    Result = $mod.FloatToStrF(Value,$mod.TFloatFormat.ffGeneral,15,0);
+    return Result;
+  };
+  this.FloatToStrF = function (Value, format, Precision, Digits) {
+    var Result = "";
+    var DS = "";
+    DS = $mod.DecimalSeparator;
+    var $tmp1 = format;
+    if ($tmp1 === $mod.TFloatFormat.ffGeneral) {
+      Result = $impl.FormatGeneralFloat(Value,Precision,DS)}
+     else if ($tmp1 === $mod.TFloatFormat.ffExponent) {
+      Result = $impl.FormatExponentFloat(Value,Precision,Digits,DS)}
+     else if ($tmp1 === $mod.TFloatFormat.ffFixed) {
+      Result = $impl.FormatFixedFloat(Value,Digits,DS)}
+     else if ($tmp1 === $mod.TFloatFormat.ffNumber) {
+      Result = $impl.FormatNumberFloat(Value,Digits,DS,$mod.ThousandSeparator)}
+     else if ($tmp1 === $mod.TFloatFormat.ffCurrency) Result = $impl.FormatNumberCurrency(Value * 10000,Digits,DS,$mod.ThousandSeparator);
+    if (((format !== $mod.TFloatFormat.ffCurrency) && (Result.length > 1)) && (Result.charAt(0) === "-")) $impl.RemoveLeadingNegativeSign({get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }},DS);
+    return Result;
+  };
+  this.TryStrToFloat = function (S, res) {
+    var Result = false;
+    var J = undefined;
+    var N = "";
+    N = S;
+    if ($mod.ThousandSeparator !== "") N = $mod.StringReplace(N,$mod.ThousandSeparator,"",rtl.createSet($mod.TStringReplaceFlag.rfReplaceAll));
+    if ($mod.DecimalSeparator !== ".") N = $mod.StringReplace(N,$mod.DecimalSeparator,".",{});
+    J = parseFloat(N);
+    Result = !isNaN(J);
+    if (Result) res.set(rtl.getNumber(J));
+    return Result;
+  };
+  this.StrToFloatDef = function (S, aDef) {
+    var Result = 0.0;
+    if (!$mod.TryStrToFloat(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) Result = aDef;
+    return Result;
+  };
+  this.StrToFloat = function (S) {
+    var Result = 0.0;
+    if (!$mod.TryStrToFloat(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SErrInvalidFloat,[S]]);
+    return Result;
+  };
+  var MaxPrecision = 18;
+  this.FormatFloat = function (Fmt, aValue) {
+    var Result = "";
+    var E = 0.0;
+    var FV = new $mod.TFloatRec();
+    var Section = "";
+    var SectionLength = 0;
+    var ThousandSep = false;
+    var IsScientific = false;
+    var DecimalPos = 0;
+    var FirstDigit = 0;
+    var LastDigit = 0;
+    var RequestedDigits = 0;
+    var ExpSize = 0;
+    var Available = 0;
+    var Current = 0;
+    var PadZeroes = 0;
+    var DistToDecimal = 0;
+    function InitVars() {
+      E = aValue;
+      Section = "";
+      SectionLength = 0;
+      ThousandSep = false;
+      IsScientific = false;
+      DecimalPos = 0;
+      FirstDigit = 2147483647;
+      LastDigit = 0;
+      RequestedDigits = 0;
+      ExpSize = 0;
+      Available = -1;
+    };
+    function ToResult(AChar) {
+      Result = Result + AChar;
+    };
+    function AddToResult(AStr) {
+      Result = Result + AStr;
+    };
+    function WriteDigit(ADigit) {
+      if (ADigit === "\x00") return;
+      DistToDecimal -= 1;
+      if (DistToDecimal === -1) {
+        AddToResult($mod.DecimalSeparator);
+        ToResult(ADigit);
+      } else {
+        ToResult(ADigit);
+        if ((ThousandSep && ((DistToDecimal % 3) === 0)) && (DistToDecimal > 1)) AddToResult($mod.ThousandSeparator);
+      };
+    };
+    function GetDigit() {
+      var Result = "";
+      Result = "\x00";
+      if (Current <= Available) {
+        Result = FV.Digits[Current];
+        Current += 1;
+      } else if (DistToDecimal <= LastDigit) {
+        DistToDecimal -= 1}
+       else Result = "0";
+      return Result;
+    };
+    function CopyDigit() {
+      if (PadZeroes === 0) {
+        WriteDigit(GetDigit())}
+       else if (PadZeroes < 0) {
+        PadZeroes += 1;
+        if (DistToDecimal <= FirstDigit) {
+          WriteDigit("0")}
+         else DistToDecimal -= 1;
+      } else {
+        while (PadZeroes > 0) {
+          WriteDigit(GetDigit());
+          PadZeroes -= 1;
+        };
+        WriteDigit(GetDigit());
+      };
+    };
+    function GetSections(SP) {
+      var Result = 0;
+      var FL = 0;
+      var i = 0;
+      var C = "";
+      var Q = "";
+      var inQuote = false;
+      Result = 1;
+      SP.get()[1] = -1;
+      SP.get()[2] = -1;
+      SP.get()[3] = -1;
+      inQuote = false;
+      Q = "\x00";
+      i = 1;
+      FL = Fmt.length;
+      while (i <= FL) {
+        C = Fmt.charAt(i - 1);
+        var $tmp1 = C;
+        if ($tmp1 === ";") {
+          if (!inQuote) {
+            if (Result > 3) throw $mod.Exception.$create("Create$1",["Invalid float format"]);
+            SP.get()[Result] = i + 1;
+            Result += 1;
+          };
+        } else if (($tmp1 === '"') || ($tmp1 === "'")) {
+          if (inQuote) {
+            inQuote = C !== Q}
+           else {
+            inQuote = true;
+            Q = C;
+          };
+        };
+        i += 1;
+      };
+      if (SP.get()[Result] === -1) SP.get()[Result] = FL + 1;
+      return Result;
+    };
+    function AnalyzeFormat() {
+      var I = 0;
+      var Len = 0;
+      var Q = "";
+      var C = "";
+      var InQuote = false;
+      Len = Section.length;
+      I = 1;
+      InQuote = false;
+      Q = "\x00";
+      while (I <= Len) {
+        C = Section.charAt(I - 1);
+        if (C.charCodeAt() in rtl.createSet(34,39)) {
+          if (InQuote) {
+            InQuote = C !== Q}
+           else {
+            InQuote = true;
+            Q = C;
+          };
+        } else if (!InQuote) {
+          var $tmp1 = C;
+          if ($tmp1 === ".") {
+            if (DecimalPos === 0) DecimalPos = RequestedDigits + 1}
+           else if ($tmp1 === ",") {
+            ThousandSep = $mod.ThousandSeparator !== "\x00"}
+           else if (($tmp1 === "e") || ($tmp1 === "E")) {
+            I += 1;
+            if (I < Len) {
+              C = Section.charAt(I - 1);
+              IsScientific = C.charCodeAt() in rtl.createSet(45,43);
+              if (IsScientific) while ((I < Len) && (Section.charAt((I + 1) - 1) === "0")) {
+                ExpSize += 1;
+                I += 1;
+              };
+              if (ExpSize > 4) ExpSize = 4;
+            };
+          } else if ($tmp1 === "#") {
+            RequestedDigits += 1}
+           else if ($tmp1 === "0") {
+            if (RequestedDigits < FirstDigit) FirstDigit = RequestedDigits + 1;
+            RequestedDigits += 1;
+            LastDigit = RequestedDigits + 1;
+          };
+        };
+        I += 1;
+      };
+      if (DecimalPos === 0) DecimalPos = RequestedDigits + 1;
+      LastDigit = DecimalPos - LastDigit;
+      if (LastDigit > 0) LastDigit = 0;
+      FirstDigit = DecimalPos - FirstDigit;
+      if (FirstDigit < 0) FirstDigit = 0;
+    };
+    function ValueOutSideScope() {
+      var Result = false;
+      Result = (((FV.Exponent >= 18) && !IsScientific) || (FV.Exponent === 0x7FF)) || (FV.Exponent === 0x800);
+      return Result;
+    };
+    function CalcRunVars() {
+      var D = 0;
+      var P = 0;
+      if (IsScientific) {
+        P = RequestedDigits;
+        D = 9999;
+      } else {
+        P = 18;
+        D = (RequestedDigits - DecimalPos) + 1;
+      };
+      FV = new $mod.TFloatRec($mod.FloatToDecimal(aValue,P,D));
+      DistToDecimal = DecimalPos - 1;
+      if (IsScientific) {
+        PadZeroes = 0}
+       else {
+        PadZeroes = FV.Exponent - (DecimalPos - 1);
+        if (PadZeroes >= 0) DistToDecimal = FV.Exponent;
+      };
+      Available = -1;
+      while ((Available < 18) && (FV.Digits[Available + 1] !== "\x00")) Available += 1;
+    };
+    function FormatExponent(ASign, aExponent) {
+      var Result = "";
+      Result = $mod.IntToStr(aExponent);
+      Result = pas.System.StringOfChar("0",ExpSize - Result.length) + Result;
+      if (aExponent < 0) {
+        Result = "-" + Result}
+       else if ((aExponent > 0) && (ASign === "+")) Result = ASign + Result;
+      return Result;
+    };
+    var I = 0;
+    var S = 0;
+    var C = "";
+    var Q = "";
+    var PA = [];
+    var InLiteral = false;
+    PA = rtl.arraySetLength(PA,0,4);
+    Result = "";
+    InitVars();
+    if (E > 0) {
+      S = 1}
+     else if (E < 0) {
+      S = 2}
+     else S = 3;
+    PA[0] = 0;
+    I = GetSections({get: function () {
+        return PA;
+      }, set: function (v) {
+        PA = v;
+      }});
+    if ((I < S) || ((PA[S] - PA[S - 1]) === 0)) S = 1;
+    SectionLength = (PA[S] - PA[S - 1]) - 1;
+    Section = pas.System.Copy(Fmt,PA[S - 1] + 1,SectionLength);
+    Section = rtl.strSetLength(Section,SectionLength);
+    AnalyzeFormat();
+    CalcRunVars();
+    if ((SectionLength === 0) || ValueOutSideScope()) {
+      Section=E.toPrecision(15);
+      Result = Section;
+    };
+    I = 1;
+    Current = 0;
+    Q = " ";
+    InLiteral = false;
+    if (FV.Negative && (S === 1)) ToResult("-");
+    while (I <= SectionLength) {
+      C = Section.charAt(I - 1);
+      if (C.charCodeAt() in rtl.createSet(34,39)) {
+        if (InLiteral) {
+          InLiteral = C !== Q}
+         else {
+          InLiteral = true;
+          Q = C;
+        };
+      } else if (InLiteral) {
+        ToResult(C)}
+       else {
+        var $tmp1 = C;
+        if (($tmp1 === "0") || ($tmp1 === "#")) {
+          CopyDigit()}
+         else if (($tmp1 === ".") || ($tmp1 === ",")) {}
+        else if (($tmp1 === "e") || ($tmp1 === "E")) {
+          ToResult(C);
+          I += 1;
+          if (I <= Section.length) {
+            C = Section.charAt(I - 1);
+            if (C.charCodeAt() in rtl.createSet(43,45)) {
+              AddToResult(FormatExponent(C,(FV.Exponent - DecimalPos) + 1));
+              while ((I < SectionLength) && (Section.charAt((I + 1) - 1) === "0")) I += 1;
+            };
+          };
+        } else {
+          ToResult(C);
+        };
+      };
+      I += 1;
+    };
+    return Result;
+  };
+  this.TrueBoolStrs = [];
+  this.FalseBoolStrs = [];
+  this.StrToBool = function (S) {
+    var Result = false;
+    if (!$mod.TryStrToBool(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SInvalidBoolean,[S]]);
+    return Result;
+  };
+  this.BoolToStr = function (B, UseBoolStrs) {
+    var Result = "";
+    if (UseBoolStrs) {
+      $impl.CheckBoolStrs();
+      if (B) {
+        Result = $mod.TrueBoolStrs[0]}
+       else Result = $mod.FalseBoolStrs[0];
+    } else if (B) {
+      Result = "-1"}
+     else Result = "0";
+    return Result;
+  };
+  this.BoolToStr$1 = function (B, TrueS, FalseS) {
+    var Result = "";
+    if (B) {
+      Result = TrueS}
+     else Result = FalseS;
+    return Result;
+  };
+  this.StrToBoolDef = function (S, Default) {
+    var Result = false;
+    if (!$mod.TryStrToBool(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) Result = Default;
+    return Result;
+  };
+  this.TryStrToBool = function (S, Value) {
+    var Result = false;
+    var Temp = "";
+    var I = 0;
+    var D = 0.0;
+    var Code = 0;
+    Temp = $mod.UpperCase(S);
+    pas.System.val$8(Temp,{get: function () {
+        return D;
+      }, set: function (v) {
+        D = v;
+      }},{get: function () {
+        return Code;
+      }, set: function (v) {
+        Code = v;
+      }});
+    Result = true;
+    if (Code === 0) {
+      Value.set(D !== 0.0)}
+     else {
+      $impl.CheckBoolStrs();
+      for (var $l1 = 0, $end2 = rtl.length($mod.TrueBoolStrs) - 1; $l1 <= $end2; $l1++) {
+        I = $l1;
+        if (Temp === $mod.UpperCase($mod.TrueBoolStrs[I])) {
+          Value.set(true);
+          return Result;
+        };
+      };
+      for (var $l3 = 0, $end4 = rtl.length($mod.FalseBoolStrs) - 1; $l3 <= $end4; $l3++) {
+        I = $l3;
+        if (Temp === $mod.UpperCase($mod.FalseBoolStrs[I])) {
+          Value.set(false);
+          return Result;
+        };
+      };
+      Result = false;
+    };
+    return Result;
+  };
+  this.ConfigExtension = ".cfg";
+  this.SysConfigDir = "";
+  $mod.$rtti.$ProcVar("TOnGetEnvironmentVariable",{procsig: rtl.newTIProcSig([["EnvVar",rtl.string,2]],rtl.string)});
+  $mod.$rtti.$ProcVar("TOnGetEnvironmentString",{procsig: rtl.newTIProcSig([["Index",rtl.longint]],rtl.string)});
+  $mod.$rtti.$ProcVar("TOnGetEnvironmentVariableCount",{procsig: rtl.newTIProcSig(null,rtl.longint)});
+  this.OnGetEnvironmentVariable = null;
+  this.OnGetEnvironmentString = null;
+  this.OnGetEnvironmentVariableCount = null;
+  this.GetEnvironmentVariable = function (EnvVar) {
+    var Result = "";
+    if ($mod.OnGetEnvironmentVariable != null) {
+      Result = $mod.OnGetEnvironmentVariable(EnvVar)}
+     else Result = "";
+    return Result;
+  };
+  this.GetEnvironmentVariableCount = function () {
+    var Result = 0;
+    if ($mod.OnGetEnvironmentVariableCount != null) {
+      Result = $mod.OnGetEnvironmentVariableCount()}
+     else Result = 0;
+    return Result;
+  };
+  this.GetEnvironmentString = function (Index) {
+    var Result = "";
+    if ($mod.OnGetEnvironmentString != null) {
+      Result = $mod.OnGetEnvironmentString(Index)}
+     else Result = "";
+    return Result;
+  };
+  this.ShowException = function (ExceptObject, ExceptAddr) {
+    var S = "";
+    S = "Application raised an exception " + ExceptObject.$classname;
+    if ($mod.Exception.isPrototypeOf(ExceptObject)) S = (S + " : ") + ExceptObject.fMessage;
+    window.alert(S);
+    if (ExceptAddr === null) ;
+  };
+  this.Abort = function () {
+    throw $mod.EAbort.$create("Create$1",[$impl.SAbortError]);
+  };
+  this.TEventType = {"0": "etCustom", etCustom: 0, "1": "etInfo", etInfo: 1, "2": "etWarning", etWarning: 2, "3": "etError", etError: 3, "4": "etDebug", etDebug: 4};
+  $mod.$rtti.$Enum("TEventType",{minvalue: 0, maxvalue: 4, ordtype: 1, enumtype: this.TEventType});
+  $mod.$rtti.$Set("TEventTypes",{comptype: $mod.$rtti["TEventType"]});
+  this.TSystemTime = function (s) {
+    if (s) {
+      this.Year = s.Year;
+      this.Month = s.Month;
+      this.Day = s.Day;
+      this.DayOfWeek = s.DayOfWeek;
+      this.Hour = s.Hour;
+      this.Minute = s.Minute;
+      this.Second = s.Second;
+      this.MilliSecond = s.MilliSecond;
+    } else {
+      this.Year = 0;
+      this.Month = 0;
+      this.Day = 0;
+      this.DayOfWeek = 0;
+      this.Hour = 0;
+      this.Minute = 0;
+      this.Second = 0;
+      this.MilliSecond = 0;
+    };
+    this.$equal = function (b) {
+      return (this.Year === b.Year) && ((this.Month === b.Month) && ((this.Day === b.Day) && ((this.DayOfWeek === b.DayOfWeek) && ((this.Hour === b.Hour) && ((this.Minute === b.Minute) && ((this.Second === b.Second) && (this.MilliSecond === b.MilliSecond)))))));
+    };
+  };
+  $mod.$rtti.$Record("TSystemTime",{}).addFields("Year",rtl.word,"Month",rtl.word,"Day",rtl.word,"DayOfWeek",rtl.word,"Hour",rtl.word,"Minute",rtl.word,"Second",rtl.word,"MilliSecond",rtl.word);
+  this.TTimeStamp = function (s) {
+    if (s) {
+      this.Time = s.Time;
+      this.Date = s.Date;
+    } else {
+      this.Time = 0;
+      this.Date = 0;
+    };
+    this.$equal = function (b) {
+      return (this.Time === b.Time) && (this.Date === b.Date);
+    };
+  };
+  $mod.$rtti.$Record("TTimeStamp",{}).addFields("Time",rtl.longint,"Date",rtl.longint);
+  this.TimeSeparator = ":";
+  this.DateSeparator = "-";
+  this.ShortDateFormat = "yyyy-mm-dd";
+  this.LongDateFormat = "ddd, yyyy-mm-dd";
+  this.ShortTimeFormat = "hh:nn";
+  this.LongTimeFormat = "hh:nn:ss";
+  this.DecimalSeparator = ".";
+  this.ThousandSeparator = "";
+  this.TimeAMString = "AM";
+  this.TimePMString = "PM";
+  this.HoursPerDay = 24;
+  this.MinsPerHour = 60;
+  this.SecsPerMin = 60;
+  this.MSecsPerSec = 1000;
+  this.MinsPerDay = 24 * 60;
+  this.SecsPerDay = 1440 * 60;
+  this.MSecsPerDay = 86400 * 1000;
+  this.MaxDateTime = 2958465.99999999;
+  this.MinDateTime = -693593.99999999;
+  this.JulianEpoch = -2415018.5;
+  this.UnixEpoch = -2415018.5 + 2440587.5;
+  this.DateDelta = 693594;
+  this.UnixDateDelta = 25569;
+  this.MonthDays = [[31,28,31,30,31,30,31,31,30,31,30,31],[31,29,31,30,31,30,31,31,30,31,30,31]];
+  this.ShortMonthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  this.LongMonthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  this.ShortDayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  this.LongDayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  rtl.createClass($mod,"TFormatSettings",pas.System.TObject,function () {
+    this.GetCurrencyDecimals = function () {
+      var Result = 0;
+      Result = $mod.CurrencyDecimals;
+      return Result;
+    };
+    this.GetCurrencyFormat = function () {
+      var Result = 0;
+      Result = $mod.CurrencyFormat;
+      return Result;
+    };
+    this.GetCurrencyString = function () {
+      var Result = "";
+      Result = $mod.CurrencyString;
+      return Result;
+    };
+    this.GetDateSeparator = function () {
+      var Result = "";
+      Result = $mod.DateSeparator;
+      return Result;
+    };
+    this.GetDecimalSeparator = function () {
+      var Result = "";
+      Result = $mod.DecimalSeparator;
+      return Result;
+    };
+    this.GetLongDateFormat = function () {
+      var Result = "";
+      Result = $mod.LongDateFormat;
+      return Result;
+    };
+    this.GetLongDayNames = function () {
+      var Result = rtl.arraySetLength(null,"",7);
+      Result = $mod.LongDayNames.slice(0);
+      return Result;
+    };
+    this.GetLongMonthNames = function () {
+      var Result = rtl.arraySetLength(null,"",12);
+      Result = $mod.LongMonthNames.slice(0);
+      return Result;
+    };
+    this.GetLongTimeFormat = function () {
+      var Result = "";
+      Result = $mod.LongTimeFormat;
+      return Result;
+    };
+    this.GetNegCurrFormat = function () {
+      var Result = 0;
+      Result = $mod.NegCurrFormat;
+      return Result;
+    };
+    this.GetShortDateFormat = function () {
+      var Result = "";
+      Result = $mod.ShortDateFormat;
+      return Result;
+    };
+    this.GetShortDayNames = function () {
+      var Result = rtl.arraySetLength(null,"",7);
+      Result = $mod.ShortDayNames.slice(0);
+      return Result;
+    };
+    this.GetShortMonthNames = function () {
+      var Result = rtl.arraySetLength(null,"",12);
+      Result = $mod.ShortMonthNames.slice(0);
+      return Result;
+    };
+    this.GetShortTimeFormat = function () {
+      var Result = "";
+      Result = $mod.ShortTimeFormat;
+      return Result;
+    };
+    this.GetThousandSeparator = function () {
+      var Result = "";
+      Result = $mod.ThousandSeparator;
+      return Result;
+    };
+    this.GetTimeAMString = function () {
+      var Result = "";
+      Result = $mod.TimeAMString;
+      return Result;
+    };
+    this.GetTimePMString = function () {
+      var Result = "";
+      Result = $mod.TimePMString;
+      return Result;
+    };
+    this.GetTimeSeparator = function () {
+      var Result = "";
+      Result = $mod.TimeSeparator;
+      return Result;
+    };
+    this.SetCurrencyFormat = function (AValue) {
+      $mod.CurrencyFormat = AValue;
+    };
+    this.SetCurrencyString = function (AValue) {
+      $mod.CurrencyString = AValue;
+    };
+    this.SetDateSeparator = function (Value) {
+      $mod.DateSeparator = Value;
+    };
+    this.SetDecimalSeparator = function (Value) {
+      $mod.DecimalSeparator = Value;
+    };
+    this.SetLongDateFormat = function (Value) {
+      $mod.LongDateFormat = Value;
+    };
+    this.SetLongDayNames = function (AValue) {
+      $mod.LongDayNames = AValue.slice(0);
+    };
+    this.SetLongMonthNames = function (AValue) {
+      $mod.LongMonthNames = AValue.slice(0);
+    };
+    this.SetLongTimeFormat = function (Value) {
+      $mod.LongTimeFormat = Value;
+    };
+    this.SetNegCurrFormat = function (AValue) {
+      $mod.NegCurrFormat = AValue;
+    };
+    this.SetShortDateFormat = function (Value) {
+      $mod.ShortDateFormat = Value;
+    };
+    this.SetShortDayNames = function (AValue) {
+      $mod.ShortDayNames = AValue.slice(0);
+    };
+    this.SetShortMonthNames = function (AValue) {
+      $mod.ShortMonthNames = AValue.slice(0);
+    };
+    this.SetShortTimeFormat = function (Value) {
+      $mod.ShortTimeFormat = Value;
+    };
+    this.SetCurrencyDecimals = function (AValue) {
+      $mod.CurrencyDecimals = AValue;
+    };
+    this.SetThousandSeparator = function (Value) {
+      $mod.ThousandSeparator = Value;
+    };
+    this.SetTimeAMString = function (Value) {
+      $mod.TimeAMString = Value;
+    };
+    this.SetTimePMString = function (Value) {
+      $mod.TimePMString = Value;
+    };
+    this.SetTimeSeparator = function (Value) {
+      $mod.TimeSeparator = Value;
+    };
+  });
+  this.FormatSettings = null;
+  this.TwoDigitYearCenturyWindow = 50;
+  this.DateTimeToJSDate = function (aDateTime) {
+    var Result = null;
+    var Y = 0;
+    var M = 0;
+    var D = 0;
+    var h = 0;
+    var n = 0;
+    var s = 0;
+    var z = 0;
+    $mod.DecodeDate(pas.System.Trunc(aDateTime),{get: function () {
+        return Y;
+      }, set: function (v) {
+        Y = v;
+      }},{get: function () {
+        return M;
+      }, set: function (v) {
+        M = v;
+      }},{get: function () {
+        return D;
+      }, set: function (v) {
+        D = v;
+      }});
+    $mod.DecodeTime(pas.System.Frac(aDateTime),{get: function () {
+        return h;
+      }, set: function (v) {
+        h = v;
+      }},{get: function () {
+        return n;
+      }, set: function (v) {
+        n = v;
+      }},{get: function () {
+        return s;
+      }, set: function (v) {
+        s = v;
+      }},{get: function () {
+        return z;
+      }, set: function (v) {
+        z = v;
+      }});
+    Result = new Date(Y,M,D,h,n,s,z);
+    return Result;
+  };
+  this.JSDateToDateTime = function (aDate) {
+    var Result = 0.0;
+    Result = $mod.EncodeDate(aDate.getFullYear(),aDate.getMonth() + 1,aDate.getDate()) + $mod.EncodeTime(aDate.getHours(),aDate.getMinutes(),aDate.getSeconds(),aDate.getMilliseconds());
+    return Result;
+  };
+  this.DateTimeToTimeStamp = function (DateTime) {
+    var Result = new $mod.TTimeStamp();
+    var D = 0.0;
+    D = DateTime * 86400000;
+    if (D < 0) {
+      D = D - 0.5}
+     else D = D + 0.5;
+    Result.Time = pas.System.Trunc(Math.abs(pas.System.Trunc(D)) % 86400000);
+    Result.Date = 693594 + Math.floor(pas.System.Trunc(D) / 86400000);
+    return Result;
+  };
+  this.TimeStampToDateTime = function (TimeStamp) {
+    var Result = 0.0;
+    Result = $mod.ComposeDateTime(TimeStamp.Date - 693594,TimeStamp.Time / 86400000);
+    return Result;
+  };
+  this.MSecsToTimeStamp = function (MSecs) {
+    var Result = new $mod.TTimeStamp();
+    Result.Date = pas.System.Trunc(MSecs / 86400000);
+    MSecs = MSecs - (Result.Date * 86400000);
+    Result.Time = Math.round(MSecs);
+    return Result;
+  };
+  this.TimeStampToMSecs = function (TimeStamp) {
+    var Result = 0;
+    Result = TimeStamp.Time + (TimeStamp.Date * 86400000);
+    return Result;
+  };
+  this.TryEncodeDate = function (Year, Month, Day, date) {
+    var Result = false;
+    var c = 0;
+    var ya = 0;
+    Result = (((((Year > 0) && (Year < 10000)) && (Month >= 1)) && (Month <= 12)) && (Day > 0)) && (Day <= $mod.MonthDays[+$mod.IsLeapYear(Year)][Month - 1]);
+    if (Result) {
+      if (Month > 2) {
+        Month -= 3}
+       else {
+        Month += 9;
+        Year -= 1;
+      };
+      c = Math.floor(Year / 100);
+      ya = Year - (100 * c);
+      date.set(((((146097 * c) >>> 2) + ((1461 * ya) >>> 2)) + Math.floor(((153 * Month) + 2) / 5)) + Day);
+      date.set(date.get() - 693900);
+    };
+    return Result;
+  };
+  this.TryEncodeTime = function (Hour, Min, Sec, MSec, Time) {
+    var Result = false;
+    Result = (((Hour < 24) && (Min < 60)) && (Sec < 60)) && (MSec < 1000);
+    if (Result) Time.set(((((Hour * 3600000) + (Min * 60000)) + (Sec * 1000)) + MSec) / 86400000);
+    return Result;
+  };
+  this.EncodeDate = function (Year, Month, Day) {
+    var Result = 0.0;
+    if (!$mod.TryEncodeDate(Year,Month,Day,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) throw $mod.EConvertError.$create("CreateFmt",["%s-%s-%s is not a valid date specification",[$mod.IntToStr(Year),$mod.IntToStr(Month),$mod.IntToStr(Day)]]);
+    return Result;
+  };
+  this.EncodeTime = function (Hour, Minute, Second, MilliSecond) {
+    var Result = 0.0;
+    if (!$mod.TryEncodeTime(Hour,Minute,Second,MilliSecond,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) throw $mod.EConvertError.$create("CreateFmt",["%s:%s:%s.%s is not a valid time specification",[$mod.IntToStr(Hour),$mod.IntToStr(Minute),$mod.IntToStr(Second),$mod.IntToStr(MilliSecond)]]);
+    return Result;
+  };
+  this.ComposeDateTime = function (date, Time) {
+    var Result = 0.0;
+    if (date < 0) {
+      Result = pas.System.Trunc(date) - Math.abs(pas.System.Frac(Time))}
+     else Result = pas.System.Trunc(date) + Math.abs(pas.System.Frac(Time));
+    return Result;
+  };
+  this.DecodeDate = function (date, Year, Month, Day) {
+    var ly = 0;
+    var ld = 0;
+    var lm = 0;
+    var j = 0;
+    if (date <= -693594) {
+      Year.set(0);
+      Month.set(0);
+      Day.set(0);
+    } else {
+      if (date > 0) {
+        date = date + (1 / (86400000 * 2))}
+       else date = date - (1 / (86400000 * 2));
+      if (date > $mod.MaxDateTime) date = $mod.MaxDateTime;
+      j = ((pas.System.Trunc(date) + 693900) << 2) - 1;
+      ly = Math.floor(j / 146097);
+      j = j - (146097 * ly);
+      ld = j >>> 2;
+      j = Math.floor(((ld << 2) + 3) / 1461);
+      ld = (((ld << 2) + 7) - (1461 * j)) >>> 2;
+      lm = Math.floor(((5 * ld) - 3) / 153);
+      ld = Math.floor((((5 * ld) + 2) - (153 * lm)) / 5);
+      ly = (100 * ly) + j;
+      if (lm < 10) {
+        lm += 3}
+       else {
+        lm -= 9;
+        ly += 1;
+      };
+      Year.set(ly);
+      Month.set(lm);
+      Day.set(ld);
+    };
+  };
+  this.DecodeDateFully = function (DateTime, Year, Month, Day, DOW) {
+    var Result = false;
+    $mod.DecodeDate(DateTime,Year,Month,Day);
+    DOW.set($mod.DayOfWeek(DateTime));
+    Result = $mod.IsLeapYear(Year.get());
+    return Result;
+  };
+  this.DecodeTime = function (Time, Hour, Minute, Second, MilliSecond) {
+    var l = 0;
+    l = $mod.DateTimeToTimeStamp(Time).Time;
+    Hour.set(Math.floor(l / 3600000));
+    l = l % 3600000;
+    Minute.set(Math.floor(l / 60000));
+    l = l % 60000;
+    Second.set(Math.floor(l / 1000));
+    l = l % 1000;
+    MilliSecond.set(l);
+  };
+  this.DateTimeToSystemTime = function (DateTime, SystemTime) {
+    $mod.DecodeDateFully(DateTime,{p: SystemTime.get(), get: function () {
+        return this.p.Year;
+      }, set: function (v) {
+        this.p.Year = v;
+      }},{p: SystemTime.get(), get: function () {
+        return this.p.Month;
+      }, set: function (v) {
+        this.p.Month = v;
+      }},{p: SystemTime.get(), get: function () {
+        return this.p.Day;
+      }, set: function (v) {
+        this.p.Day = v;
+      }},{p: SystemTime.get(), get: function () {
+        return this.p.DayOfWeek;
+      }, set: function (v) {
+        this.p.DayOfWeek = v;
+      }});
+    $mod.DecodeTime(DateTime,{p: SystemTime.get(), get: function () {
+        return this.p.Hour;
+      }, set: function (v) {
+        this.p.Hour = v;
+      }},{p: SystemTime.get(), get: function () {
+        return this.p.Minute;
+      }, set: function (v) {
+        this.p.Minute = v;
+      }},{p: SystemTime.get(), get: function () {
+        return this.p.Second;
+      }, set: function (v) {
+        this.p.Second = v;
+      }},{p: SystemTime.get(), get: function () {
+        return this.p.MilliSecond;
+      }, set: function (v) {
+        this.p.MilliSecond = v;
+      }});
+    SystemTime.get().DayOfWeek -= 1;
+  };
+  this.SystemTimeToDateTime = function (SystemTime) {
+    var Result = 0.0;
+    Result = $mod.ComposeDateTime($impl.DoEncodeDate(SystemTime.Year,SystemTime.Month,SystemTime.Day),$impl.DoEncodeTime(SystemTime.Hour,SystemTime.Minute,SystemTime.Second,SystemTime.MilliSecond));
+    return Result;
+  };
+  this.DayOfWeek = function (DateTime) {
+    var Result = 0;
+    Result = 1 + ((pas.System.Trunc(DateTime) - 1) % 7);
+    if (Result <= 0) Result += 7;
+    return Result;
+  };
+  this.Date = function () {
+    var Result = 0.0;
+    Result = pas.System.Trunc($mod.Now());
+    return Result;
+  };
+  this.Time = function () {
+    var Result = 0.0;
+    Result = $mod.Now() - $mod.Date();
+    return Result;
+  };
+  this.Now = function () {
+    var Result = 0.0;
+    Result = $mod.JSDateToDateTime(new Date());
+    return Result;
+  };
+  this.IncMonth = function (DateTime, NumberOfMonths) {
+    var Result = 0.0;
+    var Year = 0;
+    var Month = 0;
+    var Day = 0;
+    $mod.DecodeDate(DateTime,{get: function () {
+        return Year;
+      }, set: function (v) {
+        Year = v;
+      }},{get: function () {
+        return Month;
+      }, set: function (v) {
+        Month = v;
+      }},{get: function () {
+        return Day;
+      }, set: function (v) {
+        Day = v;
+      }});
+    $mod.IncAMonth({get: function () {
+        return Year;
+      }, set: function (v) {
+        Year = v;
+      }},{get: function () {
+        return Month;
+      }, set: function (v) {
+        Month = v;
+      }},{get: function () {
+        return Day;
+      }, set: function (v) {
+        Day = v;
+      }},NumberOfMonths);
+    Result = $mod.ComposeDateTime($impl.DoEncodeDate(Year,Month,Day),DateTime);
+    return Result;
+  };
+  this.IncAMonth = function (Year, Month, Day, NumberOfMonths) {
+    var TempMonth = 0;
+    var S = 0;
+    if (NumberOfMonths >= 0) {
+      S = 1}
+     else S = -1;
+    Year.set(Year.get() + Math.floor(NumberOfMonths / 12));
+    TempMonth = (Month.get() + (NumberOfMonths % 12)) - 1;
+    if ((TempMonth > 11) || (TempMonth < 0)) {
+      TempMonth -= S * 12;
+      Year.set(Year.get() + S);
+    };
+    Month.set(TempMonth + 1);
+    if (Day.get() > $mod.MonthDays[+$mod.IsLeapYear(Year.get())][Month.get() - 1]) Day.set($mod.MonthDays[+$mod.IsLeapYear(Year.get())][Month.get() - 1]);
+  };
+  this.IsLeapYear = function (Year) {
+    var Result = false;
+    Result = ((Year % 4) === 0) && (((Year % 100) !== 0) || ((Year % 400) === 0));
+    return Result;
+  };
+  this.DateToStr = function (date) {
+    var Result = "";
+    Result = $mod.FormatDateTime("ddddd",date);
+    return Result;
+  };
+  this.TimeToStr = function (Time) {
+    var Result = "";
+    Result = $mod.FormatDateTime("tt",Time);
+    return Result;
+  };
+  this.DateTimeToStr = function (DateTime, ForceTimeIfZero) {
+    var Result = "";
+    Result = $mod.FormatDateTime($impl.DateTimeToStrFormat[+ForceTimeIfZero],DateTime);
+    return Result;
+  };
+  this.StrToDate = function (S) {
+    var Result = 0.0;
+    Result = $mod.StrToDate$2(S,$mod.ShortDateFormat,"\x00");
+    return Result;
+  };
+  this.StrToDate$1 = function (S, separator) {
+    var Result = 0.0;
+    Result = $mod.StrToDate$2(S,$mod.ShortDateFormat,separator);
+    return Result;
+  };
+  this.StrToDate$2 = function (S, useformat, separator) {
+    var Result = 0.0;
+    var MSg = "";
+    Result = $impl.IntStrToDate({get: function () {
+        return MSg;
+      }, set: function (v) {
+        MSg = v;
+      }},S,useformat,separator);
+    if (MSg !== "") throw $mod.EConvertError.$create("Create$1",[MSg]);
+    return Result;
+  };
+  this.StrToTime = function (S) {
+    var Result = 0.0;
+    Result = $mod.StrToTime$1(S,$mod.TimeSeparator);
+    return Result;
+  };
+  this.StrToTime$1 = function (S, separator) {
+    var Result = 0.0;
+    var Msg = "";
+    Result = $impl.IntStrToTime({get: function () {
+        return Msg;
+      }, set: function (v) {
+        Msg = v;
+      }},S,S.length,separator);
+    if (Msg !== "") throw $mod.EConvertError.$create("Create$1",[Msg]);
+    return Result;
+  };
+  this.StrToDateTime = function (S) {
+    var Result = 0.0;
+    var TimeStr = "";
+    var DateStr = "";
+    var PartsFound = 0;
+    PartsFound = $impl.SplitDateTimeStr(S,{get: function () {
+        return DateStr;
+      }, set: function (v) {
+        DateStr = v;
+      }},{get: function () {
+        return TimeStr;
+      }, set: function (v) {
+        TimeStr = v;
+      }});
+    var $tmp1 = PartsFound;
+    if ($tmp1 === 0) {
+      Result = $mod.StrToDate("")}
+     else if ($tmp1 === 1) {
+      if (DateStr.length > 0) {
+        Result = $mod.StrToDate$2(DateStr,$mod.ShortDateFormat,$mod.DateSeparator)}
+       else Result = $mod.StrToTime(TimeStr)}
+     else if ($tmp1 === 2) Result = $mod.ComposeDateTime($mod.StrToDate$2(DateStr,$mod.ShortDateFormat,$mod.DateSeparator),$mod.StrToTime(TimeStr));
+    return Result;
+  };
+  this.FormatDateTime = function (FormatStr, DateTime) {
+    var Result = "";
+    function StoreStr(APos, Len) {
+      Result = Result + pas.System.Copy(FormatStr,APos,Len);
+    };
+    function StoreString(AStr) {
+      Result = Result + AStr;
+    };
+    function StoreInt(Value, Digits) {
+      var S = "";
+      S = $mod.IntToStr(Value);
+      while (S.length < Digits) S = "0" + S;
+      StoreString(S);
+    };
+    var Year = 0;
+    var Month = 0;
+    var Day = 0;
+    var DayOfWeek = 0;
+    var Hour = 0;
+    var Minute = 0;
+    var Second = 0;
+    var MilliSecond = 0;
+    function StoreFormat(FormatStr, Nesting, TimeFlag) {
+      var Token = "";
+      var lastformattoken = "";
+      var prevlasttoken = "";
+      var Count = 0;
+      var Clock12 = false;
+      var tmp = 0;
+      var isInterval = false;
+      var P = 0;
+      var FormatCurrent = 0;
+      var FormatEnd = 0;
+      if (Nesting > 1) return;
+      FormatCurrent = 1;
+      FormatEnd = FormatStr.length;
+      Clock12 = false;
+      isInterval = false;
+      P = 1;
+      while (P <= FormatEnd) {
+        Token = FormatStr.charAt(P - 1);
+        var $tmp1 = Token;
+        if (($tmp1 === "'") || ($tmp1 === '"')) {
+          P += 1;
+          while ((P < FormatEnd) && (FormatStr.charAt(P - 1) !== Token)) P += 1;
+        } else if (($tmp1 === "A") || ($tmp1 === "a")) {
+          if ((($mod.CompareText(pas.System.Copy(FormatStr,P,3),"A\/P") === 0) || ($mod.CompareText(pas.System.Copy(FormatStr,P,4),"AMPM") === 0)) || ($mod.CompareText(pas.System.Copy(FormatStr,P,5),"AM\/PM") === 0)) {
+            Clock12 = true;
+            break;
+          };
+        };
+        P += 1;
+      };
+      Token = "ÿ";
+      lastformattoken = " ";
+      prevlasttoken = "H";
+      while (FormatCurrent <= FormatEnd) {
+        Token = $mod.UpperCase(FormatStr.charAt(FormatCurrent - 1)).charAt(0);
+        Count = 1;
+        P = FormatCurrent + 1;
+        var $tmp2 = Token;
+        if (($tmp2 === "'") || ($tmp2 === '"')) {
+          while ((P < FormatEnd) && (FormatStr.charAt(P - 1) !== Token)) P += 1;
+          P += 1;
+          Count = P - FormatCurrent;
+          StoreStr(FormatCurrent + 1,Count - 2);
+        } else if ($tmp2 === "A") {
+          if ($mod.CompareText(pas.System.Copy(FormatStr,FormatCurrent,4),"AMPM") === 0) {
+            Count = 4;
+            if (Hour < 12) {
+              StoreString($mod.TimeAMString)}
+             else StoreString($mod.TimePMString);
+          } else if ($mod.CompareText(pas.System.Copy(FormatStr,FormatCurrent,5),"AM\/PM") === 0) {
+            Count = 5;
+            if (Hour < 12) {
+              StoreStr(FormatCurrent,2)}
+             else StoreStr(FormatCurrent + 3,2);
+          } else if ($mod.CompareText(pas.System.Copy(FormatStr,FormatCurrent,3),"A\/P") === 0) {
+            Count = 3;
+            if (Hour < 12) {
+              StoreStr(FormatCurrent,1)}
+             else StoreStr(FormatCurrent + 2,1);
+          } else throw $mod.EConvertError.$create("Create$1",["Illegal character in format string"]);
+        } else if ($tmp2 === "\/") {
+          StoreString($mod.DateSeparator);
+        } else if ($tmp2 === ":") {
+          StoreString($mod.TimeSeparator)}
+         else if ((((((((((($tmp2 === " ") || ($tmp2 === "C")) || ($tmp2 === "D")) || ($tmp2 === "H")) || ($tmp2 === "M")) || ($tmp2 === "N")) || ($tmp2 === "S")) || ($tmp2 === "T")) || ($tmp2 === "Y")) || ($tmp2 === "Z")) || ($tmp2 === "F")) {
+          while ((P <= FormatEnd) && ($mod.UpperCase(FormatStr.charAt(P - 1)) === Token)) P += 1;
+          Count = P - FormatCurrent;
+          var $tmp3 = Token;
+          if ($tmp3 === " ") {
+            StoreStr(FormatCurrent,Count)}
+           else if ($tmp3 === "Y") {
+            if (Count > 2) {
+              StoreInt(Year,4)}
+             else StoreInt(Year % 100,2);
+          } else if ($tmp3 === "M") {
+            if (isInterval && ((prevlasttoken === "H") || TimeFlag)) {
+              StoreInt(Minute + ((Hour + (pas.System.Trunc(Math.abs(DateTime)) * 24)) * 60),0)}
+             else if ((lastformattoken === "H") || TimeFlag) {
+              if (Count === 1) {
+                StoreInt(Minute,0)}
+               else StoreInt(Minute,2);
+            } else {
+              var $tmp4 = Count;
+              if ($tmp4 === 1) {
+                StoreInt(Month,0)}
+               else if ($tmp4 === 2) {
+                StoreInt(Month,2)}
+               else if ($tmp4 === 3) {
+                StoreString($mod.ShortMonthNames[Month - 1])}
+               else {
+                StoreString($mod.LongMonthNames[Month - 1]);
+              };
+            };
+          } else if ($tmp3 === "D") {
+            var $tmp5 = Count;
+            if ($tmp5 === 1) {
+              StoreInt(Day,0)}
+             else if ($tmp5 === 2) {
+              StoreInt(Day,2)}
+             else if ($tmp5 === 3) {
+              StoreString($mod.ShortDayNames[DayOfWeek])}
+             else if ($tmp5 === 4) {
+              StoreString($mod.LongDayNames[DayOfWeek])}
+             else if ($tmp5 === 5) {
+              StoreFormat($mod.ShortDateFormat,Nesting + 1,false)}
+             else {
+              StoreFormat($mod.LongDateFormat,Nesting + 1,false);
+            };
+          } else if ($tmp3 === "H") {
+            if (isInterval) {
+              StoreInt(Hour + (pas.System.Trunc(Math.abs(DateTime)) * 24),0)}
+             else if (Clock12) {
+              tmp = Hour % 12;
+              if (tmp === 0) tmp = 12;
+              if (Count === 1) {
+                StoreInt(tmp,0)}
+               else StoreInt(tmp,2);
+            } else {
+              if (Count === 1) {
+                StoreInt(Hour,0)}
+               else StoreInt(Hour,2);
+            }}
+           else if ($tmp3 === "N") {
+            if (isInterval) {
+              StoreInt(Minute + ((Hour + (pas.System.Trunc(Math.abs(DateTime)) * 24)) * 60),0)}
+             else if (Count === 1) {
+              StoreInt(Minute,0)}
+             else StoreInt(Minute,2)}
+           else if ($tmp3 === "S") {
+            if (isInterval) {
+              StoreInt(Second + ((Minute + ((Hour + (pas.System.Trunc(Math.abs(DateTime)) * 24)) * 60)) * 60),0)}
+             else if (Count === 1) {
+              StoreInt(Second,0)}
+             else StoreInt(Second,2)}
+           else if ($tmp3 === "Z") {
+            if (Count === 1) {
+              StoreInt(MilliSecond,0)}
+             else StoreInt(MilliSecond,3)}
+           else if ($tmp3 === "T") {
+            if (Count === 1) {
+              StoreFormat($mod.ShortTimeFormat,Nesting + 1,true)}
+             else StoreFormat($mod.LongTimeFormat,Nesting + 1,true)}
+           else if ($tmp3 === "C") {
+            StoreFormat($mod.ShortDateFormat,Nesting + 1,false);
+            if (((Hour !== 0) || (Minute !== 0)) || (Second !== 0)) {
+              StoreString(" ");
+              StoreFormat($mod.LongTimeFormat,Nesting + 1,true);
+            };
+          } else if ($tmp3 === "F") {
+            StoreFormat($mod.ShortDateFormat,Nesting + 1,false);
+            StoreString(" ");
+            StoreFormat($mod.LongTimeFormat,Nesting + 1,true);
+          };
+          prevlasttoken = lastformattoken;
+          lastformattoken = Token;
+        } else {
+          StoreString(Token);
+        };
+        FormatCurrent += Count;
+      };
+    };
+    $mod.DecodeDateFully(DateTime,{get: function () {
+        return Year;
+      }, set: function (v) {
+        Year = v;
+      }},{get: function () {
+        return Month;
+      }, set: function (v) {
+        Month = v;
+      }},{get: function () {
+        return Day;
+      }, set: function (v) {
+        Day = v;
+      }},{get: function () {
+        return DayOfWeek;
+      }, set: function (v) {
+        DayOfWeek = v;
+      }});
+    $mod.DecodeTime(DateTime,{get: function () {
+        return Hour;
+      }, set: function (v) {
+        Hour = v;
+      }},{get: function () {
+        return Minute;
+      }, set: function (v) {
+        Minute = v;
+      }},{get: function () {
+        return Second;
+      }, set: function (v) {
+        Second = v;
+      }},{get: function () {
+        return MilliSecond;
+      }, set: function (v) {
+        MilliSecond = v;
+      }});
+    if (FormatStr !== "") {
+      StoreFormat(FormatStr,0,false)}
+     else StoreFormat("C",0,false);
+    return Result;
+  };
+  this.TryStrToDate = function (S, Value) {
+    var Result = false;
+    Result = $mod.TryStrToDate$2(S,Value,$mod.ShortDateFormat,"\x00");
+    return Result;
+  };
+  this.TryStrToDate$1 = function (S, Value, separator) {
+    var Result = false;
+    Result = $mod.TryStrToDate$2(S,Value,$mod.ShortDateFormat,separator);
+    return Result;
+  };
+  this.TryStrToDate$2 = function (S, Value, useformat, separator) {
+    var Result = false;
+    var Msg = "";
+    Result = S.length !== 0;
+    if (Result) {
+      Value.set($impl.IntStrToDate({get: function () {
+          return Msg;
+        }, set: function (v) {
+          Msg = v;
+        }},S,useformat,separator));
+      Result = Msg === "";
+    };
+    return Result;
+  };
+  this.TryStrToTime = function (S, Value) {
+    var Result = false;
+    Result = $mod.TryStrToTime$1(S,Value,"\x00");
+    return Result;
+  };
+  this.TryStrToTime$1 = function (S, Value, separator) {
+    var Result = false;
+    var Msg = "";
+    Result = S.length !== 0;
+    if (Result) {
+      Value.set($impl.IntStrToTime({get: function () {
+          return Msg;
+        }, set: function (v) {
+          Msg = v;
+        }},S,S.length,separator));
+      Result = Msg === "";
+    };
+    return Result;
+  };
+  this.TryStrToDateTime = function (S, Value) {
+    var Result = false;
+    var I = 0;
+    var dtdate = 0.0;
+    var dttime = 0.0;
+    Result = false;
+    I = pas.System.Pos($mod.TimeSeparator,S);
+    if (I > 0) {
+      while ((I > 0) && (S.charAt(I - 1) !== " ")) I -= 1;
+      if (I > 0) {
+        if (!$mod.TryStrToDate(pas.System.Copy(S,1,I - 1),{get: function () {
+            return dtdate;
+          }, set: function (v) {
+            dtdate = v;
+          }})) return Result;
+        if (!$mod.TryStrToTime(pas.System.Copy(S,I + 1,S.length - I),{get: function () {
+            return dttime;
+          }, set: function (v) {
+            dttime = v;
+          }})) return Result;
+        Value.set($mod.ComposeDateTime(dtdate,dttime));
+        Result = true;
+      } else Result = $mod.TryStrToTime(S,Value);
+    } else Result = $mod.TryStrToDate(S,Value);
+    return Result;
+  };
+  this.StrToDateDef = function (S, Defvalue) {
+    var Result = 0.0;
+    Result = $mod.StrToDateDef$1(S,Defvalue,"\x00");
+    return Result;
+  };
+  this.StrToDateDef$1 = function (S, Defvalue, separator) {
+    var Result = 0.0;
+    if (!$mod.TryStrToDate$1(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }},separator)) Result = Defvalue;
+    return Result;
+  };
+  this.StrToTimeDef = function (S, Defvalue) {
+    var Result = 0.0;
+    Result = $mod.StrToTimeDef$1(S,Defvalue,"\x00");
+    return Result;
+  };
+  this.StrToTimeDef$1 = function (S, Defvalue, separator) {
+    var Result = 0.0;
+    if (!$mod.TryStrToTime$1(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }},separator)) Result = Defvalue;
+    return Result;
+  };
+  this.StrToDateTimeDef = function (S, Defvalue) {
+    var Result = 0.0;
+    if (!$mod.TryStrToDateTime(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) Result = Defvalue;
+    return Result;
+  };
+  this.CurrentYear = function () {
+    var Result = 0;
+    Result = (new Date()).getFullYear();
+    return Result;
+  };
+  this.ReplaceTime = function (dati, NewTime) {
+    dati.set($mod.ComposeDateTime(dati.get(),NewTime));
+  };
+  this.ReplaceDate = function (DateTime, NewDate) {
+    var tmp = 0.0;
+    tmp = NewDate;
+    $mod.ReplaceTime({get: function () {
+        return tmp;
+      }, set: function (v) {
+        tmp = v;
+      }},DateTime.get());
+    DateTime.set(tmp);
+  };
+  this.FloatToDateTime = function (Value) {
+    var Result = 0.0;
+    if ((Value < $mod.MinDateTime) || (Value > $mod.MaxDateTime)) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SInvalidDateTime,[$mod.FloatToStr(Value)]]);
+    Result = Value;
+    return Result;
+  };
+  this.CurrencyFormat = 0;
+  this.NegCurrFormat = 0;
+  this.CurrencyDecimals = 2;
+  this.CurrencyString = "$";
+  this.FloattoCurr = function (Value) {
+    var Result = 0;
+    if (!$mod.TryFloatToCurr(Value,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SInvalidCurrency,[$mod.FloatToStr(Value)]]);
+    return Result;
+  };
+  this.TryFloatToCurr = function (Value, AResult) {
+    var Result = false;
+    Result = ((Value * 10000) >= $mod.MinCurrency) && ((Value * 10000) <= $mod.MaxCurrency);
+    if (Result) AResult.set(Math.floor(Value * 10000));
+    return Result;
+  };
+  this.CurrToStr = function (Value) {
+    var Result = "";
+    Result = $mod.FloatToStrF(Value / 10000,$mod.TFloatFormat.ffGeneral,-1,0);
+    return Result;
+  };
+  this.StrToCurr = function (S) {
+    var Result = 0;
+    if (!$mod.TryStrToCurr(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SInvalidCurrency,[S]]);
+    return Result;
+  };
+  this.TryStrToCurr = function (S, Value) {
+    var Result = false;
+    var D = 0.0;
+    Result = $mod.TryStrToFloat(S,{get: function () {
+        return D;
+      }, set: function (v) {
+        D = v;
+      }});
+    if (Result) Value.set(Math.floor(D * 10000));
+    return Result;
+  };
+  this.StrToCurrDef = function (S, Default) {
+    var Result = 0;
+    var R = 0;
+    if ($mod.TryStrToCurr(S,{get: function () {
+        return R;
+      }, set: function (v) {
+        R = v;
+      }})) {
+      Result = R}
+     else Result = Default;
+    return Result;
+  };
+  $mod.$rtti.$DynArray("TPathStrArray",{eltype: rtl.string});
+  this.ChangeFileExt = function (FileName, Extension) {
+    var Result = "";
+    var i = 0;
+    var EndSep = {};
+    var SOF = false;
+    i = FileName.length;
+    EndSep = rtl.unionSet(rtl.unionSet(pas.System.AllowDirectorySeparators,pas.System.AllowDriveSeparators),rtl.createSet(pas.System.ExtensionSeparator.charCodeAt()));
+    while ((i > 0) && !(FileName.charCodeAt(i - 1) in EndSep)) i -= 1;
+    if ((i === 0) || (FileName.charAt(i - 1) !== pas.System.ExtensionSeparator)) {
+      i = FileName.length + 1}
+     else {
+      SOF = (i === 1) || (FileName.charCodeAt((i - 1) - 1) in pas.System.AllowDirectorySeparators);
+      if (SOF && !pas.System.FirstDotAtFileNameStartIsExtension) i = FileName.length + 1;
+    };
+    Result = pas.System.Copy(FileName,1,i - 1) + Extension;
+    return Result;
+  };
+  this.ExtractFilePath = function (FileName) {
+    var Result = "";
+    var i = 0;
+    var EndSep = {};
+    i = FileName.length;
+    EndSep = rtl.unionSet(pas.System.AllowDirectorySeparators,pas.System.AllowDriveSeparators);
+    while ((i > 0) && !$impl.CharInSet$1(FileName.charAt(i - 1),EndSep)) i -= 1;
+    if (i > 0) {
+      Result = pas.System.Copy(FileName,1,i)}
+     else Result = "";
+    return Result;
+  };
+  this.ExtractFileDrive = function (FileName) {
+    var Result = "";
+    var i = 0;
+    var l = 0;
+    Result = "";
+    l = FileName.length;
+    if (l < 2) return Result;
+    if ($impl.CharInSet$1(FileName.charAt(1),pas.System.AllowDriveSeparators)) {
+      Result = pas.System.Copy(FileName,1,2)}
+     else if ($impl.CharInSet$1(FileName.charAt(0),pas.System.AllowDirectorySeparators) && $impl.CharInSet$1(FileName.charAt(1),pas.System.AllowDirectorySeparators)) {
+      i = 2;
+      while ((i < l) && !$impl.CharInSet$1(FileName.charAt((i + 1) - 1),pas.System.AllowDirectorySeparators)) i += 1;
+      i += 1;
+      while ((i < l) && !$impl.CharInSet$1(FileName.charAt((i + 1) - 1),pas.System.AllowDirectorySeparators)) i += 1;
+      Result = pas.System.Copy(FileName,1,i);
+    };
+    return Result;
+  };
+  this.ExtractFileName = function (FileName) {
+    var Result = "";
+    var i = 0;
+    var EndSep = {};
+    i = FileName.length;
+    EndSep = rtl.unionSet(pas.System.AllowDirectorySeparators,pas.System.AllowDriveSeparators);
+    while ((i > 0) && !$impl.CharInSet$1(FileName.charAt(i - 1),EndSep)) i -= 1;
+    Result = pas.System.Copy(FileName,i + 1,2147483647);
+    return Result;
+  };
+  this.ExtractFileExt = function (FileName) {
+    var Result = "";
+    var i = 0;
+    var EndSep = {};
+    var SOF = false;
+    Result = "";
+    i = FileName.length;
+    EndSep = rtl.unionSet(rtl.unionSet(pas.System.AllowDirectorySeparators,pas.System.AllowDriveSeparators),rtl.createSet(pas.System.ExtensionSeparator.charCodeAt()));
+    while ((i > 0) && !$impl.CharInSet$1(FileName.charAt(i - 1),EndSep)) i -= 1;
+    if ((i > 0) && (FileName.charAt(i - 1) === pas.System.ExtensionSeparator)) {
+      SOF = (i === 1) || (FileName.charCodeAt((i - 1) - 1) in pas.System.AllowDirectorySeparators);
+      if (!SOF || pas.System.FirstDotAtFileNameStartIsExtension) Result = pas.System.Copy(FileName,i,2147483647);
+    } else Result = "";
+    return Result;
+  };
+  this.ExtractFileDir = function (FileName) {
+    var Result = "";
+    var i = 0;
+    var EndSep = {};
+    i = FileName.length;
+    EndSep = rtl.unionSet(pas.System.AllowDirectorySeparators,pas.System.AllowDriveSeparators);
+    while ((i > 0) && !$impl.CharInSet$1(FileName.charAt(i - 1),EndSep)) i -= 1;
+    if (((i > 1) && $impl.CharInSet$1(FileName.charAt(i - 1),pas.System.AllowDirectorySeparators)) && !$impl.CharInSet$1(FileName.charAt((i - 1) - 1),EndSep)) i -= 1;
+    Result = pas.System.Copy(FileName,1,i);
+    return Result;
+  };
+  this.ExtractRelativepath = function (BaseName, DestName) {
+    var Result = "";
+    var OneLevelBack = "";
+    var Source = "";
+    var Dest = "";
+    var Sc = 0;
+    var Dc = 0;
+    var I = 0;
+    var J = 0;
+    var SD = [];
+    var DD = [];
+    OneLevelBack = ".." + pas.System.PathDelim;
+    if ($mod.UpperCase($mod.ExtractFileDrive(BaseName)) !== $mod.UpperCase($mod.ExtractFileDrive(DestName))) {
+      Result = DestName;
+      return Result;
+    };
+    Source = $mod.ExcludeTrailingPathDelimiter($mod.ExtractFilePath(BaseName));
+    Dest = $mod.ExcludeTrailingPathDelimiter($mod.ExtractFilePath(DestName));
+    SD = $mod.GetDirs(Source);
+    Sc = rtl.length(SD);
+    DD = $mod.GetDirs(Dest);
+    Dc = rtl.length(SD);
+    I = 0;
+    while ((I < Dc) && (I < Sc)) {
+      if ($mod.SameText(DD[I],SD[I])) {
+        I += 1}
+       else break;
+    };
+    Result = "";
+    for (var $l1 = I, $end2 = Sc; $l1 <= $end2; $l1++) {
+      J = $l1;
+      Result = Result + OneLevelBack;
+    };
+    for (var $l3 = I, $end4 = Dc; $l3 <= $end4; $l3++) {
+      J = $l3;
+      Result = (Result + DD[J]) + pas.System.PathDelim;
+    };
+    Result = Result + $mod.ExtractFileName(DestName);
+    return Result;
+  };
+  this.IncludeTrailingPathDelimiter = function (Path) {
+    var Result = "";
+    var l = 0;
+    Result = Path;
+    l = Result.length;
+    if ((l === 0) || !$impl.CharInSet$1(Result.charAt(l - 1),pas.System.AllowDirectorySeparators)) Result = Result + pas.System.PathDelim;
+    return Result;
+  };
+  this.ExcludeTrailingPathDelimiter = function (Path) {
+    var Result = "";
+    var L = 0;
+    L = Path.length;
+    if ((L > 0) && $impl.CharInSet$1(Path.charAt(L - 1),pas.System.AllowDirectorySeparators)) L -= 1;
+    Result = pas.System.Copy(Path,1,L);
+    return Result;
+  };
+  this.IncludeLeadingPathDelimiter = function (Path) {
+    var Result = "";
+    var l = 0;
+    Result = Path;
+    l = Result.length;
+    if ((l === 0) || !$impl.CharInSet$1(Result.charAt(0),pas.System.AllowDirectorySeparators)) Result = pas.System.PathDelim + Result;
+    return Result;
+  };
+  this.ExcludeLeadingPathDelimiter = function (Path) {
+    var Result = "";
+    var L = 0;
+    Result = Path;
+    L = Result.length;
+    if ((L > 0) && $impl.CharInSet$1(Result.charAt(0),pas.System.AllowDirectorySeparators)) pas.System.Delete({get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }},1,1);
+    return Result;
+  };
+  this.IsPathDelimiter = function (Path, Index) {
+    var Result = false;
+    Result = ((Index > 0) && (Index <= Path.length)) && $impl.CharInSet$1(Path.charAt(Index - 1),pas.System.AllowDirectorySeparators);
+    return Result;
+  };
+  this.SetDirSeparators = function (FileName) {
+    var Result = "";
+    var I = 0;
+    Result = FileName;
+    for (var $l1 = 1, $end2 = Result.length; $l1 <= $end2; $l1++) {
+      I = $l1;
+      if ($impl.CharInSet$1(Result.charAt(I - 1),pas.System.AllowDirectorySeparators)) Result = rtl.setCharAt(Result,I - 1,pas.System.PathDelim);
+    };
+    return Result;
+  };
+  this.GetDirs = function (DirName) {
+    var Result = [];
+    var I = 0;
+    var J = 0;
+    var L = 0;
+    var D = "";
+    I = 1;
+    J = 0;
+    L = 0;
+    Result = rtl.arraySetLength(Result,"",DirName.length);
+    while (I <= DirName.length) {
+      if ($impl.CharInSet$1(DirName.charAt(I - 1),pas.System.AllowDirectorySeparators)) {
+        D = pas.System.Copy(DirName,J + 1,J - I);
+        if (D !== "") {
+          Result[L] = D;
+          L += 1;
+        };
+        J = I;
+      };
+      I += 1;
+    };
+    Result = rtl.arraySetLength(Result,"",L);
+    return Result;
+  };
+  this.ConcatPaths = function (Paths) {
+    var Result = "";
+    var I = 0;
+    if (rtl.length(Paths) > 0) {
+      Result = Paths[0];
+      for (var $l1 = 1, $end2 = rtl.length(Paths) - 1; $l1 <= $end2; $l1++) {
+        I = $l1;
+        Result = $mod.IncludeTrailingPathDelimiter(Result) + $mod.ExcludeLeadingPathDelimiter(Paths[I]);
+      };
+    } else Result = "";
+    return Result;
+  };
+  this.GUID_NULL = new pas.System.TGuid({D1: 0x00000000, D2: 0x0000, D3: 0x0000, D4: [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00]});
+  this.Supports = function (Instance, AClass, Obj) {
+    var Result = false;
+    Result = ((Instance !== null) && (Instance.QueryInterface(pas.System.IObjectInstance,Obj) === 0)) && Obj.get().$class.InheritsFrom(AClass);
+    return Result;
+  };
+  this.Supports$1 = function (Instance, IID, Intf) {
+    var Result = false;
+    Result = (Instance !== null) && (Instance.QueryInterface(IID,Intf) === 0);
+    return Result;
+  };
+  this.Supports$2 = function (Instance, IID, Intf) {
+    var Result = false;
+    Result = (Instance !== null) && Instance.GetInterface(IID,Intf);
+    return Result;
+  };
+  this.Supports$3 = function (Instance, IID, Intf) {
+    var Result = false;
+    Result = (Instance !== null) && Instance.GetInterfaceByStr(IID,Intf);
+    return Result;
+  };
+  this.Supports$4 = function (Instance, AClass) {
+    var Result = false;
+    var Temp = null;
+    Result = $mod.Supports(Instance,AClass,{get: function () {
+        return Temp;
+      }, set: function (v) {
+        Temp = v;
+      }});
+    return Result;
+  };
+  this.Supports$5 = function (Instance, IID) {
+    var Result = false;
+    var Temp = null;
+    try {
+      Result = $mod.Supports$1(Instance,IID,{get: function () {
+          return Temp;
+        }, set: function (v) {
+          Temp = v;
+        }});
+    } finally {
+      rtl._Release(Temp);
+    };
+    return Result;
+  };
+  this.Supports$6 = function (Instance, IID) {
+    var Result = false;
+    var Temp = null;
+    Result = $mod.Supports$2(Instance,IID,{get: function () {
+        return Temp;
+      }, set: function (v) {
+        Temp = v;
+      }});
+    if (Temp && Temp.$kind==='com') Temp._Release();
+    return Result;
+  };
+  this.Supports$7 = function (Instance, IID) {
+    var Result = false;
+    var Temp = null;
+    Result = $mod.Supports$3(Instance,IID,{get: function () {
+        return Temp;
+      }, set: function (v) {
+        Temp = v;
+      }});
+    if (Temp && Temp.$kind==='com') Temp._Release();
+    return Result;
+  };
+  this.Supports$8 = function (AClass, IID) {
+    var Result = false;
+    var maps = undefined;
+    if (AClass === null) return false;
+    maps = AClass["$intfmaps"];
+    if (!maps) return false;
+    if (rtl.getObject(maps)[$mod.GUIDToString(IID)]) return true;
+    Result = false;
+    return Result;
+  };
+  this.Supports$9 = function (AClass, IID) {
+    var Result = false;
+    var maps = undefined;
+    if (AClass === null) return false;
+    maps = AClass["$intfmaps"];
+    if (!maps) return false;
+    if (rtl.getObject(maps)[$mod.UpperCase(IID)]) return true;
+    Result = false;
+    return Result;
+  };
+  this.TryStringToGUID = function (s, Guid) {
+    var Result = false;
+    var re = null;
+    if (s.length !== 38) return false;
+    re = new RegExp("^\\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\}$");
+    Result = re.test(s);
+    if (!Result) {
+      Guid.get().D1 = 0;
+      return Result;
+    };
+    rtl.strToGUIDR(s,Guid.get());
+    Result = true;
+    return Result;
+  };
+  this.StringToGUID = function (S) {
+    var Result = new pas.System.TGuid();
+    if (!$mod.TryStringToGUID(S,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SInvalidGUID,[S]]);
+    return Result;
+  };
+  this.GUIDToString = function (guid) {
+    var Result = "";
+    Result = rtl.guidrToStr(guid);
+    return Result;
+  };
+  this.IsEqualGUID = function (guid1, guid2) {
+    var Result = false;
+    var i = 0;
+    if (((guid1.D1 !== guid2.D1) || (guid1.D2 !== guid2.D2)) || (guid1.D3 !== guid2.D3)) return false;
+    for (i = 0; i <= 7; i++) if (guid1.D4[i] !== guid2.D4[i]) return false;
+    Result = true;
+    return Result;
+  };
+  this.GuidCase = function (guid, List) {
+    var Result = 0;
+    for (var $l1 = rtl.length(List) - 1; $l1 >= 0; $l1--) {
+      Result = $l1;
+      if ($mod.IsEqualGUID(guid,List[Result])) return Result;
+    };
+    Result = -1;
+    return Result;
+  };
+  this.CreateGUID = function (GUID) {
+    var Result = 0;
+    function R(B) {
+      var Result = 0;
+      var v = 0;
+      v = pas.System.Random(256);
+      while (B > 1) {
+        v = (v * 256) + pas.System.Random(256);
+        B -= 1;
+      };
+      Result = v;
+      return Result;
+    };
+    var I = 0;
+    Result = 0;
+    GUID.get().D1 = R(4);
+    GUID.get().D2 = R(2);
+    GUID.get().D3 = R(2);
+    for (I = 0; I <= 7; I++) GUID.get().D4[I] = R(1);
+    return Result;
+  };
+  $mod.$init = function () {
+    $mod.FormatSettings = $mod.TFormatSettings.$create("Create");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.SAbortError = "Operation aborted";
+  $impl.CharInSet$1 = function (Ch, CSet) {
+    var Result = false;
+    Result = Ch.charCodeAt() in CSet;
+    return Result;
+  };
+  $impl.CheckBoolStrs = function () {
+    if (rtl.length($mod.TrueBoolStrs) === 0) {
+      $mod.TrueBoolStrs = rtl.arraySetLength($mod.TrueBoolStrs,"",1);
+      $mod.TrueBoolStrs[0] = "True";
+    };
+    if (rtl.length($mod.FalseBoolStrs) === 0) {
+      $mod.FalseBoolStrs = rtl.arraySetLength($mod.FalseBoolStrs,"",1);
+      $mod.FalseBoolStrs[0] = "False";
+    };
+  };
+  $impl.feInvalidFormat = 1;
+  $impl.feMissingArgument = 2;
+  $impl.feInvalidArgIndex = 3;
+  $impl.DoFormatError = function (ErrCode, fmt) {
+    var $tmp1 = ErrCode;
+    if ($tmp1 === 1) {
+      throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SInvalidFormat,[fmt]])}
+     else if ($tmp1 === 2) {
+      throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SArgumentMissing,[fmt]])}
+     else if ($tmp1 === 3) throw $mod.EConvertError.$create("CreateFmt",[pas.RTLConsts.SInvalidArgIndex,[fmt]]);
+  };
+  $impl.maxdigits = 15;
+  $impl.ReplaceDecimalSep = function (S, DS) {
+    var Result = "";
+    var P = 0;
+    P = pas.System.Pos(".",S);
+    if (P > 0) {
+      Result = (pas.System.Copy(S,1,P - 1) + DS) + pas.System.Copy(S,P + 1,S.length - P)}
+     else Result = S;
+    return Result;
+  };
+  $impl.FormatGeneralFloat = function (Value, Precision, DS) {
+    var Result = "";
+    var P = 0;
+    var PE = 0;
+    var Q = 0;
+    var Exponent = 0;
+    if ((Precision === -1) || (Precision > 15)) Precision = 15;
+    Result = rtl.floatToStr(Value,Precision + 7);
+    Result = $mod.TrimLeft(Result);
+    P = pas.System.Pos(".",Result);
+    if (P === 0) return Result;
+    PE = pas.System.Pos("E",Result);
+    if (PE === 0) {
+      Result = $impl.ReplaceDecimalSep(Result,DS);
+      return Result;
+    };
+    Q = PE + 2;
+    Exponent = 0;
+    while (Q <= Result.length) {
+      Exponent = ((Exponent * 10) + Result.charCodeAt(Q - 1)) - "0".charCodeAt();
+      Q += 1;
+    };
+    if (Result.charAt((PE + 1) - 1) === "-") Exponent = -Exponent;
+    if (((P + Exponent) < PE) && (Exponent > -6)) {
+      Result = rtl.strSetLength(Result,PE - 1);
+      if (Exponent >= 0) {
+        for (var $l1 = 0, $end2 = Exponent - 1; $l1 <= $end2; $l1++) {
+          Q = $l1;
+          Result = rtl.setCharAt(Result,P - 1,Result.charAt((P + 1) - 1));
+          P += 1;
+        };
+        Result = rtl.setCharAt(Result,P - 1,".");
+        P = 1;
+        if (Result.charAt(P - 1) === "-") P += 1;
+        while (((Result.charAt(P - 1) === "0") && (P < Result.length)) && (pas.System.Copy(Result,P + 1,DS.length) !== DS)) pas.System.Delete({get: function () {
+            return Result;
+          }, set: function (v) {
+            Result = v;
+          }},P,1);
+      } else {
+        pas.System.Insert(pas.System.Copy("00000",1,-Exponent),{get: function () {
+            return Result;
+          }, set: function (v) {
+            Result = v;
+          }},P - 1);
+        Result = rtl.setCharAt(Result,(P - Exponent) - 1,Result.charAt(((P - Exponent) - 1) - 1));
+        Result = rtl.setCharAt(Result,P - 1,".");
+        if (Exponent !== -1) Result = rtl.setCharAt(Result,((P - Exponent) - 1) - 1,"0");
+      };
+      Q = Result.length;
+      while ((Q > 0) && (Result.charAt(Q - 1) === "0")) Q -= 1;
+      if (Result.charAt(Q - 1) === ".") Q -= 1;
+      if ((Q === 0) || ((Q === 1) && (Result.charAt(0) === "-"))) {
+        Result = "0"}
+       else Result = rtl.strSetLength(Result,Q);
+    } else {
+      while (Result.charAt((PE - 1) - 1) === "0") {
+        pas.System.Delete({get: function () {
+            return Result;
+          }, set: function (v) {
+            Result = v;
+          }},PE - 1,1);
+        PE -= 1;
+      };
+      if (Result.charAt((PE - 1) - 1) === DS) {
+        pas.System.Delete({get: function () {
+            return Result;
+          }, set: function (v) {
+            Result = v;
+          }},PE - 1,1);
+        PE -= 1;
+      };
+      if (Result.charAt((PE + 1) - 1) === "+") {
+        pas.System.Delete({get: function () {
+            return Result;
+          }, set: function (v) {
+            Result = v;
+          }},PE + 1,1)}
+       else PE += 1;
+      while (Result.charAt((PE + 1) - 1) === "0") pas.System.Delete({get: function () {
+          return Result;
+        }, set: function (v) {
+          Result = v;
+        }},PE + 1,1);
+    };
+    Result = $impl.ReplaceDecimalSep(Result,DS);
+    return Result;
+  };
+  $impl.FormatExponentFloat = function (Value, Precision, Digits, DS) {
+    var Result = "";
+    var P = 0;
+    DS = $mod.DecimalSeparator;
+    if ((Precision === -1) || (Precision > 15)) Precision = 15;
+    Result = rtl.floatToStr(Value,Precision + 7);
+    while (Result.charAt(0) === " ") pas.System.Delete({get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }},1,1);
+    P = pas.System.Pos("E",Result);
+    if (P === 0) {
+      Result = $impl.ReplaceDecimalSep(Result,DS);
+      return Result;
+    };
+    P += 2;
+    if (Digits > 4) Digits = 4;
+    Digits = ((Result.length - P) - Digits) + 1;
+    if (Digits < 0) {
+      pas.System.Insert(pas.System.Copy("0000",1,-Digits),{get: function () {
+          return Result;
+        }, set: function (v) {
+          Result = v;
+        }},P)}
+     else while ((Digits > 0) && (Result.charAt(P - 1) === "0")) {
+      pas.System.Delete({get: function () {
+          return Result;
+        }, set: function (v) {
+          Result = v;
+        }},P,1);
+      if (P > Result.length) {
+        pas.System.Delete({get: function () {
+            return Result;
+          }, set: function (v) {
+            Result = v;
+          }},P - 2,2);
+        break;
+      };
+      Digits -= 1;
+    };
+    Result = $impl.ReplaceDecimalSep(Result,DS);
+    return Result;
+  };
+  $impl.FormatFixedFloat = function (Value, Digits, DS) {
+    var Result = "";
+    if (Digits === -1) {
+      Digits = 2}
+     else if (Digits > 18) Digits = 18;
+    Result = rtl.floatToStr(Value,0,Digits);
+    if ((Result !== "") && (Result.charAt(0) === " ")) pas.System.Delete({get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }},1,1);
+    Result = $impl.ReplaceDecimalSep(Result,DS);
+    return Result;
+  };
+  $impl.FormatNumberFloat = function (Value, Digits, DS, TS) {
+    var Result = "";
+    var P = 0;
+    if (Digits === -1) {
+      Digits = 2}
+     else if (Digits > 15) Digits = 15;
+    Result = rtl.floatToStr(Value,0,Digits);
+    if ((Result !== "") && (Result.charAt(0) === " ")) pas.System.Delete({get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }},1,1);
+    P = pas.System.Pos(".",Result);
+    Result = $impl.ReplaceDecimalSep(Result,DS);
+    P -= 3;
+    if ((TS !== "") && (TS !== "\x00")) while (P > 1) {
+      if (Result.charAt((P - 1) - 1) !== "-") pas.System.Insert(TS,{get: function () {
+          return Result;
+        }, set: function (v) {
+          Result = v;
+        }},P);
+      P -= 3;
+    };
+    return Result;
+  };
+  $impl.RemoveLeadingNegativeSign = function (AValue, DS) {
+    var Result = false;
+    var i = 0;
+    var TS = "";
+    var StartPos = 0;
+    Result = false;
+    StartPos = 2;
+    TS = $mod.ThousandSeparator;
+    for (var $l1 = StartPos, $end2 = AValue.get().length; $l1 <= $end2; $l1++) {
+      i = $l1;
+      Result = (AValue.get().charCodeAt(i - 1) in rtl.createSet(48,DS.charCodeAt(),69,43)) || (AValue.get().charAt(i - 1) === TS);
+      if (!Result) break;
+    };
+    if (Result && (AValue.get().charAt(0) === "-")) pas.System.Delete(AValue,1,1);
+    return Result;
+  };
+  $impl.FormatNumberCurrency = function (Value, Digits, DS, TS) {
+    var Result = "";
+    var Negative = false;
+    var P = 0;
+    if (Digits === -1) {
+      Digits = $mod.CurrencyDecimals}
+     else if (Digits > 18) Digits = 18;
+    Result = rtl.floatToStr(Value / 10000,0,Digits);
+    Negative = Result.charAt(0) === "-";
+    if (Negative) pas.System.Delete({get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }},1,1);
+    P = pas.System.Pos(".",Result);
+    if (TS !== "") {
+      if (P !== 0) {
+        Result = $impl.ReplaceDecimalSep(Result,DS)}
+       else P = Result.length + 1;
+      P -= 3;
+      while (P > 1) {
+        pas.System.Insert(TS,{get: function () {
+            return Result;
+          }, set: function (v) {
+            Result = v;
+          }},P);
+        P -= 3;
+      };
+    };
+    if (Negative) $impl.RemoveLeadingNegativeSign({get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }},DS);
+    if (!Negative) {
+      var $tmp1 = $mod.CurrencyFormat;
+      if ($tmp1 === 0) {
+        Result = $mod.CurrencyString + Result}
+       else if ($tmp1 === 1) {
+        Result = Result + $mod.CurrencyString}
+       else if ($tmp1 === 2) {
+        Result = ($mod.CurrencyString + " ") + Result}
+       else if ($tmp1 === 3) Result = (Result + " ") + $mod.CurrencyString;
+    } else {
+      var $tmp2 = $mod.NegCurrFormat;
+      if ($tmp2 === 0) {
+        Result = (("(" + $mod.CurrencyString) + Result) + ")"}
+       else if ($tmp2 === 1) {
+        Result = ("-" + $mod.CurrencyString) + Result}
+       else if ($tmp2 === 2) {
+        Result = ($mod.CurrencyString + "-") + Result}
+       else if ($tmp2 === 3) {
+        Result = ($mod.CurrencyString + Result) + "-"}
+       else if ($tmp2 === 4) {
+        Result = (("(" + Result) + $mod.CurrencyString) + ")"}
+       else if ($tmp2 === 5) {
+        Result = ("-" + Result) + $mod.CurrencyString}
+       else if ($tmp2 === 6) {
+        Result = (Result + "-") + $mod.CurrencyString}
+       else if ($tmp2 === 7) {
+        Result = (Result + $mod.CurrencyString) + "-"}
+       else if ($tmp2 === 8) {
+        Result = (("-" + Result) + " ") + $mod.CurrencyString}
+       else if ($tmp2 === 9) {
+        Result = (("-" + $mod.CurrencyString) + " ") + Result}
+       else if ($tmp2 === 10) {
+        Result = ((Result + " ") + $mod.CurrencyString) + "-"}
+       else if ($tmp2 === 11) {
+        Result = (($mod.CurrencyString + " ") + Result) + "-"}
+       else if ($tmp2 === 12) {
+        Result = (($mod.CurrencyString + " ") + "-") + Result}
+       else if ($tmp2 === 13) {
+        Result = ((Result + "-") + " ") + $mod.CurrencyString}
+       else if ($tmp2 === 14) {
+        Result = ((("(" + $mod.CurrencyString) + " ") + Result) + ")"}
+       else if ($tmp2 === 15) Result = ((("(" + Result) + " ") + $mod.CurrencyString) + ")";
+    };
+    return Result;
+  };
+  $impl.RESpecials = "([\\[\\]\\(\\)\\\\\\.\\*])";
+  $impl.DoEncodeDate = function (Year, Month, Day) {
+    var Result = 0;
+    var D = 0.0;
+    if ($mod.TryEncodeDate(Year,Month,Day,{get: function () {
+        return D;
+      }, set: function (v) {
+        D = v;
+      }})) {
+      Result = pas.System.Trunc(D)}
+     else Result = 0;
+    return Result;
+  };
+  $impl.DoEncodeTime = function (Hour, Minute, Second, MilliSecond) {
+    var Result = 0.0;
+    if (!$mod.TryEncodeTime(Hour,Minute,Second,MilliSecond,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) Result = 0;
+    return Result;
+  };
+  $impl.DateTimeToStrFormat = ["c","f"];
+  var WhiteSpace = " \b\t\n\f\r";
+  var Digits = "0123456789";
+  $impl.IntStrToDate = function (ErrorMsg, S, useformat, separator) {
+    var Result = 0.0;
+    function FixErrorMsg(errmarg) {
+      ErrorMsg.set($mod.Format(pas.RTLConsts.SInvalidDateFormat,[errmarg]));
+    };
+    var df = "";
+    var d = 0;
+    var m = 0;
+    var y = 0;
+    var ly = 0;
+    var ld = 0;
+    var lm = 0;
+    var n = 0;
+    var i = 0;
+    var len = 0;
+    var c = 0;
+    var dp = 0;
+    var mp = 0;
+    var yp = 0;
+    var which = 0;
+    var s1 = "";
+    var values = [];
+    var YearMoreThenTwoDigits = false;
+    values = rtl.arraySetLength(values,0,4);
+    Result = 0;
+    len = S.length;
+    ErrorMsg.set("");
+    while ((len > 0) && (pas.System.Pos(S.charAt(len - 1),WhiteSpace) > 0)) len -= 1;
+    if (len === 0) {
+      FixErrorMsg(S);
+      return Result;
+    };
+    YearMoreThenTwoDigits = false;
+    if (separator === "\x00") if ($mod.DateSeparator !== "\x00") {
+      separator = $mod.DateSeparator}
+     else separator = "-";
+    df = $mod.UpperCase(useformat);
+    yp = 0;
+    mp = 0;
+    dp = 0;
+    which = 0;
+    i = 0;
+    while ((i < df.length) && (which < 3)) {
+      i += 1;
+      var $tmp1 = df.charAt(i - 1);
+      if ($tmp1 === "Y") {
+        if (yp === 0) {
+          which += 1;
+          yp = which;
+        }}
+       else if ($tmp1 === "M") {
+        if (mp === 0) {
+          which += 1;
+          mp = which;
+        }}
+       else if ($tmp1 === "D") if (dp === 0) {
+        which += 1;
+        dp = which;
+      };
+    };
+    for (i = 1; i <= 3; i++) values[i] = 0;
+    s1 = "";
+    n = 0;
+    for (var $l2 = 1, $end3 = len; $l2 <= $end3; $l2++) {
+      i = $l2;
+      if (pas.System.Pos(S.charAt(i - 1),Digits) > 0) s1 = s1 + S.charAt(i - 1);
+      if ((separator !== " ") && (S.charAt(i - 1) === " ")) continue;
+      if ((S.charAt(i - 1) === separator) || ((i === len) && (pas.System.Pos(S.charAt(i - 1),Digits) > 0))) {
+        n += 1;
+        if (n > 3) {
+          FixErrorMsg(S);
+          return Result;
+        };
+        if ((n === yp) && (s1.length > 2)) YearMoreThenTwoDigits = true;
+        pas.System.val$6(s1,{a: n, p: values, get: function () {
+            return this.p[this.a];
+          }, set: function (v) {
+            this.p[this.a] = v;
+          }},{get: function () {
+            return c;
+          }, set: function (v) {
+            c = v;
+          }});
+        if (c !== 0) {
+          FixErrorMsg(S);
+          return Result;
+        };
+        s1 = "";
+      } else if (pas.System.Pos(S.charAt(i - 1),Digits) === 0) {
+        FixErrorMsg(S);
+        return Result;
+      };
+    };
+    if ((which < 3) && (n > which)) {
+      FixErrorMsg(S);
+      return Result;
+    };
+    $mod.DecodeDate($mod.Date(),{get: function () {
+        return ly;
+      }, set: function (v) {
+        ly = v;
+      }},{get: function () {
+        return lm;
+      }, set: function (v) {
+        lm = v;
+      }},{get: function () {
+        return ld;
+      }, set: function (v) {
+        ld = v;
+      }});
+    if (n === 3) {
+      y = values[yp];
+      m = values[mp];
+      d = values[dp];
+    } else {
+      y = ly;
+      if (n < 2) {
+        d = values[1];
+        m = lm;
+      } else if (dp < mp) {
+        d = values[1];
+        m = values[2];
+      } else {
+        d = values[2];
+        m = values[1];
+      };
+    };
+    if (((y >= 0) && (y < 100)) && !YearMoreThenTwoDigits) {
+      ly = ly - $mod.TwoDigitYearCenturyWindow;
+      y += Math.floor(ly / 100) * 100;
+      if (($mod.TwoDigitYearCenturyWindow > 0) && (y < ly)) y += 100;
+    };
+    if (!$mod.TryEncodeDate(y,m,d,{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) ErrorMsg.set(pas.RTLConsts.SErrInvalidDate);
+    return Result;
+  };
+  var AMPM_None = 0;
+  var AMPM_AM = 1;
+  var AMPM_PM = 2;
+  var tiHour = 0;
+  var tiMin = 1;
+  var tiSec = 2;
+  var tiMSec = 3;
+  var Digits$1 = "0123456789";
+  $impl.IntStrToTime = function (ErrorMsg, S, Len, separator) {
+    var Result = 0.0;
+    var AmPm = 0;
+    var TimeValues = [];
+    function SplitElements(TimeValues, AmPm) {
+      var Result = false;
+      var Cur = 0;
+      var Offset = 0;
+      var ElemLen = 0;
+      var Err = 0;
+      var TimeIndex = 0;
+      var FirstSignificantDigit = 0;
+      var Value = 0;
+      var DigitPending = false;
+      var MSecPending = false;
+      var AmPmStr = "";
+      var CurChar = "";
+      var I = 0;
+      var allowedchars = "";
+      Result = false;
+      AmPm.set(0);
+      MSecPending = false;
+      TimeIndex = 0;
+      for (I = 0; I <= 3; I++) TimeValues.get()[I] = 0;
+      Cur = 1;
+      while ((Cur < Len) && (S.charAt(Cur - 1) === " ")) Cur += 1;
+      Offset = Cur;
+      if (((Cur > (Len - 1)) || (S.charAt(Cur - 1) === separator)) || (S.charAt(Cur - 1) === $mod.DecimalSeparator)) {
+        return Result;
+      };
+      DigitPending = pas.System.Pos(S.charAt(Cur - 1),Digits$1) > 0;
+      while (Cur <= Len) {
+        CurChar = S.charAt(Cur - 1);
+        if (pas.System.Pos(CurChar,Digits$1) > 0) {
+          if (!DigitPending || (TimeIndex > 3)) {
+            return Result;
+          };
+          Offset = Cur;
+          if (CurChar !== "0") {
+            FirstSignificantDigit = Offset}
+           else FirstSignificantDigit = -1;
+          while ((Cur < Len) && (pas.System.Pos(S.charAt((Cur + 1) - 1),Digits$1) > 0)) {
+            if ((FirstSignificantDigit === -1) && (S.charAt(Cur - 1) !== "0")) FirstSignificantDigit = Cur;
+            Cur += 1;
+          };
+          if (FirstSignificantDigit === -1) FirstSignificantDigit = Cur;
+          ElemLen = (1 + Cur) - FirstSignificantDigit;
+          if ((ElemLen <= 2) || ((ElemLen <= 3) && (TimeIndex === 3))) {
+            pas.System.val$6(pas.System.Copy(S,FirstSignificantDigit,ElemLen),{get: function () {
+                return Value;
+              }, set: function (v) {
+                Value = v;
+              }},{get: function () {
+                return Err;
+              }, set: function (v) {
+                Err = v;
+              }});
+            TimeValues.get()[TimeIndex] = Value;
+            TimeIndex += 1;
+            DigitPending = false;
+          } else {
+            return Result;
+          };
+        } else if (CurChar === " ") {}
+        else if (CurChar === separator) {
+          if (DigitPending || (TimeIndex > 2)) {
+            return Result;
+          };
+          DigitPending = true;
+          MSecPending = false;
+        } else if (CurChar === $mod.DecimalSeparator) {
+          if ((DigitPending || MSecPending) || (TimeIndex !== 3)) {
+            return Result;
+          };
+          DigitPending = true;
+          MSecPending = true;
+        } else {
+          if ((AmPm.get() !== 0) || DigitPending) {
+            return Result;
+          };
+          Offset = Cur;
+          allowedchars = $mod.DecimalSeparator + " ";
+          if (separator !== "\x00") allowedchars = allowedchars + separator;
+          while (((Cur < (Len - 1)) && (pas.System.Pos(S.charAt((Cur + 1) - 1),allowedchars) === 0)) && (pas.System.Pos(S.charAt((Cur + 1) - 1),Digits$1) === 0)) Cur += 1;
+          ElemLen = (1 + Cur) - Offset;
+          AmPmStr = pas.System.Copy(S,1 + Offset,ElemLen);
+          if ($mod.CompareText(AmPmStr,$mod.TimeAMString) === 0) {
+            AmPm.set(1)}
+           else if ($mod.CompareText(AmPmStr,$mod.TimePMString) === 0) {
+            AmPm.set(2)}
+           else if ($mod.CompareText(AmPmStr,"AM") === 0) {
+            AmPm.set(1)}
+           else if ($mod.CompareText(AmPmStr,"PM") === 0) {
+            AmPm.set(2)}
+           else {
+            return Result;
+          };
+          if (TimeIndex === 0) {
+            DigitPending = true;
+          } else {
+            TimeIndex = 3 + 1;
+            DigitPending = false;
+          };
+        };
+        Cur += 1;
+      };
+      if (((TimeIndex === 0) || ((AmPm.get() !== 0) && ((TimeValues.get()[0] > 12) || (TimeValues.get()[0] === 0)))) || DigitPending) return Result;
+      Result = true;
+      return Result;
+    };
+    TimeValues = rtl.arraySetLength(TimeValues,0,4);
+    if (separator === "\x00") if ($mod.TimeSeparator !== "\x00") {
+      separator = $mod.TimeSeparator}
+     else separator = ":";
+    AmPm = 0;
+    if (!SplitElements({get: function () {
+        return TimeValues;
+      }, set: function (v) {
+        TimeValues = v;
+      }},{get: function () {
+        return AmPm;
+      }, set: function (v) {
+        AmPm = v;
+      }})) {
+      ErrorMsg.set($mod.Format(pas.RTLConsts.SErrInvalidTimeFormat,[S]));
+      return Result;
+    };
+    if ((AmPm === 2) && (TimeValues[0] !== 12)) {
+      TimeValues[0] += 12}
+     else if ((AmPm === 1) && (TimeValues[0] === 12)) TimeValues[0] = 0;
+    if (!$mod.TryEncodeTime(TimeValues[0],TimeValues[1],TimeValues[2],TimeValues[3],{get: function () {
+        return Result;
+      }, set: function (v) {
+        Result = v;
+      }})) ErrorMsg.set($mod.Format(pas.RTLConsts.SErrInvalidTimeFormat,[S]));
+    return Result;
+  };
+  var WhiteSpace$1 = "\t\n\r ";
+  $impl.SplitDateTimeStr = function (DateTimeStr, DateStr, TimeStr) {
+    var Result = 0;
+    var p = 0;
+    var DummyDT = 0.0;
+    Result = 0;
+    DateStr.set("");
+    TimeStr.set("");
+    DateTimeStr = $mod.Trim(DateTimeStr);
+    if (DateTimeStr.length === 0) return Result;
+    if ((($mod.DateSeparator === " ") && ($mod.TimeSeparator === " ")) && (pas.System.Pos(" ",DateTimeStr) > 0)) {
+      DateStr.set(DateTimeStr);
+      return 1;
+    };
+    p = 1;
+    if ($mod.DateSeparator !== " ") {
+      while ((p < DateTimeStr.length) && !(pas.System.Pos(DateTimeStr.charAt((p + 1) - 1),WhiteSpace$1) > 0)) p += 1;
+    } else {
+      p = pas.System.Pos($mod.TimeSeparator,DateTimeStr);
+      if (p !== 0) do {
+        p -= 1;
+      } while (!((p === 0) || (pas.System.Pos(DateTimeStr.charAt(p - 1),WhiteSpace$1) > 0)));
+    };
+    if (p === 0) p = DateTimeStr.length;
+    DateStr.set(pas.System.Copy(DateTimeStr,1,p));
+    TimeStr.set($mod.Trim(pas.System.Copy(DateTimeStr,p + 1,100)));
+    if (TimeStr.get().length !== 0) {
+      Result = 2}
+     else {
+      Result = 1;
+      if ((($mod.DateSeparator !== $mod.TimeSeparator) && (pas.System.Pos($mod.TimeSeparator,DateStr.get()) > 0)) || (($mod.DateSeparator === $mod.TimeSeparator) && !$mod.TryStrToDate(DateStr.get(),{get: function () {
+          return DummyDT;
+        }, set: function (v) {
+          DummyDT = v;
+        }}))) {
+        TimeStr.set(DateStr.get());
+        DateStr.set("");
+      };
+    };
+    return Result;
+  };
+});
+rtl.module("Classes",["System","RTLConsts","Types","SysUtils"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $mod.$rtti.$MethodVar("TNotifyEvent",{procsig: rtl.newTIProcSig([["Sender",pas.System.$rtti["TObject"]]]), methodkind: 0});
+  this.TFPObservedOperation = {"0": "ooChange", ooChange: 0, "1": "ooFree", ooFree: 1, "2": "ooAddItem", ooAddItem: 2, "3": "ooDeleteItem", ooDeleteItem: 3, "4": "ooCustom", ooCustom: 4};
+  $mod.$rtti.$Enum("TFPObservedOperation",{minvalue: 0, maxvalue: 4, ordtype: 1, enumtype: this.TFPObservedOperation});
+  rtl.createClass($mod,"EStreamError",pas.SysUtils.Exception,function () {
+  });
+  rtl.createClass($mod,"EFCreateError",$mod.EStreamError,function () {
+  });
+  rtl.createClass($mod,"EFOpenError",$mod.EStreamError,function () {
+  });
+  rtl.createClass($mod,"EFilerError",$mod.EStreamError,function () {
+  });
+  rtl.createClass($mod,"EReadError",$mod.EFilerError,function () {
+  });
+  rtl.createClass($mod,"EWriteError",$mod.EFilerError,function () {
+  });
+  rtl.createClass($mod,"EClassNotFound",$mod.EFilerError,function () {
+  });
+  rtl.createClass($mod,"EMethodNotFound",$mod.EFilerError,function () {
+  });
+  rtl.createClass($mod,"EInvalidImage",$mod.EFilerError,function () {
+  });
+  rtl.createClass($mod,"EResNotFound",pas.SysUtils.Exception,function () {
+  });
+  rtl.createClass($mod,"EListError",pas.SysUtils.Exception,function () {
+  });
+  rtl.createClass($mod,"EBitsError",pas.SysUtils.Exception,function () {
+  });
+  rtl.createClass($mod,"EStringListError",$mod.EListError,function () {
+  });
+  rtl.createClass($mod,"EComponentError",pas.SysUtils.Exception,function () {
+  });
+  rtl.createClass($mod,"EParserError",pas.SysUtils.Exception,function () {
+  });
+  rtl.createClass($mod,"EOutOfResources",pas.SysUtils.EOutOfMemory,function () {
+  });
+  rtl.createClass($mod,"EInvalidOperation",pas.SysUtils.Exception,function () {
+  });
+  this.TListAssignOp = {"0": "laCopy", laCopy: 0, "1": "laAnd", laAnd: 1, "2": "laOr", laOr: 2, "3": "laXor", laXor: 3, "4": "laSrcUnique", laSrcUnique: 4, "5": "laDestUnique", laDestUnique: 5};
+  $mod.$rtti.$Enum("TListAssignOp",{minvalue: 0, maxvalue: 5, ordtype: 1, enumtype: this.TListAssignOp});
+  $mod.$rtti.$ProcVar("TListSortCompare",{procsig: rtl.newTIProcSig([["Item1",rtl.jsvalue],["Item2",rtl.jsvalue]],rtl.longint)});
+  this.TAlignment = {"0": "taLeftJustify", taLeftJustify: 0, "1": "taRightJustify", taRightJustify: 1, "2": "taCenter", taCenter: 2};
+  $mod.$rtti.$Enum("TAlignment",{minvalue: 0, maxvalue: 2, ordtype: 1, enumtype: this.TAlignment});
+  $mod.$rtti.$Class("TFPList");
+  rtl.createClass($mod,"TFPListEnumerator",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.FList = null;
+      this.FPosition = 0;
+    };
+    this.$final = function () {
+      this.FList = undefined;
+      pas.System.TObject.$final.call(this);
+    };
+    this.Create$1 = function (AList) {
+      pas.System.TObject.Create.call(this);
+      this.FList = AList;
+      this.FPosition = -1;
+    };
+    this.GetCurrent = function () {
+      var Result = undefined;
+      Result = this.FList.Get(this.FPosition);
+      return Result;
+    };
+    this.MoveNext = function () {
+      var Result = false;
+      this.FPosition += 1;
+      Result = this.FPosition < this.FList.FCount;
+      return Result;
+    };
+  });
+  rtl.createClass($mod,"TFPList",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.FList = [];
+      this.FCount = 0;
+      this.FCapacity = 0;
+    };
+    this.$final = function () {
+      this.FList = undefined;
+      pas.System.TObject.$final.call(this);
+    };
+    this.CopyMove = function (aList) {
+      var r = 0;
+      this.Clear();
+      for (var $l1 = 0, $end2 = aList.FCount - 1; $l1 <= $end2; $l1++) {
+        r = $l1;
+        this.Add(aList.Get(r));
+      };
+    };
+    this.MergeMove = function (aList) {
+      var r = 0;
+      for (var $l1 = 0, $end2 = aList.FCount - 1; $l1 <= $end2; $l1++) {
+        r = $l1;
+        if (this.IndexOf(aList.Get(r)) < 0) this.Add(aList.Get(r));
+      };
+    };
+    this.DoCopy = function (ListA, ListB) {
+      if (ListB != null) {
+        this.CopyMove(ListB)}
+       else this.CopyMove(ListA);
+    };
+    this.DoSrcUnique = function (ListA, ListB) {
+      var r = 0;
+      if (ListB != null) {
+        this.Clear();
+        for (var $l1 = 0, $end2 = ListA.FCount - 1; $l1 <= $end2; $l1++) {
+          r = $l1;
+          if (ListB.IndexOf(ListA.Get(r)) < 0) this.Add(ListA.Get(r));
+        };
+      } else {
+        for (var $l3 = this.FCount - 1; $l3 >= 0; $l3--) {
+          r = $l3;
+          if (ListA.IndexOf(this.Get(r)) >= 0) this.Delete(r);
+        };
+      };
+    };
+    this.DoAnd = function (ListA, ListB) {
+      var r = 0;
+      if (ListB != null) {
+        this.Clear();
+        for (var $l1 = 0, $end2 = ListA.FCount - 1; $l1 <= $end2; $l1++) {
+          r = $l1;
+          if (ListB.IndexOf(ListA.Get(r)) >= 0) this.Add(ListA.Get(r));
+        };
+      } else {
+        for (var $l3 = this.FCount - 1; $l3 >= 0; $l3--) {
+          r = $l3;
+          if (ListA.IndexOf(this.Get(r)) < 0) this.Delete(r);
+        };
+      };
+    };
+    this.DoDestUnique = function (ListA, ListB) {
+      var Self = this;
+      function MoveElements(Src, Dest) {
+        var r = 0;
+        Self.Clear();
+        for (var $l1 = 0, $end2 = Src.FCount - 1; $l1 <= $end2; $l1++) {
+          r = $l1;
+          if (Dest.IndexOf(Src.Get(r)) < 0) Self.Add(Src.Get(r));
+        };
+      };
+      var Dest = null;
+      if (ListB != null) {
+        MoveElements(ListB,ListA)}
+       else Dest = $mod.TFPList.$create("Create");
+      try {
+        Dest.CopyMove(Self);
+        MoveElements(ListA,Dest);
+      } finally {
+        Dest.$destroy("Destroy");
+      };
+    };
+    this.DoOr = function (ListA, ListB) {
+      if (ListB != null) {
+        this.CopyMove(ListA);
+        this.MergeMove(ListB);
+      } else this.MergeMove(ListA);
+    };
+    this.DoXOr = function (ListA, ListB) {
+      var r = 0;
+      var l = null;
+      if (ListB != null) {
+        this.Clear();
+        for (var $l1 = 0, $end2 = ListA.FCount - 1; $l1 <= $end2; $l1++) {
+          r = $l1;
+          if (ListB.IndexOf(ListA.Get(r)) < 0) this.Add(ListA.Get(r));
+        };
+        for (var $l3 = 0, $end4 = ListB.FCount - 1; $l3 <= $end4; $l3++) {
+          r = $l3;
+          if (ListA.IndexOf(ListB.Get(r)) < 0) this.Add(ListB.Get(r));
+        };
+      } else {
+        l = $mod.TFPList.$create("Create");
+        try {
+          l.CopyMove(this);
+          for (var $l5 = this.FCount - 1; $l5 >= 0; $l5--) {
+            r = $l5;
+            if (ListA.IndexOf(this.Get(r)) >= 0) this.Delete(r);
+          };
+          for (var $l6 = 0, $end7 = ListA.FCount - 1; $l6 <= $end7; $l6++) {
+            r = $l6;
+            if (l.IndexOf(ListA.Get(r)) < 0) this.Add(ListA.Get(r));
+          };
+        } finally {
+          l.$destroy("Destroy");
+        };
+      };
+    };
+    this.Get = function (Index) {
+      var Result = undefined;
+      if ((Index < 0) || (Index >= this.FCount)) this.RaiseIndexError(Index);
+      Result = this.FList[Index];
+      return Result;
+    };
+    this.Put = function (Index, Item) {
+      if ((Index < 0) || (Index >= this.FCount)) this.RaiseIndexError(Index);
+      this.FList[Index] = Item;
+    };
+    this.SetCapacity = function (NewCapacity) {
+      if (NewCapacity < this.FCount) this.$class.Error(pas.RTLConsts.SListCapacityError,"" + NewCapacity);
+      if (NewCapacity === this.FCapacity) return;
+      this.FList = rtl.arraySetLength(this.FList,undefined,NewCapacity);
+      this.FCapacity = NewCapacity;
+    };
+    this.SetCount = function (NewCount) {
+      if (NewCount < 0) this.$class.Error(pas.RTLConsts.SListCountError,"" + NewCount);
+      if (NewCount > this.FCount) {
+        if (NewCount > this.FCapacity) this.SetCapacity(NewCount);
+      };
+      this.FCount = NewCount;
+    };
+    this.RaiseIndexError = function (Index) {
+      this.$class.Error(pas.RTLConsts.SListIndexError,"" + Index);
+    };
+    this.Destroy = function () {
+      this.Clear();
+      pas.System.TObject.Destroy.call(this);
+    };
+    this.AddList = function (AList) {
+      var I = 0;
+      if (this.FCapacity < (this.FCount + AList.FCount)) this.SetCapacity(this.FCount + AList.FCount);
+      for (var $l1 = 0, $end2 = AList.FCount - 1; $l1 <= $end2; $l1++) {
+        I = $l1;
+        this.Add(AList.Get(I));
+      };
+    };
+    this.Add = function (Item) {
+      var Result = 0;
+      if (this.FCount === this.FCapacity) this.Expand();
+      this.FList[this.FCount] = Item;
+      Result = this.FCount;
+      this.FCount += 1;
+      return Result;
+    };
+    this.Clear = function () {
+      if (rtl.length(this.FList) > 0) {
+        this.SetCount(0);
+        this.SetCapacity(0);
+      };
+    };
+    this.Delete = function (Index) {
+      if ((Index < 0) || (Index >= this.FCount)) this.$class.Error(pas.RTLConsts.SListIndexError,"" + Index);
+      this.FCount = this.FCount - 1;
+      this.FList.splice(Index,1);
+      this.FCapacity -= 1;
+    };
+    this.Error = function (Msg, Data) {
+      throw $mod.EListError.$create("CreateFmt",[Msg,[Data]]);
+    };
+    this.Exchange = function (Index1, Index2) {
+      var Temp = undefined;
+      if ((Index1 >= this.FCount) || (Index1 < 0)) this.$class.Error(pas.RTLConsts.SListIndexError,"" + Index1);
+      if ((Index2 >= this.FCount) || (Index2 < 0)) this.$class.Error(pas.RTLConsts.SListIndexError,"" + Index2);
+      Temp = this.FList[Index1];
+      this.FList[Index1] = this.FList[Index2];
+      this.FList[Index2] = Temp;
+    };
+    this.Expand = function () {
+      var Result = null;
+      var IncSize = 0;
+      if (this.FCount < this.FCapacity) return this;
+      IncSize = 4;
+      if (this.FCapacity > 3) IncSize = IncSize + 4;
+      if (this.FCapacity > 8) IncSize = IncSize + 8;
+      if (this.FCapacity > 127) IncSize += this.FCapacity >>> 2;
+      this.SetCapacity(this.FCapacity + IncSize);
+      Result = this;
+      return Result;
+    };
+    this.Extract = function (Item) {
+      var Result = undefined;
+      var i = 0;
+      i = this.IndexOf(Item);
+      if (i >= 0) {
+        Result = Item;
+        this.Delete(i);
+      } else Result = null;
+      return Result;
+    };
+    this.First = function () {
+      var Result = undefined;
+      if (this.FCount === 0) {
+        Result = null}
+       else Result = this.Get(0);
+      return Result;
+    };
+    this.GetEnumerator = function () {
+      var Result = null;
+      Result = $mod.TFPListEnumerator.$create("Create$1",[this]);
+      return Result;
+    };
+    this.IndexOf = function (Item) {
+      var Result = 0;
+      var C = 0;
+      Result = 0;
+      C = this.FCount;
+      while ((Result < C) && (this.FList[Result] != Item)) Result += 1;
+      if (Result >= C) Result = -1;
+      return Result;
+    };
+    this.IndexOfItem = function (Item, Direction) {
+      var Result = 0;
+      if (Direction === pas.Types.TDirection.FromBeginning) {
+        Result = this.IndexOf(Item)}
+       else {
+        Result = this.FCount - 1;
+        while ((Result >= 0) && (this.FList[Result] != Item)) Result = Result - 1;
+      };
+      return Result;
+    };
+    this.Insert = function (Index, Item) {
+      if ((Index < 0) || (Index > this.FCount)) this.$class.Error(pas.RTLConsts.SListIndexError,"" + Index);
+      this.FList.splice(Index,0,Item);
+      this.FCapacity += 1;
+      this.FCount += 1;
+    };
+    this.Last = function () {
+      var Result = undefined;
+      if (this.FCount === 0) {
+        Result = null}
+       else Result = this.Get(this.FCount - 1);
+      return Result;
+    };
+    this.Move = function (CurIndex, NewIndex) {
+      var Temp = undefined;
+      if ((CurIndex < 0) || (CurIndex > (this.FCount - 1))) this.$class.Error(pas.RTLConsts.SListIndexError,"" + CurIndex);
+      if ((NewIndex < 0) || (NewIndex > (this.FCount - 1))) this.$class.Error(pas.RTLConsts.SListIndexError,"" + NewIndex);
+      if (CurIndex === NewIndex) return;
+      Temp = this.FList[CurIndex];
+      this.FList.splice(CurIndex,1);
+      this.FList.splice(NewIndex,0,Temp);
+    };
+    this.Assign = function (ListA, AOperator, ListB) {
+      var $tmp1 = AOperator;
+      if ($tmp1 === $mod.TListAssignOp.laCopy) {
+        this.DoCopy(ListA,ListB)}
+       else if ($tmp1 === $mod.TListAssignOp.laSrcUnique) {
+        this.DoSrcUnique(ListA,ListB)}
+       else if ($tmp1 === $mod.TListAssignOp.laAnd) {
+        this.DoAnd(ListA,ListB)}
+       else if ($tmp1 === $mod.TListAssignOp.laDestUnique) {
+        this.DoDestUnique(ListA,ListB)}
+       else if ($tmp1 === $mod.TListAssignOp.laOr) {
+        this.DoOr(ListA,ListB)}
+       else if ($tmp1 === $mod.TListAssignOp.laXor) this.DoXOr(ListA,ListB);
+    };
+    this.Remove = function (Item) {
+      var Result = 0;
+      Result = this.IndexOf(Item);
+      if (Result !== -1) this.Delete(Result);
+      return Result;
+    };
+    this.Pack = function () {
+      var Dst = 0;
+      var i = 0;
+      var V = undefined;
+      Dst = 0;
+      for (var $l1 = 0, $end2 = this.FCount - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        V = this.FList[i];
+        if (!pas.System.Assigned(V)) continue;
+        this.FList[Dst] = V;
+        Dst += 1;
+      };
+    };
+    this.Sort = function (Compare) {
+      if (!(rtl.length(this.FList) > 0) || (this.FCount < 2)) return;
+      $impl.QuickSort(this.FList,0,this.FCount - 1,Compare);
+    };
+    this.ForEachCall = function (proc2call, arg) {
+      var i = 0;
+      var v = undefined;
+      for (var $l1 = 0, $end2 = this.FCount - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        v = this.FList[i];
+        if (pas.System.Assigned(v)) proc2call(v,arg);
+      };
+    };
+    this.ForEachCall$1 = function (proc2call, arg) {
+      var i = 0;
+      var v = undefined;
+      for (var $l1 = 0, $end2 = this.FCount - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        v = this.FList[i];
+        if (pas.System.Assigned(v)) proc2call(v,arg);
+      };
+    };
+  });
+  this.TListNotification = {"0": "lnAdded", lnAdded: 0, "1": "lnExtracted", lnExtracted: 1, "2": "lnDeleted", lnDeleted: 2};
+  $mod.$rtti.$Enum("TListNotification",{minvalue: 0, maxvalue: 2, ordtype: 1, enumtype: this.TListNotification});
+  $mod.$rtti.$Class("TList");
+  rtl.createClass($mod,"TListEnumerator",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.FList = null;
+      this.FPosition = 0;
+    };
+    this.$final = function () {
+      this.FList = undefined;
+      pas.System.TObject.$final.call(this);
+    };
+    this.Create$1 = function (AList) {
+      pas.System.TObject.Create.call(this);
+      this.FList = AList;
+      this.FPosition = -1;
+    };
+    this.GetCurrent = function () {
+      var Result = undefined;
+      Result = this.FList.Get(this.FPosition);
+      return Result;
+    };
+    this.MoveNext = function () {
+      var Result = false;
+      this.FPosition += 1;
+      Result = this.FPosition < this.FList.GetCount();
+      return Result;
+    };
+  });
+  rtl.createClass($mod,"TList",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.FList = null;
+    };
+    this.$final = function () {
+      this.FList = undefined;
+      pas.System.TObject.$final.call(this);
+    };
+    this.CopyMove = function (aList) {
+      var r = 0;
+      this.Clear();
+      for (var $l1 = 0, $end2 = aList.GetCount() - 1; $l1 <= $end2; $l1++) {
+        r = $l1;
+        this.Add(aList.Get(r));
+      };
+    };
+    this.MergeMove = function (aList) {
+      var r = 0;
+      for (var $l1 = 0, $end2 = aList.GetCount() - 1; $l1 <= $end2; $l1++) {
+        r = $l1;
+        if (this.IndexOf(aList.Get(r)) < 0) this.Add(aList.Get(r));
+      };
+    };
+    this.DoCopy = function (ListA, ListB) {
+      if (ListB != null) {
+        this.CopyMove(ListB)}
+       else this.CopyMove(ListA);
+    };
+    this.DoSrcUnique = function (ListA, ListB) {
+      var r = 0;
+      if (ListB != null) {
+        this.Clear();
+        for (var $l1 = 0, $end2 = ListA.GetCount() - 1; $l1 <= $end2; $l1++) {
+          r = $l1;
+          if (ListB.IndexOf(ListA.Get(r)) < 0) this.Add(ListA.Get(r));
+        };
+      } else {
+        for (var $l3 = this.GetCount() - 1; $l3 >= 0; $l3--) {
+          r = $l3;
+          if (ListA.IndexOf(this.Get(r)) >= 0) this.Delete(r);
+        };
+      };
+    };
+    this.DoAnd = function (ListA, ListB) {
+      var r = 0;
+      if (ListB != null) {
+        this.Clear();
+        for (var $l1 = 0, $end2 = ListA.GetCount() - 1; $l1 <= $end2; $l1++) {
+          r = $l1;
+          if (ListB.IndexOf(ListA.Get(r)) >= 0) this.Add(ListA.Get(r));
+        };
+      } else {
+        for (var $l3 = this.GetCount() - 1; $l3 >= 0; $l3--) {
+          r = $l3;
+          if (ListA.IndexOf(this.Get(r)) < 0) this.Delete(r);
+        };
+      };
+    };
+    this.DoDestUnique = function (ListA, ListB) {
+      var Self = this;
+      function MoveElements(Src, Dest) {
+        var r = 0;
+        Self.Clear();
+        for (var $l1 = 0, $end2 = Src.GetCount() - 1; $l1 <= $end2; $l1++) {
+          r = $l1;
+          if (Dest.IndexOf(Src.Get(r)) < 0) Self.Add(Src.Get(r));
+        };
+      };
+      var Dest = null;
+      if (ListB != null) {
+        MoveElements(ListB,ListA)}
+       else try {
+        Dest = $mod.TList.$create("Create$1");
+        Dest.CopyMove(Self);
+        MoveElements(ListA,Dest);
+      } finally {
+        Dest.$destroy("Destroy");
+      };
+    };
+    this.DoOr = function (ListA, ListB) {
+      if (ListB != null) {
+        this.CopyMove(ListA);
+        this.MergeMove(ListB);
+      } else this.MergeMove(ListA);
+    };
+    this.DoXOr = function (ListA, ListB) {
+      var r = 0;
+      var l = null;
+      if (ListB != null) {
+        this.Clear();
+        for (var $l1 = 0, $end2 = ListA.GetCount() - 1; $l1 <= $end2; $l1++) {
+          r = $l1;
+          if (ListB.IndexOf(ListA.Get(r)) < 0) this.Add(ListA.Get(r));
+        };
+        for (var $l3 = 0, $end4 = ListB.GetCount() - 1; $l3 <= $end4; $l3++) {
+          r = $l3;
+          if (ListA.IndexOf(ListB.Get(r)) < 0) this.Add(ListB.Get(r));
+        };
+      } else try {
+        l = $mod.TList.$create("Create$1");
+        l.CopyMove(this);
+        for (var $l5 = this.GetCount() - 1; $l5 >= 0; $l5--) {
+          r = $l5;
+          if (ListA.IndexOf(this.Get(r)) >= 0) this.Delete(r);
+        };
+        for (var $l6 = 0, $end7 = ListA.GetCount() - 1; $l6 <= $end7; $l6++) {
+          r = $l6;
+          if (l.IndexOf(ListA.Get(r)) < 0) this.Add(ListA.Get(r));
+        };
+      } finally {
+        l.$destroy("Destroy");
+      };
+    };
+    this.Get = function (Index) {
+      var Result = undefined;
+      Result = this.FList.Get(Index);
+      return Result;
+    };
+    this.Put = function (Index, Item) {
+      var V = undefined;
+      V = this.Get(Index);
+      this.FList.Put(Index,Item);
+      if (pas.System.Assigned(V)) this.Notify(V,$mod.TListNotification.lnDeleted);
+      if (pas.System.Assigned(Item)) this.Notify(Item,$mod.TListNotification.lnAdded);
+    };
+    this.Notify = function (aValue, Action) {
+      if (pas.System.Assigned(aValue)) ;
+      if (Action === $mod.TListNotification.lnExtracted) ;
+    };
+    this.SetCapacity = function (NewCapacity) {
+      this.FList.SetCapacity(NewCapacity);
+    };
+    this.GetCapacity = function () {
+      var Result = 0;
+      Result = this.FList.FCapacity;
+      return Result;
+    };
+    this.SetCount = function (NewCount) {
+      if (NewCount < this.FList.FCount) {
+        while (this.FList.FCount > NewCount) this.Delete(this.FList.FCount - 1)}
+       else this.FList.SetCount(NewCount);
+    };
+    this.GetCount = function () {
+      var Result = 0;
+      Result = this.FList.FCount;
+      return Result;
+    };
+    this.GetList = function () {
+      var Result = [];
+      Result = this.FList.FList;
+      return Result;
+    };
+    this.Create$1 = function () {
+      pas.System.TObject.Create.call(this);
+      this.FList = $mod.TFPList.$create("Create");
+    };
+    this.Destroy = function () {
+      if (this.FList != null) this.Clear();
+      pas.SysUtils.FreeAndNil({p: this, get: function () {
+          return this.p.FList;
+        }, set: function (v) {
+          this.p.FList = v;
+        }});
+    };
+    this.AddList = function (AList) {
+      var I = 0;
+      this.FList.AddList(AList.FList);
+      for (var $l1 = 0, $end2 = AList.GetCount() - 1; $l1 <= $end2; $l1++) {
+        I = $l1;
+        if (pas.System.Assigned(AList.Get(I))) this.Notify(AList.Get(I),$mod.TListNotification.lnAdded);
+      };
+    };
+    this.Add = function (Item) {
+      var Result = 0;
+      Result = this.FList.Add(Item);
+      if (pas.System.Assigned(Item)) this.Notify(Item,$mod.TListNotification.lnAdded);
+      return Result;
+    };
+    this.Clear = function () {
+      while (this.FList.FCount > 0) this.Delete(this.GetCount() - 1);
+    };
+    this.Delete = function (Index) {
+      var V = undefined;
+      V = this.FList.Get(Index);
+      this.FList.Delete(Index);
+      if (pas.System.Assigned(V)) this.Notify(V,$mod.TListNotification.lnDeleted);
+    };
+    this.Error = function (Msg, Data) {
+      throw $mod.EListError.$create("CreateFmt",[Msg,[Data]]);
+    };
+    this.Exchange = function (Index1, Index2) {
+      this.FList.Exchange(Index1,Index2);
+    };
+    this.Expand = function () {
+      var Result = null;
+      this.FList.Expand();
+      Result = this;
+      return Result;
+    };
+    this.Extract = function (Item) {
+      var Result = undefined;
+      var c = 0;
+      c = this.FList.FCount;
+      Result = this.FList.Extract(Item);
+      if (c !== this.FList.FCount) this.Notify(Result,$mod.TListNotification.lnExtracted);
+      return Result;
+    };
+    this.First = function () {
+      var Result = undefined;
+      Result = this.FList.First();
+      return Result;
+    };
+    this.GetEnumerator = function () {
+      var Result = null;
+      Result = $mod.TListEnumerator.$create("Create$1",[this]);
+      return Result;
+    };
+    this.IndexOf = function (Item) {
+      var Result = 0;
+      Result = this.FList.IndexOf(Item);
+      return Result;
+    };
+    this.Insert = function (Index, Item) {
+      this.FList.Insert(Index,Item);
+      if (pas.System.Assigned(Item)) this.Notify(Item,$mod.TListNotification.lnAdded);
+    };
+    this.Last = function () {
+      var Result = undefined;
+      Result = this.FList.Last();
+      return Result;
+    };
+    this.Move = function (CurIndex, NewIndex) {
+      this.FList.Move(CurIndex,NewIndex);
+    };
+    this.Assign = function (ListA, AOperator, ListB) {
+      var $tmp1 = AOperator;
+      if ($tmp1 === $mod.TListAssignOp.laCopy) {
+        this.DoCopy(ListA,ListB)}
+       else if ($tmp1 === $mod.TListAssignOp.laSrcUnique) {
+        this.DoSrcUnique(ListA,ListB)}
+       else if ($tmp1 === $mod.TListAssignOp.laAnd) {
+        this.DoAnd(ListA,ListB)}
+       else if ($tmp1 === $mod.TListAssignOp.laDestUnique) {
+        this.DoDestUnique(ListA,ListB)}
+       else if ($tmp1 === $mod.TListAssignOp.laOr) {
+        this.DoOr(ListA,ListB)}
+       else if ($tmp1 === $mod.TListAssignOp.laXor) this.DoXOr(ListA,ListB);
+    };
+    this.Remove = function (Item) {
+      var Result = 0;
+      Result = this.IndexOf(Item);
+      if (Result !== -1) this.Delete(Result);
+      return Result;
+    };
+    this.Pack = function () {
+      this.FList.Pack();
+    };
+    this.Sort = function (Compare) {
+      this.FList.Sort(Compare);
+    };
+  });
+  rtl.createClass($mod,"TPersistent",pas.System.TObject,function () {
+    this.AssignError = function (Source) {
+      var SourceName = "";
+      if (Source !== null) {
+        SourceName = Source.$classname}
+       else SourceName = "Nil";
+      throw pas.SysUtils.EConvertError.$create("Create$1",[((("Cannot assign a " + SourceName) + " to a ") + this.$classname) + "."]);
+    };
+    this.AssignTo = function (Dest) {
+      Dest.AssignError(this);
+    };
+    this.GetOwner = function () {
+      var Result = null;
+      Result = null;
+      return Result;
+    };
+    this.Assign = function (Source) {
+      if (Source !== null) {
+        Source.AssignTo(this)}
+       else this.AssignError(null);
+    };
+    this.GetNamePath = function () {
+      var Result = "";
+      var OwnerName = "";
+      var TheOwner = null;
+      Result = this.$classname;
+      TheOwner = this.GetOwner();
+      if (TheOwner !== null) {
+        OwnerName = TheOwner.GetNamePath();
+        if (OwnerName !== "") Result = (OwnerName + ".") + Result;
+      };
+      return Result;
+    };
+  });
+  $mod.$rtti.$ClassRef("TPersistentClass",{instancetype: $mod.$rtti["TPersistent"]});
+  rtl.createClass($mod,"TInterfacedPersistent",$mod.TPersistent,function () {
+    this.$init = function () {
+      $mod.TPersistent.$init.call(this);
+      this.FOwnerInterface = null;
+    };
+    this.$final = function () {
+      this.FOwnerInterface = undefined;
+      $mod.TPersistent.$final.call(this);
+    };
+    this._AddRef = function () {
+      var Result = 0;
+      Result = -1;
+      if (this.FOwnerInterface != null) Result = this.FOwnerInterface._AddRef();
+      return Result;
+    };
+    this._Release = function () {
+      var Result = 0;
+      Result = -1;
+      if (this.FOwnerInterface != null) Result = this.FOwnerInterface._Release();
+      return Result;
+    };
+    this.QueryInterface = function (IID, Obj) {
+      var Result = 0;
+      Result = -2147467262;
+      if (this.GetInterface(IID,Obj)) Result = 0;
+      return Result;
+    };
+    this.AfterConstruction = function () {
+      try {
+        pas.System.TObject.AfterConstruction.call(this);
+        if (this.GetOwner() !== null) this.GetOwner().GetInterface(rtl.getIntfGUIDR(pas.System.IUnknown),{p: this, get: function () {
+            return this.p.FOwnerInterface;
+          }, set: function (v) {
+            this.p.FOwnerInterface = v;
+          }});
+      } finally {
+        rtl._Release(this.FOwnerInterface);
+      };
+    };
+  });
+  $mod.$rtti.$Class("TStrings");
+  rtl.createClass($mod,"TStringsEnumerator",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.FStrings = null;
+      this.FPosition = 0;
+    };
+    this.$final = function () {
+      this.FStrings = undefined;
+      pas.System.TObject.$final.call(this);
+    };
+    this.Create$1 = function (AStrings) {
+      pas.System.TObject.Create.call(this);
+      this.FStrings = AStrings;
+      this.FPosition = -1;
+    };
+    this.GetCurrent = function () {
+      var Result = "";
+      Result = this.FStrings.Get(this.FPosition);
+      return Result;
+    };
+    this.MoveNext = function () {
+      var Result = false;
+      this.FPosition += 1;
+      Result = this.FPosition < this.FStrings.GetCount();
+      return Result;
+    };
+  });
+  rtl.createClass($mod,"TStrings",$mod.TPersistent,function () {
+    this.$init = function () {
+      $mod.TPersistent.$init.call(this);
+      this.FSpecialCharsInited = false;
+      this.FAlwaysQuote = false;
+      this.FQuoteChar = "";
+      this.FDelimiter = "";
+      this.FNameValueSeparator = "";
+      this.FUpdateCount = 0;
+      this.FLBS = 0;
+      this.FSkipLastLineBreak = false;
+      this.FStrictDelimiter = false;
+      this.FLineBreak = "";
+    };
+    this.GetCommaText = function () {
+      var Result = "";
+      var C1 = "";
+      var C2 = "";
+      var FSD = false;
+      this.CheckSpecialChars();
+      FSD = this.FStrictDelimiter;
+      C1 = this.GetDelimiter();
+      C2 = this.GetQuoteChar();
+      this.SetDelimiter(",");
+      this.SetQuoteChar('"');
+      this.FStrictDelimiter = false;
+      try {
+        Result = this.GetDelimitedText();
+      } finally {
+        this.SetDelimiter(C1);
+        this.SetQuoteChar(C2);
+        this.FStrictDelimiter = FSD;
+      };
+      return Result;
+    };
+    this.GetName = function (Index) {
+      var Result = "";
+      var V = "";
+      this.GetNameValue(Index,{get: function () {
+          return Result;
+        }, set: function (v) {
+          Result = v;
+        }},{get: function () {
+          return V;
+        }, set: function (v) {
+          V = v;
+        }});
+      return Result;
+    };
+    this.GetValue = function (Name) {
+      var Result = "";
+      var L = 0;
+      var N = "";
+      Result = "";
+      L = this.IndexOfName(Name);
+      if (L !== -1) this.GetNameValue(L,{get: function () {
+          return N;
+        }, set: function (v) {
+          N = v;
+        }},{get: function () {
+          return Result;
+        }, set: function (v) {
+          Result = v;
+        }});
+      return Result;
+    };
+    this.GetLBS = function () {
+      var Result = 0;
+      this.CheckSpecialChars();
+      Result = this.FLBS;
+      return Result;
+    };
+    this.SetLBS = function (AValue) {
+      this.CheckSpecialChars();
+      this.FLBS = AValue;
+    };
+    this.SetCommaText = function (Value) {
+      var C1 = "";
+      var C2 = "";
+      this.CheckSpecialChars();
+      C1 = this.GetDelimiter();
+      C2 = this.GetQuoteChar();
+      this.SetDelimiter(",");
+      this.SetQuoteChar('"');
+      try {
+        this.SetDelimitedText(Value);
+      } finally {
+        this.SetDelimiter(C1);
+        this.SetQuoteChar(C2);
+      };
+    };
+    this.SetValue = function (Name, Value) {
+      var L = 0;
+      this.CheckSpecialChars();
+      L = this.IndexOfName(Name);
+      if (L === -1) {
+        this.Add((Name + this.FNameValueSeparator) + Value)}
+       else this.Put(L,(Name + this.FNameValueSeparator) + Value);
+    };
+    this.SetDelimiter = function (c) {
+      this.CheckSpecialChars();
+      this.FDelimiter = c;
+    };
+    this.SetQuoteChar = function (c) {
+      this.CheckSpecialChars();
+      this.FQuoteChar = c;
+    };
+    this.SetNameValueSeparator = function (c) {
+      this.CheckSpecialChars();
+      this.FNameValueSeparator = c;
+    };
+    this.DoSetTextStr = function (Value, DoClear) {
+      var S = "";
+      var P = 0;
+      try {
+        this.BeginUpdate();
+        if (DoClear) this.Clear();
+        P = 1;
+        while (this.GetNextLinebreak(Value,{get: function () {
+            return S;
+          }, set: function (v) {
+            S = v;
+          }},{get: function () {
+            return P;
+          }, set: function (v) {
+            P = v;
+          }})) this.Add(S);
+      } finally {
+        this.EndUpdate();
+      };
+    };
+    this.GetDelimiter = function () {
+      var Result = "";
+      this.CheckSpecialChars();
+      Result = this.FDelimiter;
+      return Result;
+    };
+    this.GetNameValueSeparator = function () {
+      var Result = "";
+      this.CheckSpecialChars();
+      Result = this.FNameValueSeparator;
+      return Result;
+    };
+    this.GetQuoteChar = function () {
+      var Result = "";
+      this.CheckSpecialChars();
+      Result = this.FQuoteChar;
+      return Result;
+    };
+    this.GetLineBreak = function () {
+      var Result = "";
+      this.CheckSpecialChars();
+      Result = this.FLineBreak;
+      return Result;
+    };
+    this.SetLineBreak = function (S) {
+      this.CheckSpecialChars();
+      this.FLineBreak = S;
+    };
+    this.GetSkipLastLineBreak = function () {
+      var Result = false;
+      this.CheckSpecialChars();
+      Result = this.FSkipLastLineBreak;
+      return Result;
+    };
+    this.SetSkipLastLineBreak = function (AValue) {
+      this.CheckSpecialChars();
+      this.FSkipLastLineBreak = AValue;
+    };
+    this.Error = function (Msg, Data) {
+      throw $mod.EStringListError.$create("CreateFmt",[Msg,[pas.SysUtils.IntToStr(Data)]]);
+    };
+    this.GetCapacity = function () {
+      var Result = 0;
+      Result = this.GetCount();
+      return Result;
+    };
+    this.GetObject = function (Index) {
+      var Result = null;
+      if (Index === 0) ;
+      Result = null;
+      return Result;
+    };
+    this.GetTextStr = function () {
+      var Result = "";
+      var I = 0;
+      var S = "";
+      var NL = "";
+      this.CheckSpecialChars();
+      if (this.FLineBreak !== pas.System.sLineBreak) {
+        NL = this.FLineBreak}
+       else {
+        var $tmp1 = this.FLBS;
+        if ($tmp1 === pas.System.TTextLineBreakStyle.tlbsLF) {
+          NL = "\n"}
+         else if ($tmp1 === pas.System.TTextLineBreakStyle.tlbsCRLF) {
+          NL = "\r\n"}
+         else if ($tmp1 === pas.System.TTextLineBreakStyle.tlbsCR) NL = "\r";
+      };
+      Result = "";
+      for (var $l2 = 0, $end3 = this.GetCount() - 1; $l2 <= $end3; $l2++) {
+        I = $l2;
+        S = this.Get(I);
+        Result = Result + S;
+        if ((I < (this.GetCount() - 1)) || !this.GetSkipLastLineBreak()) Result = Result + NL;
+      };
+      return Result;
+    };
+    this.Put = function (Index, S) {
+      var Obj = null;
+      Obj = this.GetObject(Index);
+      this.Delete(Index);
+      this.InsertObject(Index,S,Obj);
+    };
+    this.PutObject = function (Index, AObject) {
+      if (Index === 0) return;
+      if (AObject === null) return;
+    };
+    this.SetCapacity = function (NewCapacity) {
+      if (NewCapacity === 0) ;
+    };
+    this.SetTextStr = function (Value) {
+      this.CheckSpecialChars();
+      this.DoSetTextStr(Value,true);
+    };
+    this.SetUpdateState = function (Updating) {
+      if (Updating) ;
+    };
+    this.DoCompareText = function (s1, s2) {
+      var Result = 0;
+      Result = pas.SysUtils.CompareText(s1,s2);
+      return Result;
+    };
+    this.GetDelimitedText = function () {
+      var Result = "";
+      var I = 0;
+      var RE = "";
+      var S = "";
+      var doQuote = false;
+      this.CheckSpecialChars();
+      Result = "";
+      RE = (this.GetQuoteChar() + "|") + this.GetDelimiter();
+      if (!this.FStrictDelimiter) RE = " |" + RE;
+      RE = ("\/" + RE) + "\/";
+      for (var $l1 = 0, $end2 = this.GetCount() - 1; $l1 <= $end2; $l1++) {
+        I = $l1;
+        S = this.Get(I);
+        doQuote = this.FAlwaysQuote || (S.search(RE) === -1);
+        if (doQuote) {
+          Result = Result + pas.SysUtils.QuoteString(S,this.GetQuoteChar())}
+         else Result = Result + S;
+        if (I < (this.GetCount() - 1)) Result = Result + this.GetDelimiter();
+      };
+      if ((Result.length === 0) && (this.GetCount() === 1)) Result = this.GetQuoteChar() + this.GetQuoteChar();
+      return Result;
+    };
+    this.SetDelimitedText = function (AValue) {
+      var i = 0;
+      var j = 0;
+      var aNotFirst = false;
+      this.CheckSpecialChars();
+      this.BeginUpdate();
+      i = 1;
+      j = 1;
+      aNotFirst = false;
+      try {
+        this.Clear();
+        if (this.FStrictDelimiter) {
+          while (i <= AValue.length) {
+            if ((aNotFirst && (i <= AValue.length)) && (AValue.charAt(i - 1) === this.FDelimiter)) i += 1;
+            if (i <= AValue.length) {
+              if (AValue.charAt(i - 1) === this.FQuoteChar) {
+                j = i + 1;
+                while ((j <= AValue.length) && ((AValue.charAt(j - 1) !== this.FQuoteChar) || (((j + 1) <= AValue.length) && (AValue.charAt((j + 1) - 1) === this.FQuoteChar)))) {
+                  if ((j <= AValue.length) && (AValue.charAt(j - 1) === this.FQuoteChar)) {
+                    j += 2}
+                   else j += 1;
+                };
+                this.Add(pas.SysUtils.StringReplace(pas.System.Copy(AValue,i + 1,(j - i) - 1),this.FQuoteChar + this.FQuoteChar,this.FQuoteChar,rtl.createSet(pas.SysUtils.TStringReplaceFlag.rfReplaceAll)));
+                i = j + 1;
+              } else {
+                j = i;
+                while ((j <= AValue.length) && (AValue.charAt(j - 1) !== this.FDelimiter)) j += 1;
+                this.Add(pas.System.Copy(AValue,i,j - i));
+                i = j;
+              };
+            } else {
+              if (aNotFirst) this.Add("");
+            };
+            aNotFirst = true;
+          };
+        } else {
+          while (i <= AValue.length) {
+            if ((aNotFirst && (i <= AValue.length)) && (AValue.charAt(i - 1) === this.FDelimiter)) i += 1;
+            while ((i <= AValue.length) && (AValue.charCodeAt(i - 1) <= " ".charCodeAt())) i += 1;
+            if (i <= AValue.length) {
+              if (AValue.charAt(i - 1) === this.FQuoteChar) {
+                j = i + 1;
+                while ((j <= AValue.length) && ((AValue.charAt(j - 1) !== this.FQuoteChar) || (((j + 1) <= AValue.length) && (AValue.charAt((j + 1) - 1) === this.FQuoteChar)))) {
+                  if ((j <= AValue.length) && (AValue.charAt(j - 1) === this.FQuoteChar)) {
+                    j += 2}
+                   else j += 1;
+                };
+                this.Add(pas.SysUtils.StringReplace(pas.System.Copy(AValue,i + 1,(j - i) - 1),this.FQuoteChar + this.FQuoteChar,this.FQuoteChar,rtl.createSet(pas.SysUtils.TStringReplaceFlag.rfReplaceAll)));
+                i = j + 1;
+              } else {
+                j = i;
+                while (((j <= AValue.length) && (AValue.charCodeAt(j - 1) > " ".charCodeAt())) && (AValue.charAt(j - 1) !== this.FDelimiter)) j += 1;
+                this.Add(pas.System.Copy(AValue,i,j - i));
+                i = j;
+              };
+            } else {
+              if (aNotFirst) this.Add("");
+            };
+            while ((i <= AValue.length) && (AValue.charCodeAt(i - 1) <= " ".charCodeAt())) i += 1;
+            aNotFirst = true;
+          };
+        };
+      } finally {
+        this.EndUpdate();
+      };
+    };
+    this.GetValueFromIndex = function (Index) {
+      var Result = "";
+      var N = "";
+      this.GetNameValue(Index,{get: function () {
+          return N;
+        }, set: function (v) {
+          N = v;
+        }},{get: function () {
+          return Result;
+        }, set: function (v) {
+          Result = v;
+        }});
+      return Result;
+    };
+    this.SetValueFromIndex = function (Index, Value) {
+      if (Value === "") {
+        this.Delete(Index)}
+       else {
+        if (Index < 0) Index = this.Add("");
+        this.CheckSpecialChars();
+        this.Put(Index,(this.GetName(Index) + this.FNameValueSeparator) + Value);
+      };
+    };
+    this.CheckSpecialChars = function () {
+      if (!this.FSpecialCharsInited) {
+        this.FQuoteChar = '"';
+        this.FDelimiter = ",";
+        this.FNameValueSeparator = "=";
+        this.FLBS = pas.System.DefaultTextLineBreakStyle;
+        this.FSpecialCharsInited = true;
+        this.FLineBreak = pas.System.sLineBreak;
+      };
+    };
+    this.GetNextLinebreak = function (Value, S, P) {
+      var Result = false;
+      var PP = 0;
+      S.set("");
+      Result = false;
+      if ((Value.length - P.get()) < 0) return Result;
+      PP = Value.indexOf(this.GetLineBreak(),P.get() - 1) + 1;
+      if (PP < 1) PP = Value.length + 1;
+      S.set(pas.System.Copy(Value,P.get(),PP - P.get()));
+      P.set(PP + this.GetLineBreak().length);
+      Result = true;
+      return Result;
+    };
+    this.Create$1 = function () {
+      pas.System.TObject.Create.call(this);
+      this.FAlwaysQuote = false;
+    };
+    this.Destroy = function () {
+      pas.System.TObject.Destroy.call(this);
+    };
+    this.Add = function (S) {
+      var Result = 0;
+      Result = this.GetCount();
+      this.Insert(this.GetCount(),S);
+      return Result;
+    };
+    this.AddObject = function (S, AObject) {
+      var Result = 0;
+      Result = this.Add(S);
+      this.PutObject(Result,AObject);
+      return Result;
+    };
+    this.Append = function (S) {
+      this.Add(S);
+    };
+    this.AddStrings = function (TheStrings) {
+      var Runner = 0;
+      for (var $l1 = 0, $end2 = TheStrings.GetCount() - 1; $l1 <= $end2; $l1++) {
+        Runner = $l1;
+        this.AddObject(TheStrings.Get(Runner),TheStrings.GetObject(Runner));
+      };
+    };
+    this.AddStrings$1 = function (TheStrings, ClearFirst) {
+      this.BeginUpdate();
+      try {
+        if (ClearFirst) this.Clear();
+        this.AddStrings(TheStrings);
+      } finally {
+        this.EndUpdate();
+      };
+    };
+    this.AddStrings$2 = function (TheStrings) {
+      var Runner = 0;
+      if (((this.GetCount() + (rtl.length(TheStrings) - 1)) + 1) > this.GetCapacity()) this.SetCapacity((this.GetCount() + (rtl.length(TheStrings) - 1)) + 1);
+      for (var $l1 = 0, $end2 = rtl.length(TheStrings) - 1; $l1 <= $end2; $l1++) {
+        Runner = $l1;
+        this.Add(TheStrings[Runner]);
+      };
+    };
+    this.AddStrings$3 = function (TheStrings, ClearFirst) {
+      this.BeginUpdate();
+      try {
+        if (ClearFirst) this.Clear();
+        this.AddStrings$2(TheStrings);
+      } finally {
+        this.EndUpdate();
+      };
+    };
+    this.AddPair = function (AName, AValue) {
+      var Result = null;
+      Result = this.AddPair$1(AName,AValue,null);
+      return Result;
+    };
+    this.AddPair$1 = function (AName, AValue, AObject) {
+      var Result = null;
+      Result = this;
+      this.AddObject((AName + this.GetNameValueSeparator()) + AValue,AObject);
+      return Result;
+    };
+    this.AddText = function (S) {
+      this.CheckSpecialChars();
+      this.DoSetTextStr(S,false);
+    };
+    this.Assign = function (Source) {
+      var S = null;
+      if ($mod.TStrings.isPrototypeOf(Source)) {
+        S = Source;
+        this.BeginUpdate();
+        try {
+          this.Clear();
+          this.FSpecialCharsInited = S.FSpecialCharsInited;
+          this.FQuoteChar = S.FQuoteChar;
+          this.FDelimiter = S.FDelimiter;
+          this.FNameValueSeparator = S.FNameValueSeparator;
+          this.FLBS = S.FLBS;
+          this.FLineBreak = S.FLineBreak;
+          this.AddStrings(S);
+        } finally {
+          this.EndUpdate();
+        };
+      } else $mod.TPersistent.Assign.call(this,Source);
+    };
+    this.BeginUpdate = function () {
+      if (this.FUpdateCount === 0) this.SetUpdateState(true);
+      this.FUpdateCount += 1;
+    };
+    this.EndUpdate = function () {
+      if (this.FUpdateCount > 0) this.FUpdateCount -= 1;
+      if (this.FUpdateCount === 0) this.SetUpdateState(false);
+    };
+    this.Equals = function (Obj) {
+      var Result = false;
+      if ($mod.TStrings.isPrototypeOf(Obj)) {
+        Result = this.Equals$2(Obj)}
+       else Result = pas.System.TObject.Equals.call(this,Obj);
+      return Result;
+    };
+    this.Equals$2 = function (TheStrings) {
+      var Result = false;
+      var Runner = 0;
+      var Nr = 0;
+      Result = false;
+      Nr = this.GetCount();
+      if (Nr !== TheStrings.GetCount()) return Result;
+      for (var $l1 = 0, $end2 = Nr - 1; $l1 <= $end2; $l1++) {
+        Runner = $l1;
+        if (this.Get(Runner) !== TheStrings.Get(Runner)) return Result;
+      };
+      Result = true;
+      return Result;
+    };
+    this.Exchange = function (Index1, Index2) {
+      var Obj = null;
+      var Str = "";
+      this.BeginUpdate();
+      try {
+        Obj = this.GetObject(Index1);
+        Str = this.Get(Index1);
+        this.PutObject(Index1,this.GetObject(Index2));
+        this.Put(Index1,this.Get(Index2));
+        this.PutObject(Index2,Obj);
+        this.Put(Index2,Str);
+      } finally {
+        this.EndUpdate();
+      };
+    };
+    this.GetEnumerator = function () {
+      var Result = null;
+      Result = $mod.TStringsEnumerator.$create("Create$1",[this]);
+      return Result;
+    };
+    this.IndexOf = function (S) {
+      var Result = 0;
+      Result = 0;
+      while ((Result < this.GetCount()) && (this.DoCompareText(this.Get(Result),S) !== 0)) Result = Result + 1;
+      if (Result === this.GetCount()) Result = -1;
+      return Result;
+    };
+    this.IndexOfName = function (Name) {
+      var Result = 0;
+      var len = 0;
+      var S = "";
+      this.CheckSpecialChars();
+      Result = 0;
+      while (Result < this.GetCount()) {
+        S = this.Get(Result);
+        len = pas.System.Pos(this.FNameValueSeparator,S) - 1;
+        if ((len >= 0) && (this.DoCompareText(Name,pas.System.Copy(S,1,len)) === 0)) return Result;
+        Result += 1;
+      };
+      Result = -1;
+      return Result;
+    };
+    this.IndexOfObject = function (AObject) {
+      var Result = 0;
+      Result = 0;
+      while ((Result < this.GetCount()) && (this.GetObject(Result) !== AObject)) Result = Result + 1;
+      if (Result === this.GetCount()) Result = -1;
+      return Result;
+    };
+    this.InsertObject = function (Index, S, AObject) {
+      this.Insert(Index,S);
+      this.PutObject(Index,AObject);
+    };
+    this.Move = function (CurIndex, NewIndex) {
+      var Obj = null;
+      var Str = "";
+      this.BeginUpdate();
+      try {
+        Obj = this.GetObject(CurIndex);
+        Str = this.Get(CurIndex);
+        this.PutObject(CurIndex,null);
+        this.Delete(CurIndex);
+        this.InsertObject(NewIndex,Str,Obj);
+      } finally {
+        this.EndUpdate();
+      };
+    };
+    this.GetNameValue = function (Index, AName, AValue) {
+      var L = 0;
+      this.CheckSpecialChars();
+      AValue.set(this.Get(Index));
+      L = pas.System.Pos(this.FNameValueSeparator,AValue.get());
+      if (L !== 0) {
+        AName.set(pas.System.Copy(AValue.get(),1,L - 1));
+        AValue.set(pas.System.Copy(AValue.get(),L + 1,AValue.get().length - L));
+      } else AName.set("");
+    };
+    this.ExtractName = function (S) {
+      var Result = "";
+      var L = 0;
+      this.CheckSpecialChars();
+      L = pas.System.Pos(this.FNameValueSeparator,S);
+      if (L !== 0) {
+        Result = pas.System.Copy(S,1,L - 1)}
+       else Result = "";
+      return Result;
+    };
+  });
+  this.TStringItem = function (s) {
+    if (s) {
+      this.FString = s.FString;
+      this.FObject = s.FObject;
+    } else {
+      this.FString = "";
+      this.FObject = null;
+    };
+    this.$equal = function (b) {
+      return (this.FString === b.FString) && (this.FObject === b.FObject);
+    };
+  };
+  $mod.$rtti.$Record("TStringItem",{}).addFields("FString",rtl.string,"FObject",pas.System.$rtti["TObject"]);
+  $mod.$rtti.$DynArray("TStringItemArray",{eltype: $mod.$rtti["TStringItem"]});
+  $mod.$rtti.$Class("TStringList");
+  $mod.$rtti.$ProcVar("TStringListSortCompare",{procsig: rtl.newTIProcSig([["List",$mod.$rtti["TStringList"]],["Index1",rtl.longint],["Index2",rtl.longint]],rtl.longint)});
+  this.TStringsSortStyle = {"0": "sslNone", sslNone: 0, "1": "sslUser", sslUser: 1, "2": "sslAuto", sslAuto: 2};
+  $mod.$rtti.$Enum("TStringsSortStyle",{minvalue: 0, maxvalue: 2, ordtype: 1, enumtype: this.TStringsSortStyle});
+  $mod.$rtti.$Set("TStringsSortStyles",{comptype: $mod.$rtti["TStringsSortStyle"]});
+  rtl.createClass($mod,"TStringList",$mod.TStrings,function () {
+    this.$init = function () {
+      $mod.TStrings.$init.call(this);
+      this.FList = [];
+      this.FCount = 0;
+      this.FOnChange = null;
+      this.FOnChanging = null;
+      this.FDuplicates = 0;
+      this.FCaseSensitive = false;
+      this.FForceSort = false;
+      this.FOwnsObjects = false;
+      this.FSortStyle = 0;
+    };
+    this.$final = function () {
+      this.FList = undefined;
+      this.FOnChange = undefined;
+      this.FOnChanging = undefined;
+      $mod.TStrings.$final.call(this);
+    };
+    this.ExchangeItemsInt = function (Index1, Index2) {
+      var S = "";
+      var O = null;
+      S = this.FList[Index1].FString;
+      O = this.FList[Index1].FObject;
+      this.FList[Index1].FString = this.FList[Index2].FString;
+      this.FList[Index1].FObject = this.FList[Index2].FObject;
+      this.FList[Index2].FString = S;
+      this.FList[Index2].FObject = O;
+    };
+    this.GetSorted = function () {
+      var Result = false;
+      Result = this.FSortStyle in rtl.createSet($mod.TStringsSortStyle.sslUser,$mod.TStringsSortStyle.sslAuto);
+      return Result;
+    };
+    this.Grow = function () {
+      var NC = 0;
+      NC = this.GetCapacity();
+      if (NC >= 256) {
+        NC = NC + Math.floor(NC / 4)}
+       else if (NC === 0) {
+        NC = 4}
+       else NC = NC * 4;
+      this.SetCapacity(NC);
+    };
+    this.InternalClear = function (FromIndex, ClearOnly) {
+      var I = 0;
+      if (FromIndex < this.FCount) {
+        if (this.FOwnsObjects) {
+          for (var $l1 = FromIndex, $end2 = this.FCount - 1; $l1 <= $end2; $l1++) {
+            I = $l1;
+            this.FList[I].FString = "";
+            pas.SysUtils.FreeAndNil({p: this.FList[I], get: function () {
+                return this.p.FObject;
+              }, set: function (v) {
+                this.p.FObject = v;
+              }});
+          };
+        } else {
+          for (var $l3 = FromIndex, $end4 = this.FCount - 1; $l3 <= $end4; $l3++) {
+            I = $l3;
+            this.FList[I].FString = "";
+          };
+        };
+        this.FCount = FromIndex;
+      };
+      if (!ClearOnly) this.SetCapacity(0);
+    };
+    this.QuickSort = function (L, R, CompareFn) {
+      var Pivot = 0;
+      var vL = 0;
+      var vR = 0;
+      if ((R - L) <= 1) {
+        if (L < R) if (CompareFn(this,L,R) > 0) this.ExchangeItems(L,R);
+        return;
+      };
+      vL = L;
+      vR = R;
+      Pivot = L + pas.System.Random(R - L);
+      while (vL < vR) {
+        while ((vL < Pivot) && (CompareFn(this,vL,Pivot) <= 0)) vL += 1;
+        while ((vR > Pivot) && (CompareFn(this,vR,Pivot) > 0)) vR -= 1;
+        this.ExchangeItems(vL,vR);
+        if (Pivot === vL) {
+          Pivot = vR}
+         else if (Pivot === vR) Pivot = vL;
+      };
+      if ((Pivot - 1) >= L) this.QuickSort(L,Pivot - 1,CompareFn);
+      if ((Pivot + 1) <= R) this.QuickSort(Pivot + 1,R,CompareFn);
+    };
+    this.SetSorted = function (Value) {
+      if (Value) {
+        this.SetSortStyle($mod.TStringsSortStyle.sslAuto)}
+       else this.SetSortStyle($mod.TStringsSortStyle.sslNone);
+    };
+    this.SetCaseSensitive = function (b) {
+      if (b === this.FCaseSensitive) return;
+      this.FCaseSensitive = b;
+      if (this.FSortStyle === $mod.TStringsSortStyle.sslAuto) {
+        this.FForceSort = true;
+        try {
+          this.Sort();
+        } finally {
+          this.FForceSort = false;
+        };
+      };
+    };
+    this.SetSortStyle = function (AValue) {
+      if (this.FSortStyle === AValue) return;
+      if (AValue === $mod.TStringsSortStyle.sslAuto) this.Sort();
+      this.FSortStyle = AValue;
+    };
+    this.CheckIndex = function (AIndex) {
+      if ((AIndex < 0) || (AIndex >= this.FCount)) this.Error(pas.RTLConsts.SListIndexError,AIndex);
+    };
+    this.ExchangeItems = function (Index1, Index2) {
+      this.ExchangeItemsInt(Index1,Index2);
+    };
+    this.Changed = function () {
+      if (this.FUpdateCount === 0) {
+        if (this.FOnChange != null) this.FOnChange(this);
+      };
+    };
+    this.Changing = function () {
+      if (this.FUpdateCount === 0) if (this.FOnChanging != null) this.FOnChanging(this);
+    };
+    this.Get = function (Index) {
+      var Result = "";
+      this.CheckIndex(Index);
+      Result = this.FList[Index].FString;
+      return Result;
+    };
+    this.GetCapacity = function () {
+      var Result = 0;
+      Result = rtl.length(this.FList);
+      return Result;
+    };
+    this.GetCount = function () {
+      var Result = 0;
+      Result = this.FCount;
+      return Result;
+    };
+    this.GetObject = function (Index) {
+      var Result = null;
+      this.CheckIndex(Index);
+      Result = this.FList[Index].FObject;
+      return Result;
+    };
+    this.Put = function (Index, S) {
+      if (this.GetSorted()) this.Error(pas.RTLConsts.SSortedListError,0);
+      this.CheckIndex(Index);
+      this.Changing();
+      this.FList[Index].FString = S;
+      this.Changed();
+    };
+    this.PutObject = function (Index, AObject) {
+      this.CheckIndex(Index);
+      this.Changing();
+      this.FList[Index].FObject = AObject;
+      this.Changed();
+    };
+    this.SetCapacity = function (NewCapacity) {
+      if (NewCapacity < 0) this.Error(pas.RTLConsts.SListCapacityError,NewCapacity);
+      if (NewCapacity !== this.GetCapacity()) this.FList = rtl.arraySetLength(this.FList,$mod.TStringItem,NewCapacity);
+    };
+    this.SetUpdateState = function (Updating) {
+      if (Updating) {
+        this.Changing()}
+       else this.Changed();
+    };
+    this.InsertItem = function (Index, S) {
+      this.InsertItem$1(Index,S,null);
+    };
+    this.InsertItem$1 = function (Index, S, O) {
+      var It = new $mod.TStringItem();
+      this.Changing();
+      if (this.FCount === this.GetCapacity()) this.Grow();
+      It.FString = S;
+      It.FObject = O;
+      this.FList.splice(Index,0,It);
+      this.FCount += 1;
+      this.Changed();
+    };
+    this.DoCompareText = function (s1, s2) {
+      var Result = 0;
+      if (this.FCaseSensitive) {
+        Result = pas.SysUtils.CompareStr(s1,s2)}
+       else Result = pas.SysUtils.CompareText(s1,s2);
+      return Result;
+    };
+    this.CompareStrings = function (s1, s2) {
+      var Result = 0;
+      Result = this.DoCompareText(s1,s2);
+      return Result;
+    };
+    this.Destroy = function () {
+      this.InternalClear(0,false);
+      $mod.TStrings.Destroy.call(this);
+    };
+    this.Add = function (S) {
+      var Result = 0;
+      if (!(this.FSortStyle === $mod.TStringsSortStyle.sslAuto)) {
+        Result = this.FCount}
+       else if (this.Find(S,{get: function () {
+          return Result;
+        }, set: function (v) {
+          Result = v;
+        }})) {
+        var $tmp1 = this.FDuplicates;
+        if ($tmp1 === pas.Types.TDuplicates.dupIgnore) {
+          return Result}
+         else if ($tmp1 === pas.Types.TDuplicates.dupError) this.Error(pas.RTLConsts.SDuplicateString,0);
+      };
+      this.InsertItem(Result,S);
+      return Result;
+    };
+    this.Clear = function () {
+      if (this.FCount === 0) return;
+      this.Changing();
+      this.InternalClear(0,false);
+      this.Changed();
+    };
+    this.Delete = function (Index) {
+      this.CheckIndex(Index);
+      this.Changing();
+      if (this.FOwnsObjects) pas.SysUtils.FreeAndNil({p: this.FList[Index], get: function () {
+          return this.p.FObject;
+        }, set: function (v) {
+          this.p.FObject = v;
+        }});
+      this.FList.splice(Index,1);
+      this.FList[this.GetCount() - 1].FString = "";
+      this.FList[this.GetCount() - 1].FObject = null;
+      this.FCount -= 1;
+      this.Changed();
+    };
+    this.Exchange = function (Index1, Index2) {
+      this.CheckIndex(Index1);
+      this.CheckIndex(Index2);
+      this.Changing();
+      this.ExchangeItemsInt(Index1,Index2);
+      this.Changed();
+    };
+    this.Find = function (S, Index) {
+      var Result = false;
+      var L = 0;
+      var R = 0;
+      var I = 0;
+      var CompareRes = 0;
+      Result = false;
+      Index.set(-1);
+      if (!this.GetSorted()) throw $mod.EListError.$create("Create$1",[pas.RTLConsts.SErrFindNeedsSortedList]);
+      L = 0;
+      R = this.GetCount() - 1;
+      while (L <= R) {
+        I = L + Math.floor((R - L) / 2);
+        CompareRes = this.DoCompareText(S,this.FList[I].FString);
+        if (CompareRes > 0) {
+          L = I + 1}
+         else {
+          R = I - 1;
+          if (CompareRes === 0) {
+            Result = true;
+            if (this.FDuplicates !== pas.Types.TDuplicates.dupAccept) L = I;
+          };
+        };
+      };
+      Index.set(L);
+      return Result;
+    };
+    this.IndexOf = function (S) {
+      var Result = 0;
+      if (!this.GetSorted()) {
+        Result = $mod.TStrings.IndexOf.call(this,S)}
+       else if (!this.Find(S,{get: function () {
+          return Result;
+        }, set: function (v) {
+          Result = v;
+        }})) Result = -1;
+      return Result;
+    };
+    this.Insert = function (Index, S) {
+      if (this.FSortStyle === $mod.TStringsSortStyle.sslAuto) {
+        this.Error(pas.RTLConsts.SSortedListError,0)}
+       else {
+        if ((Index < 0) || (Index > this.FCount)) this.Error(pas.RTLConsts.SListIndexError,Index);
+        this.InsertItem(Index,S);
+      };
+    };
+    this.Sort = function () {
+      this.CustomSort($impl.StringListAnsiCompare);
+    };
+    this.CustomSort = function (CompareFn) {
+      if ((this.FForceSort || !(this.FSortStyle === $mod.TStringsSortStyle.sslAuto)) && (this.FCount > 1)) {
+        this.Changing();
+        this.QuickSort(0,this.FCount - 1,CompareFn);
+        this.Changed();
+      };
+    };
+  });
+  $mod.$rtti.$Class("TCollection");
+  rtl.createClass($mod,"TCollectionItem",$mod.TPersistent,function () {
+    this.$init = function () {
+      $mod.TPersistent.$init.call(this);
+      this.FCollection = null;
+      this.FID = 0;
+      this.FUpdateCount = 0;
+    };
+    this.$final = function () {
+      this.FCollection = undefined;
+      $mod.TPersistent.$final.call(this);
+    };
+    this.GetIndex = function () {
+      var Result = 0;
+      if (this.FCollection !== null) {
+        Result = this.FCollection.FItems.IndexOf(this)}
+       else Result = -1;
+      return Result;
+    };
+    this.SetCollection = function (Value) {
+      if (Value !== this.FCollection) {
+        if (this.FCollection !== null) this.FCollection.RemoveItem(this);
+        if (Value !== null) Value.InsertItem(this);
+      };
+    };
+    this.Changed = function (AllItems) {
+      if ((this.FCollection !== null) && (this.FCollection.FUpdateCount === 0)) {
+        if (AllItems) {
+          this.FCollection.Update(null)}
+         else this.FCollection.Update(this);
+      };
+    };
+    this.GetOwner = function () {
+      var Result = null;
+      Result = this.FCollection;
+      return Result;
+    };
+    this.GetDisplayName = function () {
+      var Result = "";
+      Result = this.$classname;
+      return Result;
+    };
+    this.SetIndex = function (Value) {
+      var Temp = 0;
+      Temp = this.GetIndex();
+      if ((Temp > -1) && (Temp !== Value)) {
+        this.FCollection.FItems.Move(Temp,Value);
+        this.Changed(true);
+      };
+    };
+    this.SetDisplayName = function (Value) {
+      this.Changed(false);
+      if (Value === "") ;
+    };
+    this.Create$1 = function (ACollection) {
+      pas.System.TObject.Create.call(this);
+      this.SetCollection(ACollection);
+    };
+    this.Destroy = function () {
+      this.SetCollection(null);
+      pas.System.TObject.Destroy.call(this);
+    };
+    this.GetNamePath = function () {
+      var Result = "";
+      if (this.FCollection !== null) {
+        Result = ((this.FCollection.GetNamePath() + "[") + pas.SysUtils.IntToStr(this.GetIndex())) + "]"}
+       else Result = this.$classname;
+      return Result;
+    };
+  });
+  rtl.createClass($mod,"TCollectionEnumerator",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.FCollection = null;
+      this.FPosition = 0;
+    };
+    this.$final = function () {
+      this.FCollection = undefined;
+      pas.System.TObject.$final.call(this);
+    };
+    this.Create$1 = function (ACollection) {
+      pas.System.TObject.Create.call(this);
+      this.FCollection = ACollection;
+      this.FPosition = -1;
+    };
+    this.GetCurrent = function () {
+      var Result = null;
+      Result = this.FCollection.GetItem(this.FPosition);
+      return Result;
+    };
+    this.MoveNext = function () {
+      var Result = false;
+      this.FPosition += 1;
+      Result = this.FPosition < this.FCollection.GetCount();
+      return Result;
+    };
+  });
+  $mod.$rtti.$ClassRef("TCollectionItemClass",{instancetype: $mod.$rtti["TCollectionItem"]});
+  this.TCollectionNotification = {"0": "cnAdded", cnAdded: 0, "1": "cnExtracting", cnExtracting: 1, "2": "cnDeleting", cnDeleting: 2};
+  $mod.$rtti.$ProcVar("TCollectionSortCompare",{procsig: rtl.newTIProcSig([["Item1",$mod.$rtti["TCollectionItem"]],["Item2",$mod.$rtti["TCollectionItem"]]],rtl.longint)});
+  rtl.createClass($mod,"TCollection",$mod.TPersistent,function () {
+    this.$init = function () {
+      $mod.TPersistent.$init.call(this);
+      this.FItemClass = null;
+      this.FItems = null;
+      this.FUpdateCount = 0;
+      this.FNextID = 0;
+      this.FPropName = "";
+    };
+    this.$final = function () {
+      this.FItemClass = undefined;
+      this.FItems = undefined;
+      $mod.TPersistent.$final.call(this);
+    };
+    this.GetCount = function () {
+      var Result = 0;
+      Result = this.FItems.FCount;
+      return Result;
+    };
+    this.GetPropName = function () {
+      var Result = "";
+      Result = this.FPropName;
+      this.SetPropName();
+      Result = this.FPropName;
+      return Result;
+    };
+    this.InsertItem = function (Item) {
+      if (!this.FItemClass.isPrototypeOf(Item)) return;
+      this.FItems.Add(Item);
+      Item.FCollection = this;
+      Item.FID = this.FNextID;
+      this.FNextID += 1;
+      this.SetItemName(Item);
+      this.Notify(Item,$mod.TCollectionNotification.cnAdded);
+      this.Changed();
+    };
+    this.RemoveItem = function (Item) {
+      var I = 0;
+      this.Notify(Item,$mod.TCollectionNotification.cnExtracting);
+      I = this.FItems.IndexOfItem(Item,pas.Types.TDirection.FromEnd);
+      if (I !== -1) this.FItems.Delete(I);
+      Item.FCollection = null;
+      this.Changed();
+    };
+    this.DoClear = function () {
+      var Item = null;
+      while (this.FItems.FCount > 0) {
+        Item = rtl.getObject(this.FItems.Last());
+        if (Item != null) Item.$destroy("Destroy");
+      };
+    };
+    this.GetAttrCount = function () {
+      var Result = 0;
+      Result = 0;
+      return Result;
+    };
+    this.GetAttr = function (Index) {
+      var Result = "";
+      Result = "";
+      if (Index === 0) ;
+      return Result;
+    };
+    this.GetItemAttr = function (Index, ItemIndex) {
+      var Result = "";
+      Result = rtl.getObject(this.FItems.Get(ItemIndex)).GetDisplayName();
+      if (Index === 0) ;
+      return Result;
+    };
+    this.Changed = function () {
+      if (this.FUpdateCount === 0) this.Update(null);
+    };
+    this.GetItem = function (Index) {
+      var Result = null;
+      Result = rtl.getObject(this.FItems.Get(Index));
+      return Result;
+    };
+    this.SetItem = function (Index, Value) {
+      rtl.getObject(this.FItems.Get(Index)).Assign(Value);
+    };
+    this.SetItemName = function (Item) {
+      if (Item === null) ;
+    };
+    this.SetPropName = function () {
+      this.FPropName = "";
+    };
+    this.Update = function (Item) {
+      if (Item === null) ;
+    };
+    this.Notify = function (Item, Action) {
+      if (Item === null) ;
+      if (Action === $mod.TCollectionNotification.cnAdded) ;
+    };
+    this.Create$1 = function (AItemClass) {
+      pas.System.TObject.Create.call(this);
+      this.FItemClass = AItemClass;
+      this.FItems = $mod.TFPList.$create("Create");
+    };
+    this.Destroy = function () {
+      this.FUpdateCount = 1;
+      try {
+        this.DoClear();
+      } finally {
+        this.FUpdateCount = 0;
+      };
+      if (this.FItems != null) this.FItems.$destroy("Destroy");
+      pas.System.TObject.Destroy.call(this);
+    };
+    this.Owner = function () {
+      var Result = null;
+      Result = this.GetOwner();
+      return Result;
+    };
+    this.Add = function () {
+      var Result = null;
+      Result = this.FItemClass.$create("Create$1",[this]);
+      return Result;
+    };
+    this.Assign = function (Source) {
+      var I = 0;
+      if ($mod.TCollection.isPrototypeOf(Source)) {
+        this.Clear();
+        for (var $l1 = 0, $end2 = Source.GetCount() - 1; $l1 <= $end2; $l1++) {
+          I = $l1;
+          this.Add().Assign(Source.GetItem(I));
+        };
+        return;
+      } else $mod.TPersistent.Assign.call(this,Source);
+    };
+    this.BeginUpdate = function () {
+      this.FUpdateCount += 1;
+    };
+    this.Clear = function () {
+      if (this.FItems.FCount === 0) return;
+      this.BeginUpdate();
+      try {
+        this.DoClear();
+      } finally {
+        this.EndUpdate();
+      };
+    };
+    this.EndUpdate = function () {
+      if (this.FUpdateCount > 0) this.FUpdateCount -= 1;
+      if (this.FUpdateCount === 0) this.Changed();
+    };
+    this.Delete = function (Index) {
+      var Item = null;
+      Item = rtl.getObject(this.FItems.Get(Index));
+      this.Notify(Item,$mod.TCollectionNotification.cnDeleting);
+      if (Item != null) Item.$destroy("Destroy");
+    };
+    this.GetEnumerator = function () {
+      var Result = null;
+      Result = $mod.TCollectionEnumerator.$create("Create$1",[this]);
+      return Result;
+    };
+    this.GetNamePath = function () {
+      var Result = "";
+      var o = null;
+      o = this.GetOwner();
+      if ((o != null) && (this.GetPropName() !== "")) {
+        Result = (o.GetNamePath() + ".") + this.GetPropName()}
+       else Result = this.$classname;
+      return Result;
+    };
+    this.Insert = function (Index) {
+      var Result = null;
+      Result = this.Add();
+      Result.SetIndex(Index);
+      return Result;
+    };
+    this.FindItemID = function (ID) {
+      var Result = null;
+      var I = 0;
+      for (var $l1 = 0, $end2 = this.FItems.FCount - 1; $l1 <= $end2; $l1++) {
+        I = $l1;
+        Result = rtl.getObject(this.FItems.Get(I));
+        if (Result.FID === ID) return Result;
+      };
+      Result = null;
+      return Result;
+    };
+    this.Exchange = function (Index1, index2) {
+      this.FItems.Exchange(Index1,index2);
+    };
+    this.Sort = function (Compare) {
+      this.BeginUpdate();
+      try {
+        this.FItems.Sort(Compare);
+      } finally {
+        this.EndUpdate();
+      };
+    };
+  });
+  rtl.createClass($mod,"TOwnedCollection",$mod.TCollection,function () {
+    this.$init = function () {
+      $mod.TCollection.$init.call(this);
+      this.FOwner = null;
+    };
+    this.$final = function () {
+      this.FOwner = undefined;
+      $mod.TCollection.$final.call(this);
+    };
+    this.GetOwner = function () {
+      var Result = null;
+      Result = this.FOwner;
+      return Result;
+    };
+    this.Create$2 = function (AOwner, AItemClass) {
+      this.FOwner = AOwner;
+      $mod.TCollection.Create$1.call(this,AItemClass);
+    };
+  });
+  $mod.$rtti.$Class("TComponent");
+  this.TOperation = {"0": "opInsert", opInsert: 0, "1": "opRemove", opRemove: 1};
+  this.TComponentStateItem = {"0": "csLoading", csLoading: 0, "1": "csReading", csReading: 1, "2": "csWriting", csWriting: 2, "3": "csDestroying", csDestroying: 3, "4": "csDesigning", csDesigning: 4, "5": "csAncestor", csAncestor: 5, "6": "csUpdating", csUpdating: 6, "7": "csFixups", csFixups: 7, "8": "csFreeNotification", csFreeNotification: 8, "9": "csInline", csInline: 9, "10": "csDesignInstance", csDesignInstance: 10};
+  $mod.$rtti.$Enum("TComponentStateItem",{minvalue: 0, maxvalue: 10, ordtype: 1, enumtype: this.TComponentStateItem});
+  $mod.$rtti.$Set("TComponentState",{comptype: $mod.$rtti["TComponentStateItem"]});
+  this.TComponentStyleItem = {"0": "csInheritable", csInheritable: 0, "1": "csCheckPropAvail", csCheckPropAvail: 1, "2": "csSubComponent", csSubComponent: 2, "3": "csTransient", csTransient: 3};
+  $mod.$rtti.$Enum("TComponentStyleItem",{minvalue: 0, maxvalue: 3, ordtype: 1, enumtype: this.TComponentStyleItem});
+  $mod.$rtti.$Set("TComponentStyle",{comptype: $mod.$rtti["TComponentStyleItem"]});
+  $mod.$rtti.$MethodVar("TGetChildProc",{procsig: rtl.newTIProcSig([["Child",$mod.$rtti["TComponent"]]]), methodkind: 0});
+  rtl.createClass($mod,"TComponentEnumerator",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.FComponent = null;
+      this.FPosition = 0;
+    };
+    this.$final = function () {
+      this.FComponent = undefined;
+      pas.System.TObject.$final.call(this);
+    };
+    this.Create$1 = function (AComponent) {
+      pas.System.TObject.Create.call(this);
+      this.FComponent = AComponent;
+      this.FPosition = -1;
+    };
+    this.GetCurrent = function () {
+      var Result = null;
+      Result = this.FComponent.GetComponent(this.FPosition);
+      return Result;
+    };
+    this.MoveNext = function () {
+      var Result = false;
+      this.FPosition += 1;
+      Result = this.FPosition < this.FComponent.GetComponentCount();
+      return Result;
+    };
+  });
+  rtl.createClass($mod,"TComponent",$mod.TPersistent,function () {
+    this.$init = function () {
+      $mod.TPersistent.$init.call(this);
+      this.FOwner = null;
+      this.FName = "";
+      this.FTag = 0;
+      this.FComponents = null;
+      this.FFreeNotifies = null;
+      this.FDesignInfo = 0;
+      this.FComponentState = {};
+      this.FComponentStyle = {};
+    };
+    this.$final = function () {
+      this.FOwner = undefined;
+      this.FComponents = undefined;
+      this.FFreeNotifies = undefined;
+      this.FComponentState = undefined;
+      this.FComponentStyle = undefined;
+      $mod.TPersistent.$final.call(this);
+    };
+    this.GetComponent = function (AIndex) {
+      var Result = null;
+      if (!(this.FComponents != null)) {
+        Result = null}
+       else Result = rtl.getObject(this.FComponents.Get(AIndex));
+      return Result;
+    };
+    this.GetComponentCount = function () {
+      var Result = 0;
+      if (!(this.FComponents != null)) {
+        Result = 0}
+       else Result = this.FComponents.FCount;
+      return Result;
+    };
+    this.GetComponentIndex = function () {
+      var Result = 0;
+      if ((this.FOwner != null) && (this.FOwner.FComponents != null)) {
+        Result = this.FOwner.FComponents.IndexOf(this)}
+       else Result = -1;
+      return Result;
+    };
+    this.Insert = function (AComponent) {
+      if (!(this.FComponents != null)) this.FComponents = $mod.TFPList.$create("Create");
+      this.FComponents.Add(AComponent);
+      AComponent.FOwner = this;
+    };
+    this.Remove = function (AComponent) {
+      AComponent.FOwner = null;
+      if (this.FComponents != null) {
+        this.FComponents.Remove(AComponent);
+        if (this.FComponents.FCount === 0) {
+          this.FComponents.$destroy("Destroy");
+          this.FComponents = null;
+        };
+      };
+    };
+    this.RemoveNotification = function (AComponent) {
+      if (this.FFreeNotifies !== null) {
+        this.FFreeNotifies.Remove(AComponent);
+        if (this.FFreeNotifies.FCount === 0) {
+          this.FFreeNotifies.$destroy("Destroy");
+          this.FFreeNotifies = null;
+          this.FComponentState = rtl.excludeSet(this.FComponentState,$mod.TComponentStateItem.csFreeNotification);
+        };
+      };
+    };
+    this.SetComponentIndex = function (Value) {
+      var Temp = 0;
+      var Count = 0;
+      if (!(this.FOwner != null)) return;
+      Temp = this.GetComponentIndex();
+      if (Temp < 0) return;
+      if (Value < 0) Value = 0;
+      Count = this.FOwner.FComponents.FCount;
+      if (Value >= Count) Value = Count - 1;
+      if (Value !== Temp) {
+        this.FOwner.FComponents.Delete(Temp);
+        this.FOwner.FComponents.Insert(Value,this);
+      };
+    };
+    this.ChangeName = function (NewName) {
+      this.FName = NewName;
+    };
+    this.GetChildren = function (Proc, Root) {
+      if (Proc === null) ;
+      if (Root === null) ;
+    };
+    this.GetChildOwner = function () {
+      var Result = null;
+      Result = null;
+      return Result;
+    };
+    this.GetChildParent = function () {
+      var Result = null;
+      Result = this;
+      return Result;
+    };
+    this.GetOwner = function () {
+      var Result = null;
+      Result = this.FOwner;
+      return Result;
+    };
+    this.Loaded = function () {
+      this.FComponentState = rtl.excludeSet(this.FComponentState,$mod.TComponentStateItem.csLoading);
+    };
+    this.Loading = function () {
+      this.FComponentState = rtl.includeSet(this.FComponentState,$mod.TComponentStateItem.csLoading);
+    };
+    this.Notification = function (AComponent, Operation) {
+      var C = 0;
+      if (Operation === $mod.TOperation.opRemove) this.RemoveFreeNotification(AComponent);
+      if (!(this.FComponents != null)) return;
+      C = this.FComponents.FCount - 1;
+      while (C >= 0) {
+        rtl.getObject(this.FComponents.Get(C)).Notification(AComponent,Operation);
+        C -= 1;
+        if (C >= this.FComponents.FCount) C = this.FComponents.FCount - 1;
+      };
+    };
+    this.PaletteCreated = function () {
+    };
+    this.SetAncestor = function (Value) {
+      var Runner = 0;
+      if (Value) {
+        this.FComponentState = rtl.includeSet(this.FComponentState,$mod.TComponentStateItem.csAncestor)}
+       else this.FComponentState = rtl.excludeSet(this.FComponentState,$mod.TComponentStateItem.csAncestor);
+      if (this.FComponents != null) for (var $l1 = 0, $end2 = this.FComponents.FCount - 1; $l1 <= $end2; $l1++) {
+        Runner = $l1;
+        rtl.getObject(this.FComponents.Get(Runner)).SetAncestor(Value);
+      };
+    };
+    this.SetDesigning = function (Value, SetChildren) {
+      var Runner = 0;
+      if (Value) {
+        this.FComponentState = rtl.includeSet(this.FComponentState,$mod.TComponentStateItem.csDesigning)}
+       else this.FComponentState = rtl.excludeSet(this.FComponentState,$mod.TComponentStateItem.csDesigning);
+      if ((this.FComponents != null) && SetChildren) for (var $l1 = 0, $end2 = this.FComponents.FCount - 1; $l1 <= $end2; $l1++) {
+        Runner = $l1;
+        rtl.getObject(this.FComponents.Get(Runner)).SetDesigning(Value,true);
+      };
+    };
+    this.SetDesignInstance = function (Value) {
+      if (Value) {
+        this.FComponentState = rtl.includeSet(this.FComponentState,$mod.TComponentStateItem.csDesignInstance)}
+       else this.FComponentState = rtl.excludeSet(this.FComponentState,$mod.TComponentStateItem.csDesignInstance);
+    };
+    this.SetInline = function (Value) {
+      if (Value) {
+        this.FComponentState = rtl.includeSet(this.FComponentState,$mod.TComponentStateItem.csInline)}
+       else this.FComponentState = rtl.excludeSet(this.FComponentState,$mod.TComponentStateItem.csInline);
+    };
+    this.SetName = function (NewName) {
+      if (this.FName === NewName) return;
+      if ((NewName !== "") && !pas.SysUtils.IsValidIdent(NewName,false,false)) throw $mod.EComponentError.$create("CreateFmt",[pas.RTLConsts.SInvalidName,[NewName]]);
+      if (this.FOwner != null) {
+        this.FOwner.ValidateRename(this,this.FName,NewName)}
+       else this.ValidateRename(null,this.FName,NewName);
+      this.ChangeName(NewName);
+    };
+    this.SetChildOrder = function (Child, Order) {
+      if (Child === null) ;
+      if (Order === 0) ;
+    };
+    this.SetParentComponent = function (Value) {
+      if (Value === null) ;
+    };
+    this.Updating = function () {
+      this.FComponentState = rtl.includeSet(this.FComponentState,$mod.TComponentStateItem.csUpdating);
+    };
+    this.Updated = function () {
+      this.FComponentState = rtl.excludeSet(this.FComponentState,$mod.TComponentStateItem.csUpdating);
+    };
+    this.ValidateRename = function (AComponent, CurName, NewName) {
+      if ((((AComponent !== null) && (pas.SysUtils.CompareText(CurName,NewName) !== 0)) && (AComponent.FOwner === this)) && (this.FindComponent(NewName) !== null)) throw $mod.EComponentError.$create("CreateFmt",[pas.RTLConsts.SDuplicateName,[NewName]]);
+      if (($mod.TComponentStateItem.csDesigning in this.FComponentState) && (this.FOwner !== null)) this.FOwner.ValidateRename(AComponent,CurName,NewName);
+    };
+    this.ValidateContainer = function (AComponent) {
+      AComponent.ValidateInsert(this);
+    };
+    this.ValidateInsert = function (AComponent) {
+      if (AComponent === null) ;
+    };
+    this._AddRef = function () {
+      var Result = 0;
+      Result = -1;
+      return Result;
+    };
+    this._Release = function () {
+      var Result = 0;
+      Result = -1;
+      return Result;
+    };
+    this.Create$1 = function (AOwner) {
+      this.FComponentStyle = rtl.createSet($mod.TComponentStyleItem.csInheritable);
+      if (AOwner != null) AOwner.InsertComponent(this);
+    };
+    this.Destroy = function () {
+      var I = 0;
+      var C = null;
+      this.Destroying();
+      if (this.FFreeNotifies != null) {
+        I = this.FFreeNotifies.FCount - 1;
+        while (I >= 0) {
+          C = rtl.getObject(this.FFreeNotifies.Get(I));
+          this.FFreeNotifies.Delete(I);
+          C.Notification(this,$mod.TOperation.opRemove);
+          if (this.FFreeNotifies === null) {
+            I = 0}
+           else if (I > this.FFreeNotifies.FCount) I = this.FFreeNotifies.FCount;
+          I -= 1;
+        };
+        pas.SysUtils.FreeAndNil({p: this, get: function () {
+            return this.p.FFreeNotifies;
+          }, set: function (v) {
+            this.p.FFreeNotifies = v;
+          }});
+      };
+      this.DestroyComponents();
+      if (this.FOwner !== null) this.FOwner.RemoveComponent(this);
+      pas.System.TObject.Destroy.call(this);
+    };
+    this.BeforeDestruction = function () {
+      if (!($mod.TComponentStateItem.csDestroying in this.FComponentState)) this.Destroying();
+    };
+    this.DestroyComponents = function () {
+      var acomponent = null;
+      while (this.FComponents != null) {
+        acomponent = rtl.getObject(this.FComponents.Last());
+        this.Remove(acomponent);
+        acomponent.$destroy("Destroy");
+      };
+    };
+    this.Destroying = function () {
+      var Runner = 0;
+      if ($mod.TComponentStateItem.csDestroying in this.FComponentState) return;
+      this.FComponentState = rtl.includeSet(this.FComponentState,$mod.TComponentStateItem.csDestroying);
+      if (this.FComponents != null) for (var $l1 = 0, $end2 = this.FComponents.FCount - 1; $l1 <= $end2; $l1++) {
+        Runner = $l1;
+        rtl.getObject(this.FComponents.Get(Runner)).Destroying();
+      };
+    };
+    this.QueryInterface = function (IID, Obj) {
+      var Result = 0;
+      if (this.GetInterface(IID,Obj)) {
+        Result = 0}
+       else Result = -2147467262;
+      return Result;
+    };
+    this.FindComponent = function (AName) {
+      var Result = null;
+      var I = 0;
+      Result = null;
+      if ((AName === "") || !(this.FComponents != null)) return Result;
+      for (var $l1 = 0, $end2 = this.FComponents.FCount - 1; $l1 <= $end2; $l1++) {
+        I = $l1;
+        if (pas.SysUtils.CompareText(rtl.getObject(this.FComponents.Get(I)).FName,AName) === 0) {
+          Result = rtl.getObject(this.FComponents.Get(I));
+          return Result;
+        };
+      };
+      return Result;
+    };
+    this.FreeNotification = function (AComponent) {
+      if ((this.FOwner !== null) && (AComponent === this.FOwner)) return;
+      if (!(this.FFreeNotifies != null)) this.FFreeNotifies = $mod.TFPList.$create("Create");
+      if (this.FFreeNotifies.IndexOf(AComponent) === -1) {
+        this.FFreeNotifies.Add(AComponent);
+        AComponent.FreeNotification(this);
+      };
+    };
+    this.RemoveFreeNotification = function (AComponent) {
+      this.RemoveNotification(AComponent);
+      AComponent.RemoveNotification(this);
+    };
+    this.GetNamePath = function () {
+      var Result = "";
+      Result = this.FName;
+      return Result;
+    };
+    this.GetParentComponent = function () {
+      var Result = null;
+      Result = null;
+      return Result;
+    };
+    this.HasParent = function () {
+      var Result = false;
+      Result = false;
+      return Result;
+    };
+    this.InsertComponent = function (AComponent) {
+      AComponent.ValidateContainer(this);
+      this.ValidateRename(AComponent,"",AComponent.FName);
+      this.Insert(AComponent);
+      if ($mod.TComponentStateItem.csDesigning in this.FComponentState) AComponent.SetDesigning(true,true);
+      this.Notification(AComponent,$mod.TOperation.opInsert);
+    };
+    this.RemoveComponent = function (AComponent) {
+      this.Notification(AComponent,$mod.TOperation.opRemove);
+      this.Remove(AComponent);
+      AComponent.SetDesigning(false,true);
+      this.ValidateRename(AComponent,AComponent.FName,"");
+    };
+    this.SetSubComponent = function (ASubComponent) {
+      if (ASubComponent) {
+        this.FComponentStyle = rtl.includeSet(this.FComponentStyle,$mod.TComponentStyleItem.csSubComponent)}
+       else this.FComponentStyle = rtl.excludeSet(this.FComponentStyle,$mod.TComponentStyleItem.csSubComponent);
+    };
+    this.GetEnumerator = function () {
+      var Result = null;
+      Result = $mod.TComponentEnumerator.$create("Create$1",[this]);
+      return Result;
+    };
+    var $r = this.$rtti;
+    $r.addProperty("Name",6,rtl.string,"FName","SetName");
+    $r.addProperty("Tag",0,rtl.nativeint,"FTag","FTag");
+  });
+  $mod.$rtti.$ClassRef("TComponentClass",{instancetype: $mod.$rtti["TComponent"]});
+  this.RegisterClass = function (AClass) {
+    $impl.ClassList[AClass.$classname] = AClass;
+  };
+  this.GetClass = function (AClassName) {
+    var Result = null;
+    Result = null;
+    if (AClassName === "") return Result;
+    if (!$impl.ClassList.hasOwnProperty(AClassName)) return Result;
+    Result = rtl.getObject($impl.ClassList[AClassName]);
+    return Result;
+  };
+  $mod.$init = function () {
+    $impl.ClassList = Object.create(null);
+  };
+},["JS"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.QuickSort = function (aList, L, R, Compare) {
+    var I = 0;
+    var J = 0;
+    var P = undefined;
+    var Q = undefined;
+    do {
+      I = L;
+      J = R;
+      P = aList[Math.floor((L + R) / 2)];
+      do {
+        while (Compare(P,aList[I]) > 0) I = I + 1;
+        while (Compare(P,aList[J]) < 0) J = J - 1;
+        if (I <= J) {
+          Q = aList[I];
+          aList[I] = aList[J];
+          aList[J] = Q;
+          I = I + 1;
+          J = J - 1;
+        };
+      } while (!(I > J));
+      if ((J - L) < (R - I)) {
+        if (L < J) $impl.QuickSort(aList,L,J,Compare);
+        L = I;
+      } else {
+        if (I < R) $impl.QuickSort(aList,I,R,Compare);
+        R = J;
+      };
+    } while (!(L >= R));
+  };
+  $impl.StringListAnsiCompare = function (List, Index1, Index) {
+    var Result = 0;
+    Result = List.DoCompareText(List.FList[Index1].FString,List.FList[Index].FString);
+    return Result;
+  };
+  $impl.ClassList = null;
+});
+rtl.module("Math",["System","SysUtils"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.MinInteger = -0x10000000000000;
+  this.MaxInteger = 0xfffffffffffff;
+  this.MinDouble = 5.0e-324;
+  this.MaxDouble = 1.7e+308;
+  this.InRange = function (AValue, AMin, AMax) {
+    return (AValue >= AMin) && (AValue <= AMax);
+  };
+  this.InRange$1 = function (AValue, AMin, AMax) {
+    return (AValue >= AMin) && (AValue <= AMax);
+  };
+  this.EnsureRange = function (AValue, AMin, AMax) {
+    if (AValue<AMin){ return AMin;
+    } else if (AValue>AMax){ return AMax;
+    } else return AValue;
+  };
+  this.EnsureRange$1 = function (AValue, AMin, AMax) {
+    if (AValue<AMin){ return AMin;
+    } else if (AValue>AMax){ return AMax;
+    } else return AValue;
+  };
+  $mod.$rtti.$Int("TRoundToRange",{minvalue: -37, maxvalue: 37, ordtype: 0});
+  this.RoundTo = function (AValue, Digits) {
+    var Result = 0.0;
+    var RV = 0.0;
+    RV = $mod.IntPower(10,Digits);
+    Result = Math.round(AValue / RV) * RV;
+    return Result;
+  };
+  this.SimpleRoundTo = function (AValue, Digits) {
+    var Result = 0.0;
+    var RV = 0.0;
+    RV = $mod.IntPower(10,-Digits);
+    if (AValue < 0) {
+      Result = pas.System.Int((AValue * RV) - 0.5) / RV}
+     else Result = pas.System.Int((AValue * RV) + 0.5) / RV;
+    return Result;
+  };
+  this.randg = function (mean, stddev) {
+    var Result = 0.0;
+    var U1 = 0.0;
+    var S2 = 0.0;
+    do {
+      U1 = (2 * Math.random()) - 1;
+      S2 = pas.System.Sqr$1(U1) + pas.System.Sqr$1((2 * Math.random()) - 1);
+    } while (!(S2 < 1));
+    Result = ((Math.sqrt((-2 * Math.log(S2)) / S2) * U1) * stddev) + mean;
+    return Result;
+  };
+  this.RandomRange = function (aFrom, aTo) {
+    var Result = 0;
+    Result = pas.System.Random(Math.abs(aFrom - aTo)) + Math.min(aTo,aFrom);
+    return Result;
+  };
+  this.RandomRange$1 = function (aFrom, aTo) {
+    var Result = 0;
+    var m = 0;
+    if (aFrom < aTo) {
+      m = aFrom}
+     else m = aTo;
+    Result = pas.System.Random(Math.abs(aFrom - aTo)) + m;
+    return Result;
+  };
+  this.NegativeValue = -1;
+  this.ZeroValue = 0;
+  this.PositiveValue = 1;
+  this.IsZero = function (d, Epsilon) {
+    var Result = false;
+    if (Epsilon === 0) Epsilon = 1E-12;
+    Result = Math.abs(d) <= Epsilon;
+    return Result;
+  };
+  this.IsZero$1 = function (d) {
+    var Result = false;
+    Result = Math.abs(d) <= 1E-12;
+    return Result;
+  };
+  this.IsInfinite = function (d) {
+    return (d==Infinity) || (d==-Infinity);
+  };
+  this.SameValue = function (A, B, Epsilon) {
+    var Result = false;
+    if (Epsilon === 0.0) Epsilon = Math.max(Math.min(Math.abs(A),Math.abs(B)) * 1E-12,1E-12);
+    if (A > B) {
+      Result = (A - B) <= Epsilon}
+     else Result = (B - A) <= Epsilon;
+    return Result;
+  };
+  this.LogN = function (A, Base) {
+    var Result = 0.0;
+    Result = Math.log(A) / Math.log(Base);
+    return Result;
+  };
+  this.Ceil = function (A) {
+    var Result = 0;
+    Result = pas.System.Trunc(Math.ceil(A));
+    return Result;
+  };
+  this.Floor = function (A) {
+    var Result = 0;
+    Result = pas.System.Trunc(Math.floor(A));
+    return Result;
+  };
+  this.Ceil64 = function (A) {
+    var Result = 0;
+    Result = pas.System.Trunc(Math.ceil(A));
+    return Result;
+  };
+  this.Floor64 = function (A) {
+    var Result = 0;
+    Result = pas.System.Trunc(Math.ceil(A));
+    return Result;
+  };
+  this.ldexp = function (x, p) {
+    var Result = 0.0;
+    Result = x * $mod.IntPower(2.0,p);
+    return Result;
+  };
+  this.Frexp = function (X, Mantissa, Exponent) {
+    Exponent.set(0);
+    if (X !== 0) if (Math.abs(X) < 0.5) {
+      do {
+        X = X * 2;
+        Exponent.set(Exponent.get() - 1);
+      } while (!(Math.abs(X) >= 0.5))}
+     else while (Math.abs(X) >= 1) {
+      X = X / 2;
+      Exponent.set(Exponent.get() + 1);
+    };
+    Mantissa.set(X);
+  };
+  this.lnxp1 = function (x) {
+    var Result = 0.0;
+    var y = 0.0;
+    if (x >= 4.0) {
+      Result = Math.log(1.0 + x)}
+     else {
+      y = 1.0 + x;
+      if (y === 1.0) {
+        Result = x}
+       else {
+        Result = Math.log(y);
+        if (y > 0.0) Result = Result + ((x - (y - 1.0)) / y);
+      };
+    };
+    return Result;
+  };
+  this.IntPower = function (base, exponent) {
+    var Result = 0.0;
+    var i = 0;
+    if ((base === 0.0) && (exponent === 0)) {
+      Result = 1}
+     else {
+      i = Math.abs(exponent);
+      Result = 1.0;
+      while (i > 0) {
+        while ((i & 1) === 0) {
+          i = i >>> 1;
+          base = pas.System.Sqr$1(base);
+        };
+        i = i - 1;
+        Result = Result * base;
+      };
+      if (exponent < 0) Result = 1.0 / Result;
+    };
+    return Result;
+  };
+  this.DivMod = function (Dividend, Divisor, Result, Remainder) {
+    if (Dividend < 0) {
+      Dividend = -Dividend;
+      Result.set(-Math.floor(Dividend / Divisor));
+      Remainder.set(-(Dividend + (Result.get() * Divisor)));
+    } else {
+      Result.set(Math.floor(Dividend / Divisor));
+      Remainder.set(Dividend - (Result.get() * Divisor));
+    };
+  };
+  this.DivMod$1 = function (Dividend, Divisor, Result, Remainder) {
+    if (Dividend < 0) {
+      Dividend = -Dividend;
+      Result.set(-Math.floor(Dividend / Divisor));
+      Remainder.set(-(Dividend + (Result.get() * Divisor)));
+    } else {
+      Result.set(Math.floor(Dividend / Divisor));
+      Remainder.set(Dividend - (Result.get() * Divisor));
+    };
+  };
+  this.DivMod$2 = function (Dividend, Divisor, Result, Remainder) {
+    Result.set(Math.floor(Dividend / Divisor));
+    Remainder.set(Dividend - (Result.get() * Divisor));
+  };
+  this.DivMod$3 = function (Dividend, Divisor, Result, Remainder) {
+    if (Dividend < 0) {
+      Dividend = -Dividend;
+      Result.set(-Math.floor(Dividend / Divisor));
+      Remainder.set(-(Dividend + (Result.get() * Divisor)));
+    } else {
+      Result.set(Math.floor(Dividend / Divisor));
+      Remainder.set(Dividend - (Result.get() * Divisor));
+    };
+  };
+  this.DegToRad = function (deg) {
+    var Result = 0.0;
+    Result = deg * (Math.PI / 180.0);
+    return Result;
+  };
+  this.RadToDeg = function (rad) {
+    var Result = 0.0;
+    Result = rad * (180.0 / Math.PI);
+    return Result;
+  };
+  this.GradToRad = function (grad) {
+    var Result = 0.0;
+    Result = grad * (Math.PI / 200.0);
+    return Result;
+  };
+  this.RadToGrad = function (rad) {
+    var Result = 0.0;
+    Result = rad * (200.0 / Math.PI);
+    return Result;
+  };
+  this.DegToGrad = function (deg) {
+    var Result = 0.0;
+    Result = deg * (200.0 / 180.0);
+    return Result;
+  };
+  this.GradToDeg = function (grad) {
+    var Result = 0.0;
+    Result = grad * (180.0 / 200.0);
+    return Result;
+  };
+  this.CycleToRad = function (cycle) {
+    var Result = 0.0;
+    Result = (2 * Math.PI) * cycle;
+    return Result;
+  };
+  this.RadToCycle = function (rad) {
+    var Result = 0.0;
+    Result = rad * (1 / (2 * Math.PI));
+    return Result;
+  };
+  this.DegNormalize = function (deg) {
+    var Result = 0.0;
+    Result = deg - (pas.System.Int(deg / 360) * 360);
+    if (Result < 0) Result = Result + 360;
+    return Result;
+  };
+  this.Norm = function (data) {
+    var Result = 0.0;
+    Result = Math.sqrt($impl.sumofsquares(data));
+    return Result;
+  };
+  this.Mean = function (data) {
+    var Result = 0.0;
+    var N = 0;
+    N = rtl.length(data);
+    if (N === 0) {
+      Result = 0}
+     else Result = $mod.Sum(data) / N;
+    return Result;
+  };
+  this.Sum = function (data) {
+    var Result = 0.0;
+    var i = 0;
+    var N = 0;
+    N = rtl.length(data);
+    Result = 0.0;
+    for (var $l1 = 0, $end2 = N - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      Result = Result + data[i];
+    };
+    return Result;
+  };
+  this.SumsAndSquares = function (data, Sum, SumOfSquares) {
+    var i = 0;
+    var n = 0;
+    var t = 0.0;
+    var s = 0.0;
+    var ss = 0.0;
+    n = rtl.length(data);
+    ss = 0.0;
+    s = 0.0;
+    for (var $l1 = 0, $end2 = n - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      t = data[i];
+      ss = ss + pas.System.Sqr$1(t);
+      s = s + t;
+    };
+    Sum.set(s);
+    SumOfSquares.set(ss);
+  };
+  this.StdDev = function (data) {
+    var Result = 0.0;
+    Result = Math.sqrt($mod.Variance(data));
+    return Result;
+  };
+  this.MeanAndStdDev = function (data, Mean, StdDev) {
+    var I = 0;
+    var N = 0;
+    var M = 0.0;
+    var S = 0.0;
+    N = rtl.length(data);
+    M = 0;
+    S = 0;
+    for (var $l1 = 0, $end2 = N - 1; $l1 <= $end2; $l1++) {
+      I = $l1;
+      M = M + data[I];
+      S = S + pas.System.Sqr$1(data[I]);
+    };
+    M = M / N;
+    S = S - (N * pas.System.Sqr$1(M));
+    if (N > 1) {
+      S = Math.sqrt(S / (N - 1))}
+     else S = 0;
+    Mean.set(M);
+    StdDev.set(S);
+  };
+  this.Variance = function (data) {
+    var Result = 0.0;
+    var n = 0;
+    n = rtl.length(data);
+    if (n === 1) {
+      Result = 0}
+     else Result = $mod.TotalVariance(data) / (n - 1);
+    return Result;
+  };
+  this.TotalVariance = function (data) {
+    var Result = 0.0;
+    var S = 0.0;
+    var SS = 0.0;
+    var N = 0;
+    N = rtl.length(data);
+    if (rtl.length(data) === 1) {
+      Result = 0}
+     else {
+      $mod.SumsAndSquares(data,{get: function () {
+          return S;
+        }, set: function (v) {
+          S = v;
+        }},{get: function () {
+          return SS;
+        }, set: function (v) {
+          SS = v;
+        }});
+      Result = SS - (pas.System.Sqr$1(S) / N);
+    };
+    return Result;
+  };
+  this.PopNStdDev = function (data) {
+    var Result = 0.0;
+    Result = Math.sqrt($mod.PopNVariance(data));
+    return Result;
+  };
+  this.PopNVariance = function (data) {
+    var Result = 0.0;
+    var N = 0;
+    N = rtl.length(data);
+    if (N === 0) {
+      Result = 0}
+     else Result = $mod.TotalVariance(data) / N;
+    return Result;
+  };
+  this.MomentSkewKurtosis = function (data, m1, m2, m3, m4, skew, kurtosis) {
+    var i = 0;
+    var N = 0;
+    var deviation = 0.0;
+    var deviation2 = 0.0;
+    var reciprocalN = 0.0;
+    var lm1 = 0.0;
+    var lm2 = 0.0;
+    var lm3 = 0.0;
+    var lm4 = 0.0;
+    var lskew = 0.0;
+    var lkurtosis = 0.0;
+    N = rtl.length(data);
+    lm1 = 0;
+    reciprocalN = 1 / N;
+    for (var $l1 = 0, $end2 = N - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      lm1 = lm1 + data[i];
+    };
+    lm1 = reciprocalN * lm1;
+    lm2 = 0;
+    lm3 = 0;
+    lm4 = 0;
+    for (var $l3 = 0, $end4 = N - 1; $l3 <= $end4; $l3++) {
+      i = $l3;
+      deviation = data[i] - lm1;
+      deviation2 = deviation * deviation;
+      lm2 = lm2 + deviation2;
+      lm3 = lm3 + (deviation2 * deviation);
+      lm4 = lm4 + (deviation2 * deviation2);
+    };
+    lm2 = reciprocalN * lm2;
+    lm3 = reciprocalN * lm3;
+    lm4 = reciprocalN * lm4;
+    lskew = lm3 / (Math.sqrt(lm2) * lm2);
+    lkurtosis = lm4 / (lm2 * lm2);
+    m1.set(lm1);
+    m2.set(lm2);
+    m3.set(lm3);
+    m4.set(lm4);
+    skew.set(lskew);
+    kurtosis.set(lkurtosis);
+  };
+  this.TPaymentTime = {"0": "ptEndOfPeriod", ptEndOfPeriod: 0, "1": "ptStartOfPeriod", ptStartOfPeriod: 1};
+  $mod.$rtti.$Enum("TPaymentTime",{minvalue: 0, maxvalue: 1, ordtype: 1, enumtype: this.TPaymentTime});
+  this.FutureValue = function (ARate, NPeriods, APayment, APresentValue, APaymentTime) {
+    var Result = 0.0;
+    var q = 0.0;
+    var qn = 0.0;
+    var factor = 0.0;
+    if (ARate === 0) {
+      Result = -APresentValue - (APayment * NPeriods)}
+     else {
+      q = 1.0 + ARate;
+      qn = Math.pow(q,NPeriods);
+      factor = (qn - 1) / (q - 1);
+      if (APaymentTime === $mod.TPaymentTime.ptStartOfPeriod) factor = factor * q;
+      Result = -((APresentValue * qn) + (APayment * factor));
+    };
+    return Result;
+  };
+  var DELTA = 0.001;
+  var EPS = 1E-9;
+  var MAXIT = 20;
+  this.InterestRate = function (NPeriods, APayment, APresentValue, AFutureValue, APaymentTime) {
+    var Result = 0.0;
+    var r1 = 0.0;
+    var r2 = 0.0;
+    var dr = 0.0;
+    var fv1 = 0.0;
+    var fv2 = 0.0;
+    var iteration = 0;
+    iteration = 0;
+    r1 = 0.05;
+    do {
+      r2 = r1 + 0.001;
+      fv1 = $mod.FutureValue(r1,NPeriods,APayment,APresentValue,APaymentTime);
+      fv2 = $mod.FutureValue(r2,NPeriods,APayment,APresentValue,APaymentTime);
+      dr = ((AFutureValue - fv1) / (fv2 - fv1)) * 0.001;
+      r1 = r1 + dr;
+      iteration += 1;
+    } while (!((Math.abs(dr) < 1.0E-9) || (iteration >= 20)));
+    Result = r1;
+    return Result;
+  };
+  this.NumberOfPeriods = function (ARate, APayment, APresentValue, AFutureValue, APaymentTime) {
+    var Result = 0.0;
+    var q = 0.0;
+    var x1 = 0.0;
+    var x2 = 0.0;
+    if (ARate === 0) {
+      Result = -(APresentValue + AFutureValue) / APayment}
+     else {
+      q = 1.0 + ARate;
+      if (APaymentTime === $mod.TPaymentTime.ptStartOfPeriod) APayment = APayment * q;
+      x1 = APayment - (AFutureValue * ARate);
+      x2 = APayment + (APresentValue * ARate);
+      if ((x2 === 0) || ((Math.sign(x1) * Math.sign(x2)) < 0)) {
+        Result = Infinity}
+       else {
+        Result = Math.log(x1 / x2) / Math.log(q);
+      };
+    };
+    return Result;
+  };
+  this.Payment = function (ARate, NPeriods, APresentValue, AFutureValue, APaymentTime) {
+    var Result = 0.0;
+    var q = 0.0;
+    var qn = 0.0;
+    var factor = 0.0;
+    if (ARate === 0) {
+      Result = -(AFutureValue + APresentValue) / NPeriods}
+     else {
+      q = 1.0 + ARate;
+      qn = Math.pow(q,NPeriods);
+      factor = (qn - 1) / (q - 1);
+      if (APaymentTime === $mod.TPaymentTime.ptStartOfPeriod) factor = factor * q;
+      Result = -(AFutureValue + (APresentValue * qn)) / factor;
+    };
+    return Result;
+  };
+  this.PresentValue = function (ARate, NPeriods, APayment, AFutureValue, APaymentTime) {
+    var Result = 0.0;
+    var q = 0.0;
+    var qn = 0.0;
+    var factor = 0.0;
+    if (ARate === 0.0) {
+      Result = -AFutureValue - (APayment * NPeriods)}
+     else {
+      q = 1.0 + ARate;
+      qn = Math.pow(q,NPeriods);
+      factor = (qn - 1) / (q - 1);
+      if (APaymentTime === $mod.TPaymentTime.ptStartOfPeriod) factor = factor * q;
+      Result = -(AFutureValue + (APayment * factor)) / qn;
+    };
+    return Result;
+  };
+  this.IfThen = function (val, ifTrue, ifFalse) {
+    var Result = 0;
+    if (val) {
+      Result = ifTrue}
+     else Result = ifFalse;
+    return Result;
+  };
+  this.IfThen$1 = function (val, ifTrue, ifFalse) {
+    var Result = 0.0;
+    if (val) {
+      Result = ifTrue}
+     else Result = ifFalse;
+    return Result;
+  };
+  $mod.$rtti.$Int("TValueRelationship",{minvalue: -1, maxvalue: 1, ordtype: 0});
+  this.EqualsValue = 0;
+  this.LessThanValue = -1;
+  this.GreaterThanValue = 1;
+  this.CompareValue = function (A, B) {
+    var Result = 0;
+    Result = 1;
+    if (A === B) {
+      Result = 0}
+     else if (A < B) Result = -1;
+    return Result;
+  };
+  this.CompareValue$1 = function (A, B) {
+    var Result = 0;
+    Result = 1;
+    if (A === B) {
+      Result = 0}
+     else if (A < B) Result = -1;
+    return Result;
+  };
+  this.CompareValue$2 = function (A, B) {
+    var Result = 0;
+    Result = 1;
+    if (A === B) {
+      Result = 0}
+     else if (A < B) Result = -1;
+    return Result;
+  };
+  this.CompareValue$3 = function (A, B, delta) {
+    var Result = 0;
+    Result = 1;
+    if (Math.abs(A - B) <= delta) {
+      Result = 0}
+     else if (A < B) Result = -1;
+    return Result;
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.DZeroResolution = 1E-12;
+  $impl.sumofsquares = function (data) {
+    var Result = 0.0;
+    var i = 0;
+    var N = 0;
+    N = rtl.length(data);
+    Result = 0.0;
+    for (var $l1 = 0, $end2 = N - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      Result = Result + pas.System.Sqr$1(data[i]);
+    };
+    return Result;
+  };
+});
+rtl.module("EventsInterface",["System","Classes","SysUtils"],function () {
+  "use strict";
+  var $mod = this;
+  $mod.$rtti.$DynArray("TNumArray",{eltype: rtl.double});
+  $mod.$rtti.$DynArray("TImgArray",{eltype: rtl.string});
+  rtl.createClass($mod,"TEventStatus",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.EventType = "";
+      this.NodeId = "";
+      this.NameSpace = "";
+      this.InitRunning = false;
+      this.AsyncProcsRunning = null;
+      this.ContinueAfterTrappers = false;
+      this.ReturnString = "";
+      this.eventValue = "";
+      this.ValueObject = null;
+    };
+    this.$final = function () {
+      this.AsyncProcsRunning = undefined;
+      this.ValueObject = undefined;
+      pas.System.TObject.$final.call(this);
+    };
+    this.Create$1 = function (EvType, NdId) {
+      this.InitRunning = false;
+      this.AsyncProcsRunning = pas.Classes.TStringList.$create("Create$1");
+      this.ContinueAfterTrappers = true;
+      this.EventType = EvType;
+      this.NodeId = NdId;
+    };
+    this.EventHasWaitingAsyncProcs = function () {
+      var Result = false;
+      if (this.AsyncProcsRunning.GetCount() > 0) {
+        Result = true}
+       else Result = false;
+      return Result;
+    };
+  });
+  rtl.createClass($mod,"TNodeEventValue",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.myTree = null;
+      this.SourceName = "";
+      this.SrcText = "";
+      this.DstText = "";
+      this.myNode = null;
+    };
+    this.$final = function () {
+      this.myTree = undefined;
+      this.myNode = undefined;
+      pas.System.TObject.$final.call(this);
+    };
+  });
+});
+rtl.module("TypInfo",["System","SysUtils","Types","RTLConsts","JS"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.TTypeKind = {"0": "tkUnknown", tkUnknown: 0, "1": "tkInteger", tkInteger: 1, "2": "tkChar", tkChar: 2, "3": "tkString", tkString: 3, "4": "tkEnumeration", tkEnumeration: 4, "5": "tkSet", tkSet: 5, "6": "tkDouble", tkDouble: 6, "7": "tkBool", tkBool: 7, "8": "tkProcVar", tkProcVar: 8, "9": "tkMethod", tkMethod: 9, "10": "tkArray", tkArray: 10, "11": "tkDynArray", tkDynArray: 11, "12": "tkRecord", tkRecord: 12, "13": "tkClass", tkClass: 13, "14": "tkClassRef", tkClassRef: 14, "15": "tkPointer", tkPointer: 15, "16": "tkJSValue", tkJSValue: 16, "17": "tkRefToProcVar", tkRefToProcVar: 17, "18": "tkInterface", tkInterface: 18};
+  $mod.$rtti.$Enum("TTypeKind",{minvalue: 0, maxvalue: 18, ordtype: 1, enumtype: this.TTypeKind});
+  $mod.$rtti.$Set("TTypeKinds",{comptype: $mod.$rtti["TTypeKind"]});
+  this.tkFloat = $mod.TTypeKind.tkDouble;
+  this.tkProcedure = $mod.TTypeKind.tkProcVar;
+  this.tkAny = rtl.createSet(null,$mod.TTypeKind.tkUnknown,$mod.TTypeKind.tkInterface);
+  this.tkMethods = rtl.createSet($mod.TTypeKind.tkMethod);
+  this.tkProperties = rtl.diffSet(rtl.diffSet($mod.tkAny,$mod.tkMethods),rtl.createSet($mod.TTypeKind.tkUnknown));
+  $mod.$rtti.$ClassRef("TTypeInfoClassOf",{instancetype: $mod.$rtti["TTypeInfo"]});
+  this.TOrdType = {"0": "otSByte", otSByte: 0, "1": "otUByte", otUByte: 1, "2": "otSWord", otSWord: 2, "3": "otUWord", otUWord: 3, "4": "otSLong", otSLong: 4, "5": "otULong", otULong: 5, "6": "otSIntDouble", otSIntDouble: 6, "7": "otUIntDouble", otUIntDouble: 7};
+  $mod.$rtti.$Enum("TOrdType",{minvalue: 0, maxvalue: 7, ordtype: 1, enumtype: this.TOrdType});
+  this.TParamFlag = {"0": "pfVar", pfVar: 0, "1": "pfConst", pfConst: 1, "2": "pfOut", pfOut: 2, "3": "pfArray", pfArray: 3};
+  $mod.$rtti.$Enum("TParamFlag",{minvalue: 0, maxvalue: 3, ordtype: 1, enumtype: this.TParamFlag});
+  $mod.$rtti.$Set("TParamFlags",{comptype: $mod.$rtti["TParamFlag"]});
+  $mod.$rtti.$DynArray("TProcedureParams",{eltype: $mod.$rtti["TProcedureParam"]});
+  this.TProcedureFlag = {"0": "pfStatic", pfStatic: 0, "1": "pfVarargs", pfVarargs: 1, "2": "pfExternal", pfExternal: 2};
+  $mod.$rtti.$Enum("TProcedureFlag",{minvalue: 0, maxvalue: 2, ordtype: 1, enumtype: this.TProcedureFlag});
+  $mod.$rtti.$Set("TProcedureFlags",{comptype: $mod.$rtti["TProcedureFlag"]});
+  this.TMethodKind = {"0": "mkProcedure", mkProcedure: 0, "1": "mkFunction", mkFunction: 1, "2": "mkConstructor", mkConstructor: 2, "3": "mkDestructor", mkDestructor: 3, "4": "mkClassProcedure", mkClassProcedure: 4, "5": "mkClassFunction", mkClassFunction: 5};
+  $mod.$rtti.$Enum("TMethodKind",{minvalue: 0, maxvalue: 5, ordtype: 1, enumtype: this.TMethodKind});
+  $mod.$rtti.$Set("TMethodKinds",{comptype: $mod.$rtti["TMethodKind"]});
+  this.TTypeMemberKind = {"0": "tmkUnknown", tmkUnknown: 0, "1": "tmkField", tmkField: 1, "2": "tmkMethod", tmkMethod: 2, "3": "tmkProperty", tmkProperty: 3};
+  $mod.$rtti.$Enum("TTypeMemberKind",{minvalue: 0, maxvalue: 3, ordtype: 1, enumtype: this.TTypeMemberKind});
+  $mod.$rtti.$Set("TTypeMemberKinds",{comptype: $mod.$rtti["TTypeMemberKind"]});
+  $mod.$rtti.$DynArray("TTypeMemberDynArray",{eltype: $mod.$rtti["TTypeMember"]});
+  $mod.$rtti.$DynArray("TTypeMemberMethodDynArray",{eltype: $mod.$rtti["TTypeMemberMethod"]});
+  this.pfGetFunction = 1;
+  this.pfSetProcedure = 2;
+  this.pfStoredFalse = 4;
+  this.pfStoredField = 8;
+  this.pfStoredFunction = 12;
+  this.pfHasIndex = 16;
+  $mod.$rtti.$DynArray("TTypeMemberPropertyDynArray",{eltype: $mod.$rtti["TTypeMemberProperty"]});
+  rtl.createClass($mod,"EPropertyError",pas.SysUtils.Exception,function () {
+  });
+  this.GetClassMembers = function (aTIClass) {
+    var Result = [];
+    var C = null;
+    var i = 0;
+    var PropName = "";
+    var Names = null;
+    Result = [];
+    Names = new Object();
+    C = aTIClass;
+    while (C !== null) {
+      for (var $l1 = 0, $end2 = rtl.length(C.names) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        PropName = C.names[i];
+        if (Names.hasOwnProperty(PropName)) continue;
+        Result.push(C.members[PropName]);
+        Names[PropName] = true;
+      };
+      C = C.ancestor;
+    };
+    return Result;
+  };
+  this.GetClassMember = function (aTIClass, aName) {
+    var Result = null;
+    var C = null;
+    var i = 0;
+    C = aTIClass;
+    while (C !== null) {
+      if (C.members.hasOwnProperty(aName)) return C.members[aName];
+      C = C.ancestor;
+    };
+    C = aTIClass;
+    while (C !== null) {
+      for (var $l1 = 0, $end2 = rtl.length(C.names) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (pas.SysUtils.CompareText(C.names[i],aName) === 0) return C.members[C.names[i]];
+      };
+      C = C.ancestor;
+    };
+    Result = null;
+    return Result;
+  };
+  this.GetInstanceMethod = function (Instance, aName) {
+    var Result = null;
+    var TI = null;
+    if (Instance === null) return null;
+    TI = $mod.GetClassMember(Instance.$rtti,aName);
+    if (!rtl.isExt(TI,rtl.tTypeMemberMethod)) return null;
+    Result = rtl.createCallback(Instance,TI.name);
+    return Result;
+  };
+  this.GetClassMethods = function (aTIClass) {
+    var Result = [];
+    var C = null;
+    var i = 0;
+    var Cnt = 0;
+    var j = 0;
+    Cnt = 0;
+    C = aTIClass;
+    while (C !== null) {
+      Cnt += C.methods.length;
+      C = C.ancestor;
+    };
+    Result = rtl.arraySetLength(Result,null,Cnt);
+    C = aTIClass;
+    i = 0;
+    while (C !== null) {
+      for (var $l1 = 0, $end2 = C.methods.length - 1; $l1 <= $end2; $l1++) {
+        j = $l1;
+        Result[i] = C.members[C.methods[j]];
+        i += 1;
+      };
+      C = C.ancestor;
+    };
+    return Result;
+  };
+  this.GetInterfaceMembers = function (aTIInterface) {
+    var Result = [];
+    var Intf = null;
+    var i = 0;
+    var Cnt = 0;
+    var j = 0;
+    Cnt = 0;
+    Intf = aTIInterface;
+    while (Intf !== null) {
+      Cnt += rtl.length(Intf.names);
+      Intf = Intf.ancestor;
+    };
+    Result = rtl.arraySetLength(Result,null,Cnt);
+    Intf = aTIInterface;
+    i = 0;
+    while (Intf !== null) {
+      for (var $l1 = 0, $end2 = rtl.length(Intf.names) - 1; $l1 <= $end2; $l1++) {
+        j = $l1;
+        Result[i] = Intf.members[Intf.names[j]];
+        i += 1;
+      };
+      Intf = Intf.ancestor;
+    };
+    return Result;
+  };
+  this.GetInterfaceMember = function (aTIInterface, aName) {
+    var Result = null;
+    var Intf = null;
+    var i = 0;
+    Intf = aTIInterface;
+    while (Intf !== null) {
+      if (Intf.members.hasOwnProperty(aName)) return Intf.members[aName];
+      Intf = Intf.ancestor;
+    };
+    Intf = aTIInterface;
+    while (Intf !== null) {
+      for (var $l1 = 0, $end2 = rtl.length(Intf.names) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (pas.SysUtils.CompareText(Intf.names[i],aName) === 0) return Intf.members[Intf.names[i]];
+      };
+      Intf = Intf.ancestor;
+    };
+    Result = null;
+    return Result;
+  };
+  this.GetInterfaceMethods = function (aTIInterface) {
+    var Result = [];
+    var Intf = null;
+    var i = 0;
+    var Cnt = 0;
+    var j = 0;
+    Cnt = 0;
+    Intf = aTIInterface;
+    while (Intf !== null) {
+      Cnt += Intf.methods.length;
+      Intf = Intf.ancestor;
+    };
+    Result = rtl.arraySetLength(Result,null,Cnt);
+    Intf = aTIInterface;
+    i = 0;
+    while (Intf !== null) {
+      for (var $l1 = 0, $end2 = Intf.methods.length - 1; $l1 <= $end2; $l1++) {
+        j = $l1;
+        Result[i] = Intf.members[Intf.methods[j]];
+        i += 1;
+      };
+      Intf = Intf.ancestor;
+    };
+    return Result;
+  };
+  this.GetPropInfos = function (aTIClass) {
+    var Result = [];
+    var C = null;
+    var i = 0;
+    var Names = null;
+    var PropName = "";
+    Result = [];
+    C = aTIClass;
+    Names = new Object();
+    while (C !== null) {
+      for (var $l1 = 0, $end2 = C.properties.length - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        PropName = C.properties[i];
+        if (Names.hasOwnProperty(PropName)) continue;
+        Result.push(C.members[PropName]);
+        Names[PropName] = true;
+      };
+      C = C.ancestor;
+    };
+    return Result;
+  };
+  this.GetPropList = function (aTIClass, TypeKinds, Sorted) {
+    var Result = [];
+    function NameSort(a, b) {
+      var Result = 0;
+      if (rtl.getObject(a).name < rtl.getObject(b).name) {
+        Result = -1}
+       else if (rtl.getObject(a).name > rtl.getObject(b).name) {
+        Result = 1}
+       else Result = 0;
+      return Result;
+    };
+    var C = null;
+    var i = 0;
+    var Names = null;
+    var PropName = "";
+    var Prop = null;
+    Result = [];
+    C = aTIClass;
+    Names = new Object();
+    while (C !== null) {
+      for (var $l1 = 0, $end2 = C.properties.length - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        PropName = C.properties[i];
+        if (Names.hasOwnProperty(PropName)) continue;
+        Prop = C.members[PropName];
+        if (!(Prop.typeinfo.kind in TypeKinds)) continue;
+        Result.push(Prop);
+        Names[PropName] = true;
+      };
+      C = C.ancestor;
+    };
+    if (Sorted) Result.sort(NameSort);
+    return Result;
+  };
+  this.GetPropList$1 = function (aTIClass) {
+    var Result = [];
+    Result = $mod.GetPropInfos(aTIClass);
+    return Result;
+  };
+  this.GetPropList$2 = function (AClass) {
+    var Result = [];
+    Result = $mod.GetPropInfos(AClass.$rtti);
+    return Result;
+  };
+  this.GetPropList$3 = function (Instance) {
+    var Result = [];
+    Result = $mod.GetPropList$2(Instance.$class.ClassType());
+    return Result;
+  };
+  this.GetPropInfo = function (TI, PropName) {
+    var Result = null;
+    var m = null;
+    var i = 0;
+    var C = null;
+    C = TI;
+    while (C !== null) {
+      m = C.members[PropName];
+      if (rtl.isExt(m,rtl.tTypeMemberProperty)) return m;
+      C = C.ancestor;
+    };
+    Result = null;
+    do {
+      for (var $l1 = 0, $end2 = TI.properties.length - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (pas.SysUtils.CompareText(PropName,TI.properties[i]) === 0) {
+          m = TI.members[TI.properties[i]];
+          if (rtl.isExt(m,rtl.tTypeMemberProperty)) Result = m;
+          return Result;
+        };
+      };
+      TI = TI.ancestor;
+    } while (!(TI === null));
+    return Result;
+  };
+  this.GetPropInfo$1 = function (TI, PropName, Kinds) {
+    var Result = null;
+    Result = $mod.GetPropInfo(TI,PropName);
+    if ((rtl.neSet(Kinds,{}) && (Result !== null)) && !(Result.typeinfo.kind in Kinds)) Result = null;
+    return Result;
+  };
+  this.GetPropInfo$2 = function (Instance, PropName) {
+    var Result = null;
+    Result = $mod.GetPropInfo$1(Instance.$rtti,PropName,{});
+    return Result;
+  };
+  this.GetPropInfo$3 = function (Instance, PropName, Kinds) {
+    var Result = null;
+    Result = $mod.GetPropInfo$1(Instance.$rtti,PropName,Kinds);
+    return Result;
+  };
+  this.GetPropInfo$4 = function (aClass, PropName) {
+    var Result = null;
+    Result = $mod.GetPropInfo$1(aClass.$rtti,PropName,{});
+    return Result;
+  };
+  this.GetPropInfo$5 = function (aClass, PropName, Kinds) {
+    var Result = null;
+    Result = $mod.GetPropInfo$1(aClass.$rtti,PropName,Kinds);
+    return Result;
+  };
+  this.FindPropInfo = function (Instance, PropName) {
+    var Result = null;
+    Result = $mod.GetPropInfo(Instance.$rtti,PropName);
+    if (Result === null) throw $mod.EPropertyError.$create("CreateFmt",[pas.RTLConsts.SErrPropertyNotFound,[PropName]]);
+    return Result;
+  };
+  this.FindPropInfo$1 = function (Instance, PropName, Kinds) {
+    var Result = null;
+    Result = $mod.GetPropInfo$1(Instance.$rtti,PropName,Kinds);
+    if (Result === null) throw $mod.EPropertyError.$create("CreateFmt",[pas.RTLConsts.SErrPropertyNotFound,[PropName]]);
+    return Result;
+  };
+  this.FindPropInfo$2 = function (aClass, PropName) {
+    var Result = null;
+    Result = $mod.GetPropInfo(aClass.$rtti,PropName);
+    if (Result === null) throw $mod.EPropertyError.$create("CreateFmt",[pas.RTLConsts.SErrPropertyNotFound,[PropName]]);
+    return Result;
+  };
+  this.FindPropInfo$3 = function (aClass, PropName, Kinds) {
+    var Result = null;
+    Result = $mod.GetPropInfo$1(aClass.$rtti,PropName,Kinds);
+    if (Result === null) throw $mod.EPropertyError.$create("CreateFmt",[pas.RTLConsts.SErrPropertyNotFound,[PropName]]);
+    return Result;
+  };
+  this.IsStoredProp = function (Instance, PropInfo) {
+    var Result = false;
+    var $tmp1 = PropInfo.flags & 12;
+    if ($tmp1 === 0) {
+      Result = true}
+     else if ($tmp1 === 4) {
+      Result = false}
+     else if ($tmp1 === 8) {
+      Result = !(Instance[PropInfo.stored] == false)}
+     else {
+      Result = Instance[PropInfo.stored]();
+    };
+    return Result;
+  };
+  this.IsStoredProp$1 = function (Instance, PropName) {
+    var Result = false;
+    Result = $mod.IsStoredProp(Instance,$mod.FindPropInfo(Instance,PropName));
+    return Result;
+  };
+  this.IsPublishedProp = function (Instance, PropName) {
+    var Result = false;
+    Result = $mod.GetPropInfo$2(Instance,PropName) !== null;
+    return Result;
+  };
+  this.IsPublishedProp$1 = function (aClass, PropName) {
+    var Result = false;
+    Result = $mod.GetPropInfo$4(aClass,PropName) !== null;
+    return Result;
+  };
+  this.PropType = function (Instance, PropName) {
+    var Result = 0;
+    Result = $mod.FindPropInfo(Instance,PropName).typeinfo.kind;
+    return Result;
+  };
+  this.PropType$1 = function (aClass, PropName) {
+    var Result = 0;
+    Result = $mod.FindPropInfo$2(aClass,PropName).typeinfo.kind;
+    return Result;
+  };
+  this.PropIsType = function (Instance, PropName, TypeKind) {
+    var Result = false;
+    Result = $mod.PropType(Instance,PropName) === TypeKind;
+    return Result;
+  };
+  this.PropIsType$1 = function (aClass, PropName, TypeKind) {
+    var Result = false;
+    Result = $mod.PropType$1(aClass,PropName) === TypeKind;
+    return Result;
+  };
+  this.GetJSValueProp = function (Instance, PropName) {
+    var Result = undefined;
+    Result = $mod.GetJSValueProp$1(Instance,$mod.FindPropInfo(Instance,PropName));
+    return Result;
+  };
+  this.GetJSValueProp$1 = function (Instance, PropInfo) {
+    var Result = undefined;
+    var gk = 0;
+    gk = $impl.GetPropGetterKind(PropInfo);
+    var $tmp1 = gk;
+    if ($tmp1 === $impl.TGetterKind.gkNone) {
+      throw $mod.EPropertyError.$create("CreateFmt",[pas.RTLConsts.SCantReadPropertyS,[PropInfo.name]])}
+     else if ($tmp1 === $impl.TGetterKind.gkField) {
+      Result = Instance[PropInfo.getter]}
+     else if ($tmp1 === $impl.TGetterKind.gkFunction) {
+      if ((16 & PropInfo.flags) > 0) {
+        Result = Instance[PropInfo.getter](PropInfo.index)}
+       else Result = Instance[PropInfo.getter]()}
+     else if ($tmp1 === $impl.TGetterKind.gkFunctionWithParams) throw $mod.EPropertyError.$create("CreateFmt",[pas.RTLConsts.SIndexedPropertyNeedsParams,[PropInfo.name]]);
+    return Result;
+  };
+  this.SetJSValueProp = function (Instance, PropName, Value) {
+    $mod.SetJSValueProp$1(Instance,$mod.FindPropInfo(Instance,PropName),Value);
+  };
+  this.SetJSValueProp$1 = function (Instance, PropInfo, Value) {
+    var sk = 0;
+    sk = $impl.GetPropSetterKind(PropInfo);
+    var $tmp1 = sk;
+    if ($tmp1 === $impl.TSetterKind.skNone) {
+      throw $mod.EPropertyError.$create("CreateFmt",[pas.RTLConsts.SCantWritePropertyS,[PropInfo.name]])}
+     else if ($tmp1 === $impl.TSetterKind.skField) {
+      Instance[PropInfo.setter] = Value}
+     else if ($tmp1 === $impl.TSetterKind.skProcedure) {
+      if ((16 & PropInfo.flags) > 0) {
+        Instance[PropInfo.setter](PropInfo.index,Value)}
+       else Instance[PropInfo.setter](Value)}
+     else if ($tmp1 === $impl.TSetterKind.skProcedureWithParams) throw $mod.EPropertyError.$create("CreateFmt",[pas.RTLConsts.SIndexedPropertyNeedsParams,[PropInfo.name]]);
+  };
+  this.GetNativeIntProp = function (Instance, PropName) {
+    var Result = 0;
+    Result = $mod.GetNativeIntProp$1(Instance,$mod.FindPropInfo(Instance,PropName));
+    return Result;
+  };
+  this.GetNativeIntProp$1 = function (Instance, PropInfo) {
+    var Result = 0;
+    Result = Math.floor($mod.GetJSValueProp$1(Instance,PropInfo));
+    return Result;
+  };
+  this.SetNativeIntProp = function (Instance, PropName, Value) {
+    $mod.SetJSValueProp$1(Instance,$mod.FindPropInfo(Instance,PropName),Value);
+  };
+  this.SetNativeIntProp$1 = function (Instance, PropInfo, Value) {
+    $mod.SetJSValueProp$1(Instance,PropInfo,Value);
+  };
+  this.GetOrdProp = function (Instance, PropName) {
+    var Result = 0;
+    Result = $mod.GetOrdProp$1(Instance,$mod.FindPropInfo(Instance,PropName));
+    return Result;
+  };
+  this.GetOrdProp$1 = function (Instance, PropInfo) {
+    var Result = 0;
+    var o = null;
+    var Key = "";
+    var n = 0;
+    if (PropInfo.typeinfo.kind === $mod.TTypeKind.tkSet) {
+      o = rtl.getObject($mod.GetJSValueProp$1(Instance,PropInfo));
+      Result = 0;
+      for (Key in o) {
+        n = parseInt(Key,10);
+        if (n < 32) Result = Result + (1 << n);
+      };
+    } else Result = Math.floor($mod.GetJSValueProp$1(Instance,PropInfo));
+    return Result;
+  };
+  this.SetOrdProp = function (Instance, PropName, Value) {
+    $mod.SetOrdProp$1(Instance,$mod.FindPropInfo(Instance,PropName),Value);
+  };
+  this.SetOrdProp$1 = function (Instance, PropInfo, Value) {
+    var o = null;
+    var i = 0;
+    if (PropInfo.typeinfo.kind === $mod.TTypeKind.tkSet) {
+      o = new Object();
+      for (i = 0; i <= 31; i++) if (((1 << i) & Value) > 0) o["" + i] = true;
+      $mod.SetJSValueProp$1(Instance,PropInfo,o);
+    } else $mod.SetJSValueProp$1(Instance,PropInfo,Value);
+  };
+  this.GetEnumProp = function (Instance, PropName) {
+    var Result = "";
+    Result = $mod.GetEnumProp$1(Instance,$mod.FindPropInfo(Instance,PropName));
+    return Result;
+  };
+  this.GetEnumProp$1 = function (Instance, PropInfo) {
+    var Result = "";
+    var n = 0;
+    var TIEnum = null;
+    TIEnum = rtl.asExt(PropInfo.typeinfo,rtl.tTypeInfoEnum);
+    n = Math.floor($mod.GetJSValueProp$1(Instance,PropInfo));
+    if ((n >= TIEnum.minvalue) && (n <= TIEnum.maxvalue)) {
+      Result = TIEnum.enumtype[n]}
+     else Result = "" + n;
+    return Result;
+  };
+  this.SetEnumProp = function (Instance, PropName, Value) {
+    $mod.SetEnumProp$1(Instance,$mod.FindPropInfo(Instance,PropName),Value);
+  };
+  this.SetEnumProp$1 = function (Instance, PropInfo, Value) {
+    var TIEnum = null;
+    var n = 0;
+    TIEnum = rtl.asExt(PropInfo.typeinfo,rtl.tTypeInfoEnum);
+    n = TIEnum.enumtype[Value];
+    if (!pas.JS.isUndefined(n)) $mod.SetJSValueProp$1(Instance,PropInfo,n);
+  };
+  this.GetEnumName = function (TypeInfo, Value) {
+    var Result = "";
+    Result = TypeInfo.enumtype[Value];
+    return Result;
+  };
+  this.GetEnumValue = function (TypeInfo, Name) {
+    var Result = 0;
+    Result = TypeInfo.enumtype[Name];
+    return Result;
+  };
+  this.GetEnumNameCount = function (TypeInfo) {
+    var Result = 0;
+    var o = null;
+    var l = 0;
+    var r = 0;
+    o = TypeInfo.enumtype;
+    Result = 1;
+    while (o.hasOwnProperty("" + Result)) Result = Result * 2;
+    l = Math.floor(Result / 2);
+    r = Result;
+    while (l <= r) {
+      Result = Math.floor((l + r) / 2);
+      if (o.hasOwnProperty("" + Result)) {
+        l = Result + 1}
+       else r = Result - 1;
+    };
+    if (o.hasOwnProperty("" + Result)) Result += 1;
+    return Result;
+  };
+  this.GetSetProp = function (Instance, PropName) {
+    var Result = "";
+    Result = $mod.GetSetProp$1(Instance,$mod.FindPropInfo(Instance,PropName));
+    return Result;
+  };
+  this.GetSetProp$1 = function (Instance, PropInfo) {
+    var Result = "";
+    var o = null;
+    var key = "";
+    var Value = "";
+    var n = 0;
+    var TIEnum = null;
+    var TISet = null;
+    Result = "";
+    TISet = rtl.asExt(PropInfo.typeinfo,rtl.tTypeInfoSet);
+    TIEnum = null;
+    if (rtl.isExt(TISet.comptype,rtl.tTypeInfoEnum)) TIEnum = TISet.comptype;
+    o = rtl.getObject($mod.GetJSValueProp$1(Instance,PropInfo));
+    for (key in o) {
+      n = parseInt(key,10);
+      if (((TIEnum !== null) && (n >= TIEnum.minvalue)) && (n <= TIEnum.maxvalue)) {
+        Value = TIEnum.enumtype[n]}
+       else Value = "" + n;
+      if (Result !== "") Result = Result + ",";
+      Result = Result + Value;
+    };
+    Result = ("[" + Result) + "]";
+    return Result;
+  };
+  this.GetSetPropArray = function (Instance, PropName) {
+    var Result = [];
+    Result = $mod.GetSetPropArray$1(Instance,$mod.FindPropInfo(Instance,PropName));
+    return Result;
+  };
+  this.GetSetPropArray$1 = function (Instance, PropInfo) {
+    var Result = [];
+    var o = null;
+    var Key = "";
+    Result = [];
+    o = rtl.getObject($mod.GetJSValueProp$1(Instance,PropInfo));
+    for (Key in o) Result.push(parseInt(Key,10));
+    return Result;
+  };
+  this.SetSetPropArray = function (Instance, PropName, Arr) {
+    $mod.SetSetPropArray$1(Instance,$mod.FindPropInfo(Instance,PropName),Arr);
+  };
+  this.SetSetPropArray$1 = function (Instance, PropInfo, Arr) {
+    var o = null;
+    var i = 0;
+    o = new Object();
+    for (var $in1 = Arr, $l2 = 0, $end3 = rtl.length($in1) - 1; $l2 <= $end3; $l2++) {
+      i = $in1[$l2];
+      o["" + i] = true;
+    };
+    $mod.SetJSValueProp$1(Instance,PropInfo,o);
+  };
+  this.GetStrProp = function (Instance, PropName) {
+    var Result = "";
+    Result = $mod.GetStrProp$1(Instance,$mod.FindPropInfo(Instance,PropName));
+    return Result;
+  };
+  this.GetStrProp$1 = function (Instance, PropInfo) {
+    var Result = "";
+    Result = "" + $mod.GetJSValueProp$1(Instance,PropInfo);
+    return Result;
+  };
+  this.SetStrProp = function (Instance, PropName, Value) {
+    $mod.SetStrProp$1(Instance,$mod.FindPropInfo(Instance,PropName),Value);
+  };
+  this.SetStrProp$1 = function (Instance, PropInfo, Value) {
+    $mod.SetJSValueProp$1(Instance,PropInfo,Value);
+  };
+  this.GetStringProp = function (Instance, PropName) {
+    var Result = "";
+    Result = $mod.GetStrProp(Instance,PropName);
+    return Result;
+  };
+  this.GetStringProp$1 = function (Instance, PropInfo) {
+    var Result = "";
+    Result = $mod.GetStrProp$1(Instance,PropInfo);
+    return Result;
+  };
+  this.SetStringProp = function (Instance, PropName, Value) {
+    $mod.SetStrProp(Instance,PropName,Value);
+  };
+  this.SetStringProp$1 = function (Instance, PropInfo, Value) {
+    $mod.SetStrProp$1(Instance,PropInfo,Value);
+  };
+  this.GetBoolProp = function (Instance, PropName) {
+    var Result = false;
+    Result = $mod.GetBoolProp$1(Instance,$mod.FindPropInfo(Instance,PropName));
+    return Result;
+  };
+  this.GetBoolProp$1 = function (Instance, PropInfo) {
+    var Result = false;
+    Result = !($mod.GetJSValueProp$1(Instance,PropInfo) == false);
+    return Result;
+  };
+  this.SetBoolProp = function (Instance, PropName, Value) {
+    $mod.SetBoolProp$1(Instance,$mod.FindPropInfo(Instance,PropName),Value);
+  };
+  this.SetBoolProp$1 = function (Instance, PropInfo, Value) {
+    $mod.SetJSValueProp$1(Instance,PropInfo,Value);
+  };
+  this.GetObjectProp = function (Instance, PropName) {
+    var Result = null;
+    Result = $mod.GetObjectProp$2(Instance,$mod.FindPropInfo(Instance,PropName));
+    return Result;
+  };
+  this.GetObjectProp$1 = function (Instance, PropName, MinClass) {
+    var Result = null;
+    Result = $mod.GetObjectProp$2(Instance,$mod.FindPropInfo(Instance,PropName));
+    if ((MinClass !== null) && (Result !== null)) if (!Result.$class.InheritsFrom(MinClass)) Result = null;
+    return Result;
+  };
+  this.GetObjectProp$2 = function (Instance, PropInfo) {
+    var Result = null;
+    Result = $mod.GetObjectProp$3(Instance,PropInfo,null);
+    return Result;
+  };
+  this.GetObjectProp$3 = function (Instance, PropInfo, MinClass) {
+    var Result = null;
+    var O = null;
+    O = rtl.getObject($mod.GetJSValueProp$1(Instance,PropInfo));
+    if ((MinClass !== null) && !O.$class.InheritsFrom(MinClass)) {
+      Result = null}
+     else Result = O;
+    return Result;
+  };
+  this.SetObjectProp = function (Instance, PropName, Value) {
+    $mod.SetObjectProp$1(Instance,$mod.FindPropInfo(Instance,PropName),Value);
+  };
+  this.SetObjectProp$1 = function (Instance, PropInfo, Value) {
+    $mod.SetJSValueProp$1(Instance,PropInfo,Value);
+  };
+  this.GetFloatProp = function (Instance, PropName) {
+    var Result = 0.0;
+    Result = $mod.GetFloatProp$1(Instance,$mod.FindPropInfo(Instance,PropName));
+    return Result;
+  };
+  this.GetFloatProp$1 = function (Instance, PropInfo) {
+    var Result = 0.0;
+    Result = rtl.getNumber($mod.GetJSValueProp$1(Instance,PropInfo));
+    return Result;
+  };
+  this.SetFloatProp = function (Instance, PropName, Value) {
+    $mod.SetFloatProp$1(Instance,$mod.FindPropInfo(Instance,PropName),Value);
+  };
+  this.SetFloatProp$1 = function (Instance, PropInfo, Value) {
+    $mod.SetJSValueProp$1(Instance,PropInfo,Value);
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.TGetterKind = {"0": "gkNone", gkNone: 0, "1": "gkField", gkField: 1, "2": "gkFunction", gkFunction: 2, "3": "gkFunctionWithParams", gkFunctionWithParams: 3};
+  $impl.GetPropGetterKind = function (PropInfo) {
+    var Result = 0;
+    if (PropInfo.getter === "") {
+      Result = $impl.TGetterKind.gkNone}
+     else if ((1 & PropInfo.flags) > 0) {
+      if (rtl.length(PropInfo.params) > 0) {
+        Result = $impl.TGetterKind.gkFunctionWithParams}
+       else Result = $impl.TGetterKind.gkFunction;
+    } else Result = $impl.TGetterKind.gkField;
+    return Result;
+  };
+  $impl.TSetterKind = {"0": "skNone", skNone: 0, "1": "skField", skField: 1, "2": "skProcedure", skProcedure: 2, "3": "skProcedureWithParams", skProcedureWithParams: 3};
+  $impl.GetPropSetterKind = function (PropInfo) {
+    var Result = 0;
+    if (PropInfo.setter === "") {
+      Result = $impl.TSetterKind.skNone}
+     else if ((2 & PropInfo.flags) > 0) {
+      if (rtl.length(PropInfo.params) > 0) {
+        Result = $impl.TSetterKind.skProcedureWithParams}
+       else Result = $impl.TSetterKind.skProcedure;
+    } else Result = $impl.TSetterKind.skField;
+    return Result;
+  };
+});
+rtl.module("XScrollBox",["System","Classes","SysUtils","NodeUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXScrollBox",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.GetScrollType = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ScrollType",true).AttribValue;
+      return Result;
+    };
+    this.SetScrollType = function (AValue) {
+      var AVal = "";
+      this.myNode.SetAttributeValue$2("ScrollType",AValue);
+      AVal = pas.SysUtils.UpperCase(AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        ob.style.overlow='none';
+        if ((AVal=='BOTH')||(AVal=='RIGHT')) {ob.style.overflowY='scroll';}
+        if ((AVal=='BOTH')||(AVal=='BOTTOM')) {ob.style.overflowX='scroll';}
+        };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.FAlignChildrenVertical = true;
+      this.SetMyEventTypes();
+      this.FIsContainer = true;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("ScrollType",3,rtl.string,"GetScrollType","SetScrollType");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerWidth","String","300px","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerHeight","String","300px","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BgColor","Color","#FFFFFF","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ScrollType","String","Both","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"HTMLClasses","String","","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"ScrollType",pas.NodeUtils.ScrollBarsOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelText");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXScrollBox";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ScrollType = "";
+    var OnClickString = "";
+    ScrollType = pas.SysUtils.UpperCase(MyNode.GetAttribute("ScrollType",true).AttribValue);
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value);" ';
+    try{
+    
+          var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+          var HTMLString='';
+          var wrapperid = NameSpace+ScreenObjectName;
+          var MyObjectName=wrapperid+'Contents';
+          var oflow = ''
+          if ((ScrollType=='BOTH')||(ScrollType=='RIGHT')) {oflow = 'overflow-y:scroll; '}
+          if ((ScrollType=='BOTH')||(ScrollType=='BOTTOM')) {oflow = oflow+'overflow-x:scroll; '}
+    
+          HTMLString = '<div id='+MyObjectName+ '  class="vboxNoStretch '+NameSpace+ScreenObjectName+'" style="'+oflow+' height:100%; width:100%;" ' +
+                       OnClickString +
+                       '></div> ';
+    
+    
+          var wrapper=document.getElementById(wrapperid);
+          wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+        }
+        catch(err) { alert(err.message+'  in XScrollBox.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXScrollBox.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XTabControl",["System","Classes","SysUtils","NodeUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.ChangeTabPage = function (nodeId, parentNodeId, NameSpace) {
+    $impl.openTab(nodeId,parentNodeId,NameSpace);
+  };
+  rtl.createClass($mod,"TXTabControl",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("Change");
+    };
+    this.GetmyTabIndex = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("TabIndex",true).AttribValue);
+      return Result;
+    };
+    this.SetmyTabIndex = function (AValue) {
+      var myTabSheetNode = "";
+      var idx = 0;
+      if (this.myNode !== null) {
+        idx = AValue;
+        if (rtl.length(this.myNode.ChildNodes) > 0) {
+          if ((idx >= rtl.length(this.myNode.ChildNodes)) || (idx < 0)) idx = 0;
+        };
+        this.myNode.SetAttributeValue$2("TabIndex",pas.SysUtils.IntToStr(idx));
+        if ((idx > -1) && (rtl.length(this.myNode.ChildNodes) > idx)) {
+          myTabSheetNode = this.myNode.ChildNodes[idx].NodeName;
+          $impl.openTab(myTabSheetNode,this.NodeName,this.NameSpace);
+        };
+      };
+    };
+    this.IndexOfPage = function (PageId) {
+      var Result = 0;
+      var i = 0;
+      var idx = 0;
+      idx = -1;
+      for (var $l1 = 0, $end2 = rtl.length(this.myNode.ChildNodes) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (this.myNode.ChildNodes[i].NodeName === PageId) idx = i;
+      };
+      Result = idx;
+      return Result;
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.FAlignChildrenVertical = true;
+      this.SetMyEventTypes();
+      this.FIsContainer = true;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.ControlDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("TabIndex",3,rtl.longint,"GetmyTabIndex","SetmyTabIndex");
+  });
+  rtl.createClass($mod,"TXTabSheet",pas.WrapperPanel.TWrapperPanel,function () {
+    this.GetCaption = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Caption",true).AttribValue;
+      return Result;
+    };
+    this.SetCaption = function (AValue) {
+      this.myNode.SetAttributeValue$2("Caption",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Button');
+      if (ob!=null) {
+        ob.innerHTML=AValue;
+      };
+    };
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = "TXTabSheet";
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = true;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.PageDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("Caption",3,rtl.string,"GetCaption","SetCaption");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.ControlDefaultAttribs;
+      }, set: function (v) {
+        this.p.ControlDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.ControlDefaultAttribs;
+      }, set: function (v) {
+        this.p.ControlDefaultAttribs = v;
+      }},"ContainerWidth","String","300px","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.ControlDefaultAttribs;
+      }, set: function (v) {
+        this.p.ControlDefaultAttribs = v;
+      }},"ContainerHeight","String","300px","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.ControlDefaultAttribs;
+      }, set: function (v) {
+        this.p.ControlDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.ControlDefaultAttribs;
+      }, set: function (v) {
+        this.p.ControlDefaultAttribs = v;
+      }},"BgColor","Color","#FFFFFF","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.ControlDefaultAttribs;
+      }, set: function (v) {
+        this.p.ControlDefaultAttribs = v;
+      }},"TabIndex","Integer","-1","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.ControlDefaultAttribs;
+      }, set: function (v) {
+        this.p.ControlDefaultAttribs = v;
+      }},"HTMLClasses","String","","",false);
+    pas.NodeUtils.AddDefaultsToTable("TXTabControl",$impl.ControlDefaultAttribs);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.PageDefaultAttribs;
+      }, set: function (v) {
+        this.p.PageDefaultAttribs = v;
+      }},"Hint","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.PageDefaultAttribs;
+      }, set: function (v) {
+        this.p.PageDefaultAttribs = v;
+      }},"IsVisible","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.PageDefaultAttribs;
+      }, set: function (v) {
+        this.p.PageDefaultAttribs = v;
+      }},"HTMLClasses","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.PageDefaultAttribs;
+      }, set: function (v) {
+        this.p.PageDefaultAttribs = v;
+      }},"BgColor","Color","#FFFFFF","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.PageDefaultAttribs;
+      }, set: function (v) {
+        this.p.PageDefaultAttribs = v;
+      }},"Caption","String","NewPage","",false);
+    pas.NodeUtils.AddDefaultsToTable("TXTabSheet",$impl.PageDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions("TXTabControl","Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup("TXTabControl",$impl.CreateTabControlInterfaceObj,$impl.CreateTabControl);
+    pas.NodeUtils.AddNodeFuncLookup("TXTabSheet",$impl.CreateTabPageInterfaceObj,$impl.CreateTabSheet);
+    pas.WrapperPanel.SuppressDesignerProperty("TXTabControl","LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty("TXTabControl","LabelText");
+    pas.WrapperPanel.SuppressDesignerProperty("TXTabSheet","LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty("TXTabSheet","LabelText");
+  };
+},[],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXTabControl";
+  $impl.ControlDefaultAttribs = [];
+  $impl.PageDefaultAttribs = [];
+  $impl.CreateTabControl = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var OnClickString = "";
+    var BgColor = "";
+    BgColor = MyNode.GetAttribute("BgColor",true).AttribValue;
+    if (BgColor === "") BgColor = "#FFFFFF";
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value);" ';
+    try{
+        // ----------------------------------------check if the style has already been set
+        var x = document.getElementsByTagName("STYLE");
+        var StyleIsSet = false;
+        if (x.length>0){
+          for (var i=0; i<x.length; i++){
+            var y= x[i].innerHTML;
+            if (y.indexOf("div.TabPage") !=-1) { StyleIsSet =true}
+          }
+        }
+    
+        // ----------------------------------------add style if not already been set
+        if (StyleIsSet == false)
+        {
+          // ----------------------------Define the styling to be used for  "TabPage"
+             var Styletext='<style type="text/css">';
+             Styletext=Styletext+'div.TabPage { background-color:'+BgColor+'; height:98%; width:100%}';
+             Styletext=Styletext+'</style>';
+    
+          //----------------------------- now append the style declarations to the head of the HTML page
+             document.head.innerHTML = document.head.innerHTML+Styletext;
+        }
+    
+    
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        //localcontainer is an inner div.  Its id is  ScreenObjectName+'Contents'
+        // It is a child of the outer container div (wrapper)
+        //
+         var localcontainer = document.createElement("div");
+         var wrapperid = NameSpace+ScreenObjectName;
+         localcontainer.id = wrapperid+'Contents';
+         localcontainer.className = wrapperid;
+         localcontainer.style.display="inline-block;";
+         localcontainer.style.height="100%";
+         localcontainer.style.width="100%";
+         document.getElementById(wrapperid).appendChild(localcontainer);
+    
+      // -----------------------------Define the HTML to be used to create the Tab control
+      // NB --- "TabButton" and "TabPage" are the classnames used for styling the tab controls
+      // -------"TabButtonDiv" is the classname used for styling the div containing the tab buttons
+    
+        var TabButtonsDef = '<div id="'+wrapperid+'ContentsButtons'+'" class="TabButtonDiv '+NameSpace+ScreenObjectName+'"'+
+                            '>'+
+                            '</div>';
+    
+      //------------------------------------ now append the declarations to the Parent
+         localcontainer.innerHTML = localcontainer.innerHTML + TabButtonsDef;
+    
+        var wrapper=document.getElementById(wrapperid);
+      }
+      catch(err) { alert(err.message+'  in XTabControl.CreateTabControl');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.openTab = function (TabName, TabControlName, NameSpace) {
+    var myNode = null;
+    var ControlNode = null;
+    var siblingpos = 0;
+    var tabId = "";
+    var tcId = "";
+    tabId = NameSpace + TabName;
+    tcId = NameSpace + TabControlName;
+    try{
+          //alert('openTab. tabid='+tabId);
+          var butsdiv=document.getElementById(tcId+'ContentsButtons');
+          //alert('butsdiv='+butsdiv);
+          var tabsdiv=document.getElementById(tcId+'Contents');
+          //alert('tabsdiv='+tabsdiv);
+    
+          var i;
+          //alert('OpenTab  TabControl='+NameSpace+TabControlName+' tabId='+tabId);
+    
+          var x = tabsdiv.getElementsByClassName('TabPage');
+          if (x==null) {alert('cannot find element by class name TabPage');}
+          for (i = 0; i < x.length; i++) {
+             //alert('hiding '+x[i].id);
+             x[i].style.display = "none";
+          }
+    
+          var y = butsdiv.getElementsByClassName('TabButton');
+    
+          if (y==null) {alert('cannot find element by class name TabButton');}
+          for (i = 0; i <y.length; i++) {
+             y[i].style.background ='#d1d0ce';// dark background when not selected
+             y[i].style.border= 'none';
+          }
+    
+          //alert('showing '+tabId);
+          var selectedTab = document.getElementById(tabId);
+          selectedTab.style.display = "block";
+          var selectedTab = document.getElementById(tabId+'Contents');
+          selectedTab.style.display = "flex";
+    
+          var selectedTabButton = document.getElementById(tabId+'Button');
+          if (selectedTabButton==null) {alert('cannot find element by name '+TabName+'Button');}
+          selectedTabButton.style.background = '#f1f0ee'; // Same background color as the tab page when selected
+    
+          } catch(err) {alert('Error in XTabControl.OpenTab '+ err.message);};
+    myNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,TabName,NameSpace,true);
+    if (myNode !== null) {
+      ControlNode = pas.NodeUtils.FindParentOfNodeByName(pas.NodeUtils.SystemNodeTree,TabName,NameSpace,true,{get: function () {
+          return siblingpos;
+        }, set: function (v) {
+          siblingpos = v;
+        }});
+      if ((siblingpos > -1) && (ControlNode.GetmyTabIndex() !== siblingpos)) ControlNode.SetmyTabIndex(siblingpos);
+    };
+  };
+  $impl.CreateTabSheet = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ParentName = "";
+    var PageCaption = "";
+    var NodeID = "";
+    var ControlName = "";
+    var OnClickString = "";
+    ControlName = ParentNode.NodeName;
+    ParentName = (NameSpace + MyNode.GetAttribute("ParentName",false).AttribValue) + "Contents";
+    PageCaption = MyNode.GetAttribute("Caption",false).AttribValue;
+    NodeID = MyNode.NodeName;
+    OnClickString = (((((((((((((((((('onclick="event.stopPropagation();pas.XTabControl.ChangeTabPage(\'' + NodeID) + "','") + ParentNode.NodeName) + "','") + MyNode.NameSpace) + "'); ") + "pas.Events.handleEvent(null,'Change','") + ControlName) + "','") + NameSpace) + "','") + ScreenObjectName) + "');") + "pas.Events.handleEvent(null,'Click','") + NodeID) + "','") + NameSpace) + "', ''); ") + '" ';
+    try{
+        //alert('pagecaption='+PageCaption+' parent='+ParentName);
+    
+        var wrapperid = NameSpace+ScreenObjectName;
+        var ButtonsDiv = document.getElementById(ParentName+'Buttons');
+    
+        //var buttonstring ='<button id="'+wrapperid+'Button" class="'+ParentName+'TabButton" ' +
+        var buttonstring ='<button id="'+wrapperid+'Button" class="TabButton '+NameSpace+ControlName+'" ' +
+                                 OnClickString +
+                                 ' style="background:rgb(241, 240, 238);border:none" ' +
+                              '>'+PageCaption+'</button>';
+        ButtonsDiv.innerHTML = ButtonsDiv.innerHTML + buttonstring;
+    
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,'TXTabSheet',position);
+        wrapper.style.height = '100%';
+        wrapper.style.width = '100%';
+       // wrapper.className='TabPage  '+ ParentName;
+        wrapper.className='TabPage';
+    
+        //var TabContentDef ="<div id='" +wrapperid+"Contents'  class='TabPage  vboxNoStretch ' ></div>";
+        var TabContentDef ="<div id='" +wrapperid+"Contents'  class='vboxNoStretch "+NameSpace+ScreenObjectName+"' style='height:98%; width:100%' ></div>";
+    
+        wrapper.innerHTML = wrapper.innerHTML + TabContentDef;
+    
+        var wrapper=document.getElementById(wrapperid);
+      }
+      catch(err) { alert(err.message+'  in XTabControl.CreateTabSheet');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    ParentNode.SetHTMLClasses(ParentNode.GetHTMLClasses());
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateTabControlInterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXTabControl.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+  $impl.CreateTabPageInterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXTabSheet.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XForm",["System","Classes","SysUtils","NodeUtils","StringUtils","Events"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.ShowXForm = function (XFormID, modal, Namespace) {
+    var XFormNode = null;
+    var XFormObj = null;
+    XFormNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,XFormID,Namespace,true);
+    if (XFormNode !== null) {
+      XFormObj = XFormNode.ScreenObject;
+      XFormObj.SetShowing("Modal");
+    };
+  };
+  this.CloseXForm = function (XFormID, Namespace) {
+    var formNode = null;
+    formNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,XFormID,Namespace,false);
+    if (formNode !== null) {
+      formNode.ScreenObject.SetShowing("No");
+    } else {
+      pas.StringUtils.ShowMessage("problem closing " + XFormID);
+      $mod.CloseModal(XFormID,Namespace);
+    };
+  };
+  rtl.createClass($mod,"TXForm",pas.NodeUtils.TInterfaceObject,function () {
+    this.$init = function () {
+      pas.NodeUtils.TInterfaceObject.$init.call(this);
+      this.fIsSelected = false;
+      this.fIsContainer = false;
+    };
+    this.getHeight = function () {
+      var Result = 0;
+      if (this.myNode !== null) {
+        Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("Height",true).AttribValue)}
+       else Result = 0;
+      return Result;
+    };
+    this.getWidth = function () {
+      var Result = 0;
+      if (this.myNode !== null) {
+        Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("Width",true).AttribValue)}
+       else Result = 0;
+      return Result;
+    };
+    this.getTop = function () {
+      var Result = 0;
+      var AttrVal = "";
+      if (this.myNode !== null) {
+        AttrVal = this.myNode.GetAttribute("Top",true).AttribValue;
+        if (AttrVal !== "") {
+          Result = pas.SysUtils.StrToInt(AttrVal)}
+         else Result = 0;
+      } else Result = 0;
+      return Result;
+    };
+    this.getLeft = function () {
+      var Result = 0;
+      var AttrVal = "";
+      if (this.myNode !== null) {
+        AttrVal = this.myNode.GetAttribute("Left",true).AttribValue;
+        if (AttrVal !== "") {
+          Result = pas.SysUtils.StrToInt(AttrVal)}
+         else Result = 0;
+      } else Result = 0;
+      return Result;
+    };
+    this.getCaption = function () {
+      var Result = "";
+      if (this.myNode !== null) {
+        Result = this.myNode.GetAttribute("Caption",true).AttribValue}
+       else Result = "";
+      return Result;
+    };
+    this.getShowing = function () {
+      var Result = "";
+      if (this.myNode !== null) {
+        Result = this.myNode.GetAttribute("Showing",true).AttribValue}
+       else Result = "No";
+      return Result;
+    };
+    this.SetHeight = function (AValue) {
+      if (this.myNode !== null) this.myNode.SetAttributeValue$2("Height",pas.SysUtils.IntToStr(AValue));
+      var ob=document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        var str=AValue;
+        if (AValue==0) str='100%';
+        pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',str);
+      };
+    };
+    this.SetWidth = function (AValue) {
+      if (this.myNode !== null) this.myNode.SetAttributeValue$2("Width",pas.SysUtils.IntToStr(AValue));
+      var ob=document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        var str=AValue;
+        if (AValue==0) str='100%';
+        pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',str);
+      };
+    };
+    this.SetTop = function (AValue) {
+      var t = "";
+      if (this.myNode !== null) this.myNode.SetAttributeValue$2("Top",pas.SysUtils.IntToStr(AValue));
+      t = pas.SysUtils.IntToStr(AValue) + "px";
+      var ob=document.getElementById(this.NameSpace+this.NodeName+'Contents');
+          if (ob!=null) {
+            ob.style.top=t;
+      
+            // if this means the modal window is not fully visible, adjust the top
+              var style = window.getComputedStyle(ob);
+              var hh = style.height;
+              var h = parseInt(hh, 10);
+      
+              var btm = AValue + h;
+              var viewHeight = Math.max(document.documentElement.clientHeight, window.innerHeight);
+              //alert(this.NodeName+' viewHeight='+viewHeight+' bottom='+btm);
+              if (btm > viewHeight) {ob.style.top="20px";}
+      
+      
+          };
+    };
+    this.SetLeft = function (AValue) {
+      var l = "";
+      if (this.myNode !== null) this.myNode.SetAttributeValue$2("Left",pas.SysUtils.IntToStr(AValue));
+      l = pas.SysUtils.IntToStr(AValue) + "px";
+      var ob=document.getElementById(this.NameSpace+this.NodeName+'Contents');
+          if (ob!=null) {
+            ob.style.left=l;
+      
+            // if this means the modal window is not fully visible, adjust the left
+            var style = window.getComputedStyle(ob);
+            var ww = style.width;
+            var w = parseInt(ww, 10);
+      
+            var rgt = AValue + w;
+            var viewWidth = Math.max(document.documentElement.clientWidth, window.innerWidth);
+            if (rgt > viewWidth) {ob.style.left="20px";}
+      
+            };
+    };
+    this.SetCaption = function (AValue) {
+      if (this.myNode !== null) this.myNode.SetAttributeValue$2("Caption",AValue);
+      var ob=document.getElementById(this.NameSpace+this.NodeName+'Caption');
+      if (ob!=null) {
+        ob.innerHTML=AValue;
+      };
+    };
+    this.SetShowing = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$2("Showing",AValue);
+        if (this.NodeName !== "") {
+          if (AValue === "No") {
+            $mod.CloseModal(this.NodeName,this.NameSpace);
+          } else {
+            this.SetTop(this.getTop());
+            this.SetLeft(this.getLeft());
+            try{
+               var modalwindowid= this.NodeName;
+               var NameSpace=this.NameSpace;
+               //alert('open windowid='+NameSpace+modalwindowid);
+               var modal = document.getElementById(NameSpace+modalwindowid);
+               // alert('found '+modal);
+               modal.style.display = 'block';
+            }catch(err){alert('Error in XForm.SetShowing '+ err.message);};
+            if ((this.NodeName !== pas.NodeUtils.MainForm.fName) || (this.NameSpace !== "")) if ($mod.InOpenXForms(this.NodeName,this.NameSpace) < 0) $mod.AddOpenXForm(this.NodeName,this.NameSpace);
+          };
+        };
+      };
+    };
+    this.Create$2 = function (NodeName, NameSpace) {
+      pas.NodeUtils.TDataNode.Create$1.call(this,"UI",NodeName,NameSpace,"TXForm",true);
+      this.myNode = this;
+      this.SetFormEventTypes();
+      this.fIsContainer = true;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    this.SetFormEventTypes = function () {
+      this.myNode.myEventTypes = pas.Classes.TStringList.$create("Create$1");
+      this.myNode.myEventTypes.Add("Closure");
+      this.myNode.myEventHandlers = rtl.arraySetLength(this.myNode.myEventHandlers,pas.NodeUtils.TEventHandlerRec,this.myNode.myEventTypes.GetCount());
+    };
+    var $r = this.$rtti;
+    $r.addProperty("IsContainer",0,rtl.boolean,"fIsContainer","fIsContainer");
+    $r.addProperty("IsSelected",0,rtl.boolean,"fIsSelected","fIsSelected");
+    $r.addProperty("Height",3,rtl.longint,"getHeight","SetHeight");
+    $r.addProperty("Width",3,rtl.longint,"getWidth","SetWidth");
+    $r.addProperty("Top",3,rtl.longint,"getTop","SetTop");
+    $r.addProperty("Left",3,rtl.longint,"getLeft","SetLeft");
+    $r.addProperty("Caption",3,rtl.string,"getCaption","SetCaption");
+    $r.addProperty("Showing",3,rtl.string,"getShowing","SetShowing");
+  });
+  this.OpenModal = function (NodeName, NameSpace) {
+    try{
+        var modal = document.getElementById(NameSpace+NodeName);
+        if (modal!=null) {
+        modal.style.display = 'block';  }
+    }catch(err){alert('Error in XForm.OpenModal '+ err.message);};
+    if ((NodeName !== pas.NodeUtils.MainForm.fName) || (NameSpace !== "")) if ($mod.InOpenXForms(NodeName,NameSpace) < 0) $mod.AddOpenXForm(NodeName,NameSpace);
+  };
+  this.CloseModal = function (NodeName, NameSpace) {
+    var formNode = null;
+    formNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,NodeName,NameSpace,false);
+    if (formNode !== null) formNode.SetAttributeValue$2("Showing","No");
+    var modal = document.getElementById(NameSpace+NodeName);
+    if (modal!=null) {
+      modal.style.display = "none";   };
+    if ($mod.InOpenXForms(NodeName,NameSpace) > -1) $mod.DeleteOpenXForm(NodeName,NameSpace);
+    if (formNode !== null) pas.Events.handleEvent$1(null,"Closure",NodeName,NameSpace,"");
+  };
+  this.addTheModalBackground = function (ParentName, WindowId, NodeName, NameSpace) {
+    var OnClickString = "";
+    if (WindowId === pas.NodeUtils.MainForm.fName) return;
+    OnClickString = ("if (event.target == this) {pas.XForm.CloseModal(event.target.id,'" + NameSpace) + "');} event.stopPropagation();";
+    try{
+      //alert('addTheModalBackground '+WindowId+' '+NodeName+' '+NameSpace);
+        $mod.InitialiseXFormStyles()
+        var HTMLString = ''
+        +'<div id='+WindowId+' class="modal-background '+NameSpace+WindowId+'" '
+        +'onmousedown="'+OnClickString+'">'
+        +'</div>';
+    
+        //----- now append the declarations to the Parent -------------------------------------------
+        //alert('looking for parent '+NameSpace+ParentName);
+        var ParentItem=document.getElementById(NameSpace+ParentName);
+        if (ParentItem==null) {
+          ParentItem=document.getElementById(ParentName);
+          }
+        ParentItem.insertAdjacentHTML('beforeend', HTMLString);
+    
+      }catch(err) {alert('Error in XForm.addTheModalBackground '+ err.message);};
+  };
+  this.addaModalContentItem = function (MyName) {
+    var ContentName = "";
+    ContentName = MyName + "Contents";
+    try{
+      //alert('adding contentitem to '+MyName);
+          var HTMLString = ''
+          +'  <!-- Form '+MyName+' content -->'
+          +'  <div id="'+ContentName+'" class="modal-content '+MyName+'" > '
+          +'    <div id="'+MyName+'Caption" ></div> '
+          +'  </div>';
+    
+          var ParentItem = document.getElementById(MyName);
+          ParentItem.innerHTML = ParentItem.innerHTML + HTMLString;
+    
+      }catch(err){alert('Error in XForm.addaModalContentItem '+ err.message);};
+  };
+  this.InitialiseXFormStyles = function () {
+    try{
+      // ----------------------------------------check if the style has already been set
+      var x = document.getElementsByTagName("STYLE");
+      var StyleIsSet = false;
+      if (x.length>0){
+        for (var i=0; i<x.length; i++){
+          var y= x[i].innerHTML;
+          if (y.indexOf("modal-background") !=-1) { StyleIsSet =true}
+        }
+      }
+      if (StyleIsSet == false){
+         var ModalBackgroundStyleString = ''
+         +'<style>'
+          +'/* The Modal (background) */'
+          +'.modal-background {'
+              +'display: none; /* Hidden by default */'
+              +'position: fixed; /* Stay in place */'
+              +'z-index: 1; /* Sit on top */'
+              +'padding-top: 10px; /* Location of the box */'
+              +'left: 0;'
+              +'top: 0;'
+              +'width: 100%; /* Full width */'
+              +'height: 100%; /* Full height */'
+              //+'overflow: auto; /* Enable scroll if needed */'
+              +'background-color: rgb(0,0,0); /* Fallback color */'
+              +'background-color: rgba(0,0,0,0.3); /* Black w/ opacity */'
+          +'} '
+          +'.modal-content {'
+              +'background-color: #FFFFFF;'
+              +'position: absolute;'
+              +'border: 1px solid #888800;'
+          +'}'
+          +'</style>';
+        //----------------------------- now append the style declarations to the head of the HTML page
+        document.head.innerHTML = document.head.innerHTML+ModalBackgroundStyleString;
+      }
+    }catch(err)  {alert('Error in XForm.InitialiseXFormStyles '+ err.message);};
+  };
+  this.InOpenXForms = function (NodeName, NameSpace) {
+    var Result = 0;
+    var i = 0;
+    Result = -1;
+    for (var $l1 = 0, $end2 = rtl.length($mod.OpenXForms) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (($mod.OpenXForms[i].NodeName === NodeName) && ($mod.OpenXForms[i].NameSpace === NameSpace)) Result = i;
+    };
+    return Result;
+  };
+  this.AddOpenXForm = function (NodeName, NameSpace) {
+    var newrec = new $mod.TOpenXForm();
+    $mod.OpenXForms = rtl.arraySetLength($mod.OpenXForms,$mod.TOpenXForm,rtl.length($mod.OpenXForms) + 1);
+    newrec.NodeName = NodeName;
+    newrec.NameSpace = NameSpace;
+    $mod.OpenXForms[rtl.length($mod.OpenXForms) - 1] = new $mod.TOpenXForm(newrec);
+  };
+  this.DeleteOpenXForm = function (NodeName, NameSpace) {
+    var i = 0;
+    var j = 0;
+    for (var $l1 = rtl.length($mod.OpenXForms) - 1; $l1 >= 0; $l1--) {
+      i = $l1;
+      if (($mod.OpenXForms[i].NodeName === NodeName) && ($mod.OpenXForms[i].NameSpace === NameSpace)) {
+        for (var $l2 = i + 1, $end3 = rtl.length($mod.OpenXForms) - 1; $l2 <= $end3; $l2++) {
+          j = $l2;
+          $mod.OpenXForms[j - 1] = new $mod.TOpenXForm($mod.OpenXForms[j]);
+        };
+        $mod.OpenXForms = rtl.arraySetLength($mod.OpenXForms,$mod.TOpenXForm,rtl.length($mod.OpenXForms) - 1);
+      };
+    };
+  };
+  this.TOpenXForm = function (s) {
+    if (s) {
+      this.NodeName = s.NodeName;
+      this.NameSpace = s.NameSpace;
+    } else {
+      this.NodeName = "";
+      this.NameSpace = "";
+    };
+    this.$equal = function (b) {
+      return (this.NodeName === b.NodeName) && (this.NameSpace === b.NameSpace);
+    };
+  };
+  $mod.$rtti.$Record("TOpenXForm",{}).addFields("NodeName",rtl.string,"NameSpace",rtl.string);
+  this.OpenXForms = [];
+  $mod.$init = function () {
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Showing","String","No","",false,false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Width","Integer","400","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Height","Integer","200","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Top","Integer","50","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Left","Integer","50","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Caption","String","My Title","",false);
+    $mod.OpenXForms = rtl.arraySetLength($mod.OpenXForms,$mod.TOpenXForm,0);
+    pas.NodeUtils.AddNodeFuncLookup("TXForm",$impl.CreateinterfaceObj,$impl.CreateWidget);
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.myDefaultAttribs = [];
+  $impl.CreateinterfaceObj = function (MyForm, Nodename, NameSpace) {
+    var Result = null;
+    var newobj = null;
+    newobj = $mod.TXForm.$create("Create$2",[Nodename,NameSpace]);
+    if (MyForm !== null) {
+      newobj.MyForm = MyForm}
+     else {
+      MyForm = pas.NodeUtils.TForm.$create("Create");
+      MyForm.fName = Nodename;
+      newobj.MyForm = MyForm;
+    };
+    newobj.myNode = newobj;
+    Result = newobj;
+    return Result;
+  };
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ParentName = "";
+    if (ParentNode !== null) {
+      ParentName = ParentNode.NodeName}
+     else ParentName = pas.NodeUtils.MainForm.myNode.NodeName;
+    try{
+        var wrapperid =  NameSpace+ScreenObjectName;
+        $mod.addTheModalBackground(ParentName,wrapperid,ScreenObjectName,NameSpace);
+        $mod.addaModalContentItem(wrapperid);
+    
+        }catch(err) { alert(err.message+' in XForm.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    MyNode.myNode = MyNode;
+    if (ScreenObjectName === pas.NodeUtils.MainForm.fName) {
+      MyNode.SetCaption("");
+      MyNode.SetTop(0);
+      MyNode.SetLeft(0);
+      MyNode.SetHeight(0);
+      MyNode.SetWidth(0);
+    } else {
+      pas.NodeUtils.RefreshComponentProps(MyNode);
+      MyNode.fIsContainer = true;
+    };
+    Result = MyNode;
+    return Result;
+  };
+});
+rtl.module("WrapperPanel",["System","Classes","SysUtils","TypInfo","StringUtils","NodeUtils","HTMLUtils"],function () {
+  "use strict";
+  var $mod = this;
+  rtl.createClass($mod,"TWrapperPanel",pas.NodeUtils.TInterfaceObject,function () {
+    this.$init = function () {
+      pas.NodeUtils.TInterfaceObject.$init.call(this);
+      this.FIsContainer = false;
+      this.FAlignChildrenVertical = false;
+      this.FIsSelected = false;
+    };
+    this.GetName = function () {
+      var Result = "";
+      Result = this.NodeName;
+      return Result;
+    };
+    this.GetIsVisible = function () {
+      var Result = false;
+      var tmp = "";
+      if (this.myNode !== null) {
+        tmp = this.myNode.GetAttribute("IsVisible",true).AttribValue;
+        if (tmp === "") tmp = "True";
+        Result = pas.StringUtils.MyStrToBool(tmp);
+      } else Result = true;
+      return Result;
+    };
+    this.GetContainerWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ContainerWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetContainerHeight = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ContainerHeight",true).AttribValue;
+      return Result;
+    };
+    this.GetHint = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Hint",true).AttribValue;
+      return Result;
+    };
+    this.GetBgColor = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("BgColor",true).AttribValue;
+      return Result;
+    };
+    this.GetLabelText = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("LabelText",true).AttribValue;
+      return Result;
+    };
+    this.GetLabelPos = function () {
+      var Result = "";
+      if (this.myNode !== null) {
+        Result = this.myNode.GetAttribute("LabelPos",true).AttribValue}
+       else Result = "Top";
+      return Result;
+    };
+    this.GetAlignment = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Alignment",true).AttribValue;
+      return Result;
+    };
+    this.GetSpacingAround = function () {
+      var Result = 0;
+      var str = "";
+      str = this.myNode.GetAttribute("SpacingAround",true).AttribValue;
+      if (str === "") str = "0";
+      Result = pas.SysUtils.StrToInt(str);
+      return Result;
+    };
+    this.GetBorder = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("Border",true).AttribValue);
+      return Result;
+    };
+    this.GetHTMLClasses = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("HTMLClasses",true).AttribValue;
+      return Result;
+    };
+    this.SetIsVisible = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("IsVisible",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+        var ob = document.getElementById(this.NameSpace+this.NodeName);
+        if (ob!=null)  {
+          if (AValue==true) {
+            if (this.NodeType != 'TXMenuItem') {
+              ob.style.display = 'flex';                //!!!! this needs to be reset to whatever it was before!!!!
+              if (this.LabelPos!='') {
+                self.SortOutMyAlignmentAndLabelPos;
+                }
+              else
+                {self.SortOutAlignment;}
+            }
+            else
+            { //!! for a menu item
+              // delete the 'display' attribute
+              ob.removeAttribute("style");
+            }
+          }
+          else  {
+            ob.style.display = 'none';
+          }
+        };
+      };
+    };
+    this.SetMyName = function (AValue) {
+      this.SetMyName(AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      inner = pas.HTMLUtils.ScreenObjectInnerComponent(this);
+      if (inner.id == this.NameSpace+this.NodeName+'Contents') {
+        inner.id = this.NameSpace+AValue+'Contents';
+        }
+         //!!!! issue here with naming of html components / references within event handlers / inner components / etc
+      ob.id = this.NameSpace+AValue;
+    };
+    this.SetHint = function (AValue) {
+      this.myNode.SetAttributeValue$2("Hint",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      if (ob!=null)  {
+      ob.title=AValue; };
+    };
+    this.SetLabelText = function (AValue) {
+      this.myNode.SetAttributeValue$2("LabelText",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsLbl');
+      if (ob!=null) {
+        ob.innerHTML=AValue;   };
+    };
+    this.SetAlignment = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$2("Alignment",AValue);
+        if (this.GetLabelPos() !== "") {
+          this.SortOutMyAlignmentAndLabelPos()}
+         else this.SortOutAlignment();
+      };
+    };
+    this.SetSpacingAround = function (AValue) {
+      var str = "";
+      str = pas.SysUtils.IntToStr(AValue);
+      if (this.myNode !== null) this.myNode.SetAttributeValue$1("SpacingAround",str,"Integer");
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      if (ob!=null) {
+        ob.style.margin=str+'px';
+      };
+    };
+    this.SetBorder = function (AValue) {
+      this.myNode.SetAttributeValue$1("Border",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      if (ob!=null) {
+      if (AValue==true ) {
+        ob.classList.remove("no-border");
+        ob.classList.add("normal-border");
+      }
+      else {
+         ob.classList.remove("normal-border");
+         ob.classList.add("no-border");
+      } };
+    };
+    this.SetHTMLClasses = function (AValue) {
+      this.myNode.SetAttributeValue$2("HTMLClasses",AValue);
+      if (this.myNode.IsDynamic) {
+        var ob = document.getElementById(this.NameSpace+this.NodeName);
+              if (ob==null) {alert('cannot find object '+this.NameSpace+this.NodeName+' for HTMLClasses set');}
+              else {
+                pas.HTMLUtils.ApplyClasses(ob,AValue,this);
+        
+               // var elems=ob.getElementsByTagName("*");
+                var elems=ob.getElementsByClassName(ob.id);
+                for (var i=0; i<elems.length; i++)
+                  //if ((elems[i].id!=undefined)&&(elems[i].id.indexOf(ob.id)==0))
+                  {
+                  if (elems[i].id!=undefined) {
+                    pas.HTMLUtils.ApplyClasses(elems[i],AValue,this);
+                  }
+                }
+              };
+      };
+    };
+    this.Create$2 = function (NodeName, NameSpace) {
+      pas.NodeUtils.TDataNode.Create$1.call(this,"UI",NodeName,"","",false);
+      this.FAlignChildrenVertical = true;
+      this.NodeName = NodeName;
+      this.NameSpace = NameSpace;
+      this.FIsContainer = true;
+      this.SetIsVisible(true);
+      this.myNode = this;
+      pas.NodeUtils.AddChildToParentNode({p: pas.NodeUtils, get: function () {
+          return this.p.SystemNodeTree;
+        }, set: function (v) {
+          this.p.SystemNodeTree = v;
+        }},{p: this, get: function () {
+          return this.p.myNode;
+        }, set: function (v) {
+          this.p.myNode = v;
+        }},-1);
+    };
+    this.SortOutAlignment = function () {
+      var ParentAlignChildrenVertical = false;
+      var ContainerType = false;
+      var MyAlignment = "";
+      var MyLabelPos = "";
+      var NewAlignment = "";
+      var ParentNode = null;
+      var nm = "";
+      var typ = "";
+      var pos = 0;
+      ContainerType = this.FIsContainer;
+      nm = this.NodeName;
+      typ = this.NodeType;
+      MyAlignment = this.GetAlignment();
+      MyLabelPos = this.GetLabelPos();
+      ParentNode = pas.NodeUtils.FindParentOfNodeByName(pas.NodeUtils.SystemNodeTree,this.NodeName,this.NameSpace,false,{get: function () {
+          return pos;
+        }, set: function (v) {
+          pos = v;
+        }});
+      if (ParentNode !== null) {
+        ParentAlignChildrenVertical = ParentNode.FAlignChildrenVertical;
+        NewAlignment = pas.NodeUtils.AlignmentResetInvalidCombinations(MyAlignment,this.NodeName,this.NodeType,ParentAlignChildrenVertical,this.FIsContainer,rtl.length(ParentNode.ChildNodes) > 1);
+        if (NewAlignment !== MyAlignment) {
+          MyAlignment = NewAlignment;
+          this.SetAttributeValue$2("Alignment",NewAlignment);
+        };
+        try {
+                   var wrapper = document.getElementById(this.NameSpace+this.NodeName);
+                   var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+        
+                   if ((ob!=null)  && (wrapper!=null)) {
+                     wrapper.classList.remove('hboxNoStretch');
+                     wrapper.classList.remove('vboxNoStretch');
+                     wrapper.classList.remove('vboxNoFlex');
+                     wrapper.classList.remove('AlignmentCentre');
+                     wrapper.classList.remove('AlignmentRight');
+                     wrapper.classList.remove('AlignmentLeft');
+                     wrapper.classList.remove('AlignmentLeftContainer');
+                     wrapper.classList.remove('AlignmentTop');
+                     wrapper.classList.remove('AlignmentBottom');
+        
+        
+                     if (MyAlignment=='Right') {
+                       if (ParentAlignChildrenVertical) {
+                       ob.style.float='right';
+                       wrapper.classList.add('AlignmentRight');
+                     }
+                     }
+                     else if (MyAlignment=='Left') {
+                        if (ParentAlignChildrenVertical) {
+                         ob.style.float='left';
+                          if (ContainerType==true) {
+                           wrapper.classList.add('AlignmentLeftContainer'); }
+                         else {
+                           wrapper.classList.add('AlignmentLeft');  }
+                       }
+                       }
+                     else if (MyAlignment=='Centre') {
+                       ob.style.float='left';
+                        wrapper.classList.add('AlignmentCentre');
+                     }
+        
+                     else if (MyAlignment=='Top') {
+                     if (ParentAlignChildrenVertical==false) {
+                       ob.style.float='left';
+                       wrapper.classList.add('AlignmentTop');
+                     }
+                     }
+                     else if (MyAlignment=='Bottom') {
+                     if (ParentAlignChildrenVertical==false) {
+                       ob.style.float='left';
+                       wrapper.classList.add('AlignmentBottom');
+                     }
+                   }
+        
+                 }
+               } catch(err) { alert(err.message+'  in WrapperPanel.SortOutAlignment'); };
+      };
+    };
+    this.SetLabelPos = function (AValue) {
+      this.myNode.SetAttributeValue$2("LabelPos",AValue);
+      this.SortOutMyAlignmentAndLabelPos();
+    };
+    this.SetIsSelected = function (AValue) {
+      if (AValue !== this.FIsSelected) {
+        this.FIsSelected = AValue;
+        pas.HTMLUtils.ShowHideSelectedBorder(this,this.FIsSelected);
+      };
+    };
+    this.SetBgColor = function (AValue) {
+      this.SetAttributeValue$1("BgColor",AValue,"Color");
+      try {
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      if (ob!=null) {
+      ob.style.backgroundColor = AValue;  }
+      } catch(err) { alert(err.message+'  in WrapperPanel.SetBgColor'); };
+    };
+    this.SetContainerHeight = function (AValue) {
+      this.myNode.SetAttributeValue$2("ContainerHeight",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      if (ob==null) {alert('cannot find object '+this.NameSpace+this.NodeName+' for height set');}
+      else {pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);};
+    };
+    this.SetContainerWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("ContainerWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      if (ob==null) {alert('cannot find object '+this.NameSpace+this.NodeName+' for width set');}
+      else {pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue); };
+    };
+    this.SortOutMyAlignmentAndLabelPos = function () {
+      var ParentAlignChildrenVertical = false;
+      var ContainerType = false;
+      var MyAlignment = "";
+      var MyLabelPos = "";
+      var NewAlignment = "";
+      var typ = "";
+      var nm = "";
+      var ParentNode = null;
+      var pos = 0;
+      ContainerType = this.FIsContainer;
+      MyAlignment = this.GetAlignment();
+      MyLabelPos = this.GetLabelPos();
+      ParentNode = pas.NodeUtils.FindParentOfNodeByName(pas.NodeUtils.SystemNodeTree,this.NodeName,this.NameSpace,false,{get: function () {
+          return pos;
+        }, set: function (v) {
+          pos = v;
+        }});
+      ParentAlignChildrenVertical = true;
+      if ((ParentNode !== null) && $mod.TWrapperPanel.isPrototypeOf(ParentNode)) {
+        ParentAlignChildrenVertical = ParentNode.FAlignChildrenVertical;
+        NewAlignment = pas.NodeUtils.AlignmentResetInvalidCombinations(MyAlignment,this.NodeName,this.NodeType,ParentAlignChildrenVertical,this.FIsContainer,rtl.length(ParentNode.ChildNodes) > 1);
+        if (NewAlignment !== MyAlignment) {
+          MyAlignment = NewAlignment;
+          this.SetAttributeValue$2("Alignment",NewAlignment);
+        };
+        nm = this.NodeName;
+        typ = this.NodeType;
+        try {
+                   var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+                   var lbl = document.getElementById(this.NameSpace+this.NodeName+'ContentsLbl');
+                   var wrapper = document.getElementById(this.NameSpace+this.NodeName);
+                   var lp = MyLabelPos;
+        
+                   if ((ob!=null) && (wrapper!=null)) {
+                   // clear everything first...
+                   //var savedDisplay = wrapper.style.display;
+                   //wrapper.style.display='';
+                   wrapper.classList.remove('hbox');
+                   wrapper.classList.remove('hboxNoStretch');
+                   wrapper.classList.remove('vbox');
+                   wrapper.classList.remove('vboxNoStretch');
+                   wrapper.classList.remove('vboxNoFlex');
+                   wrapper.classList.remove('AlignmentCentre');
+                   wrapper.classList.remove('AlignmentRight');
+                   wrapper.classList.remove('AlignmentLeft');
+                   wrapper.classList.remove('AlignmentLeftContainer');
+                   wrapper.classList.remove('AlignmentTop');
+                   wrapper.classList.remove('AlignmentBottom');
+        
+                  if (lbl!=null) {
+                     lbl.style.padding='0px';
+        
+                     if (lp=='Left') {
+                       lbl.parentNode.insertBefore(lbl, ob);  //put lbl before ob
+                       wrapper.classList.add('hboxNoStretch');
+                       lbl.style.alignSelf='center';
+                       lbl.style.padding='0px 3px 0px 0px';               // t,r,b,l
+                     }
+                     else if (lp=='Right') {
+                       ob.parentNode.insertBefore(ob, lbl);  //put lbl after ob
+                       wrapper.classList.add('hboxNoStretch');
+                       lbl.style.alignSelf='center';
+                       lbl.style.padding='0px 0px 0px 3px';               // t,r,b,l
+                     }
+                     else if (lp=='Top') {
+                       ob.parentNode.insertBefore(lbl, ob);
+                       //wrapper.classList.add('vboxNoStretch');
+                       wrapper.classList.add('vboxNoFlex');
+                       lbl.style.alignSelf='center';
+                       lbl.style.padding='0px 0px 0px 3px';               // t,r,b,l
+                     }
+                     else if (lp=='Bottom') {
+                       ob.parentNode.insertBefore(ob, lbl);
+                       //wrapper.classList.add('vboxNoStretch');
+                       wrapper.classList.add('vboxNoFlex');
+                       lbl.style.alignSelf='center';
+                       lbl.style.padding='3px 0px 0px 0px';               // t,r,b,l
+                     }
+                   }
+        
+        
+                   if (MyAlignment=='Right') {
+                     if (ParentAlignChildrenVertical) {
+                     ob.style.float='right';
+                     wrapper.classList.add('AlignmentRight');
+                     if (lbl!=null) {
+                       lbl.style.float='right';
+                       if ((lp=='Top')||(lp=='Bottom')) {
+                           lbl.style.alignSelf='flex-e'+'nd';
+                       }
+                     }
+                   }
+                   }
+                   else if (MyAlignment=='Left') {
+                   if (ParentAlignChildrenVertical) {
+                       ob.style.float='left';
+                       if (ContainerType==true) {
+                         wrapper.classList.add('AlignmentLeftContainer'); }
+                       else {
+                         wrapper.classList.add('AlignmentLeft');  }
+                       if (lbl!=null) {
+                         lbl.style.float='left';
+                         if ((lp=='Top')||(lp=='Bottom')) {
+                             lbl.style.alignSelf='flex-start';
+                         }
+                       }
+                     }
+                     }
+                   else if (MyAlignment=='Centre') {
+                     ob.style.float='left';
+                      wrapper.classList.add('AlignmentCentre');
+                      if (lbl!=null) {
+                         lbl.style.float='left';
+                      }
+                   }
+        
+                   else if (MyAlignment=='Top') {
+                   if (ParentAlignChildrenVertical==false) {
+                     ob.style.float='left';
+                     wrapper.classList.add('AlignmentTop');
+                     if (lbl!=null) {
+                       lbl.style.float='left';
+                       if ((lp=='Left')||(lp=='Right')) {
+                           lbl.style.alignSelf='flex-start';
+                         }
+                     }
+                    }
+                    }
+                   else if (MyAlignment=='Bottom') {
+                   if (ParentAlignChildrenVertical==false) {
+                     ob.style.float='left';
+                     wrapper.classList.add('AlignmentBottom');
+                     if (lbl!=null) {
+                      lbl.style.float='left';
+                      if ((lp=='Left')||(lp=='Right')) {
+                           lbl.style.alignSelf='flex-e'+'nd';
+                           }
+                     }
+                 }
+                }
+        
+        
+               }
+             } catch(err) { alert(err.message+'  in WrapperPanel.SortOutMyAlignmentAndLabelPos'); };
+      };
+    };
+    var $r = this.$rtti;
+    $r.addProperty("IsContainer",0,rtl.boolean,"FIsContainer","FIsContainer");
+    $r.addProperty("AlignChildrenVertical",0,rtl.boolean,"FAlignChildrenVertical","FAlignChildrenVertical");
+    $r.addProperty("IsSelected",2,rtl.boolean,"FIsSelected","SetIsSelected",{Default: false});
+    $r.addProperty("Alignment",3,rtl.string,"GetAlignment","SetAlignment");
+    $r.addProperty("LabelText",3,rtl.string,"GetLabelText","SetLabelText");
+    $r.addProperty("LabelPos",3,rtl.string,"GetLabelPos","SetLabelPos");
+    $r.addProperty("IsVisible",3,rtl.boolean,"GetIsVisible","SetIsVisible");
+    $r.addProperty("Hint",3,rtl.string,"GetHint","SetHint");
+    $r.addProperty("Name",3,rtl.string,"GetName","SetMyName");
+    $r.addProperty("ContainerWidth",3,rtl.string,"GetContainerWidth","SetContainerWidth");
+    $r.addProperty("ContainerHeight",3,rtl.string,"GetContainerHeight","SetContainerHeight");
+    $r.addProperty("BgColor",3,rtl.string,"GetBgColor","SetBgColor");
+    $r.addProperty("SpacingAround",3,rtl.longint,"GetSpacingAround","SetSpacingAround");
+    $r.addProperty("Border",3,rtl.boolean,"GetBorder","SetBorder");
+    $r.addProperty("HTMLClasses",3,rtl.string,"GetHTMLClasses","SetHTMLClasses");
+  });
+  this.SuppressDesignerProperty = function (Classname, pName) {
+    if ($mod.FindSuppressedProperty(Classname,pName) < 0) {
+      $mod.SuppressedDesignerProperties = rtl.arraySetLength($mod.SuppressedDesignerProperties,$mod.TSuppressedDesignerProperty,rtl.length($mod.SuppressedDesignerProperties) + 1);
+      $mod.SuppressedDesignerProperties[rtl.length($mod.SuppressedDesignerProperties) - 1].ClassName = Classname;
+      $mod.SuppressedDesignerProperties[rtl.length($mod.SuppressedDesignerProperties) - 1].PName = pName;
+    };
+  };
+  this.AddDynamicWidget = function (TypeName, ParentForm, ParentNode, NodeName, NameSpace, Alignment, position) {
+    var Result = null;
+    var NewNode = null;
+    var fn = null;
+    var starting = false;
+    var NewWidget = null;
+    fn = pas.NodeUtils.LookupComponentFunc(TypeName);
+    if (fn !== null) {
+      starting = pas.NodeUtils.StartingUp;
+      pas.NodeUtils.StartingUp = true;
+      NewWidget = pas.NodeUtils.CreateInterfaceObject(ParentForm,TypeName,NodeName,NameSpace);
+      if (pas.TypInfo.IsPublishedProp(NewWidget,"Alignment")) pas.TypInfo.SetStringProp(NewWidget,"Alignment",Alignment);
+      NewNode = NewWidget;
+      NewWidget.myNode = NewNode;
+      if (ParentNode !== null) pas.NodeUtils.AddChildToParentNode({get: function () {
+          return ParentNode;
+        }, set: function (v) {
+          ParentNode = v;
+        }},{get: function () {
+          return NewNode;
+        }, set: function (v) {
+          NewNode = v;
+        }},position);
+      fn(NewNode,ParentNode,NodeName,NameSpace,position,Alignment);
+      pas.NodeUtils.StartingUp = starting;
+      NewNode.IsDynamic = true;
+      Result = NewNode;
+    } else {
+      pas.StringUtils.ShowMessage("No function defined to instantiate component of type " + TypeName);
+      Result = null;
+    };
+    return Result;
+  };
+  this.AddWrapperDefaultAttribs = function (myDefaultAttribs) {
+    pas.NodeUtils.AddDefaultAttribute(myDefaultAttribs,"Alignment","String","Left","",false);
+    pas.NodeUtils.AddDefaultAttribute(myDefaultAttribs,"Hint","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute(myDefaultAttribs,"IsVisible","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute(myDefaultAttribs,"HTMLClasses","String","","",false);
+  };
+  this.TSuppressedDesignerProperty = function (s) {
+    if (s) {
+      this.ClassName = s.ClassName;
+      this.PName = s.PName;
+    } else {
+      this.ClassName = "";
+      this.PName = "";
+    };
+    this.$equal = function (b) {
+      return (this.ClassName === b.ClassName) && (this.PName === b.PName);
+    };
+  };
+  $mod.$rtti.$Record("TSuppressedDesignerProperty",{}).addFields("ClassName",rtl.string,"PName",rtl.string);
+  this.SuppressedDesignerProperties = [];
+  this.FindSuppressedProperty = function (Classname, pName) {
+    var Result = 0;
+    var i = 0;
+    var l = 0;
+    Result = -1;
+    l = rtl.length($mod.SuppressedDesignerProperties);
+    i = 0;
+    while (i < rtl.length($mod.SuppressedDesignerProperties)) {
+      if (($mod.SuppressedDesignerProperties[i].ClassName === Classname) && ($mod.SuppressedDesignerProperties[i].PName === pName)) {
+        Result = i;
+        i = rtl.length($mod.SuppressedDesignerProperties);
+      };
+      i = i + 1;
+    };
+    return Result;
+  };
+  $mod.$init = function () {
+  };
+},[]);
+rtl.module("XButton",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXButton",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("ButtonClick");
+    };
+    this.GetCaption = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Caption",true).AttribValue;
+      return Result;
+    };
+    this.GetButtonWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ButtonWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetEnabled = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("Enabled",true).AttribValue);
+      return Result;
+    };
+    this.SetCaption = function (AValue) {
+      this.myNode.SetAttributeValue$2("Caption",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         //alert('set button caption '+AValue);
+         ob.value=AValue;  };
+    };
+    this.SetEnabled = function (AValue) {
+      this.myNode.SetAttributeValue$1("Enabled",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+      if (AValue==false) {ob.disabled = true}
+      else {ob.disabled = false }
+      };
+    };
+    this.SetButtonWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("ButtonWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("Caption",3,rtl.string,"GetCaption","SetCaption");
+    $r.addProperty("Enabled",3,rtl.boolean,"GetEnabled","SetEnabled");
+    $r.addProperty("ButtonWidth",3,rtl.string,"GetButtonWidth","SetButtonWidth");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Caption","String","Press Me","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Enabled","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ButtonWidth","String","","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXButton","LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty("TXButton","LabelText");
+    pas.WrapperPanel.SuppressDesignerProperty("TXButton","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty("TXButton","ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty("TXButton","ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXButton";
+  $impl.myDefaultAttribs = [];
+  $impl.AddButtonStyles = function () {
+    // ----------------------------------------check if the style has already been set
+       var x = document.getElementsByTagName("STYLE");
+       var StyleIsSet = false;
+       if (x.length>0){
+         for (var i=0; i<x.length; i++){
+           var y= x[i].innerHTML;
+           if (y.indexOf(".replayButton") !=-1) { StyleIsSet =true}
+         }
+       }
+    
+       if (StyleIsSet == false){
+           var StyleString = '<style>'
+           +'.replayButton { '
+               +' background-color: red;'
+               +' }'
+            +' </style>';
+    
+         //----------------------------- now append the style declarations to the head of the HTML page
+         document.head.innerHTML = document.head.innerHTML+StyleString;
+        };
+  };
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var xItemText = "";
+    var xEnabled = "";
+    xItemText = MyNode.GetAttribute("Caption",true).AttribValue;
+    xEnabled = MyNode.GetAttribute("Enabled",true).AttribValue;
+    $impl.AddButtonStyles();
+    try{
+    
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var NameSpaceString = "'"+NameSpace+"'";
+        var wrapperid =  NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var EnabledString = '';
+        if (xEnabled=='False') { EnabledString = ' disabled ';}
+    
+        var typestring="'ButtonClick'";
+        HTMLString = '<input type="button" id='+MyObjectName+' class="widgetinner '+wrapperid+'" '+
+                             'style="font-size:inherit; display: inline-block; '+
+    //                                marginString+'" '+
+                                    '" '+
+        'onclick="event.stopPropagation(); pas.Events.handleEvent(null,'+typestring+','+NodeIDString+', '+NameSpaceString+', '+NodeIDString+');"'+
+                            '  '+EnabledString+' value="'+xItemText+'"> ';
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+        pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
+    
+      }
+      catch(err) { alert(err.message+'  in XButton.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXButton.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XBitMap",["System","Classes","SysUtils","NodeUtils","StringUtils","HTMLUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TColorLookup",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.PixelType = "";
+      this.r = 0;
+      this.g = 0;
+      this.b = 0;
+      this.a = 0;
+    };
+  });
+  $mod.$rtti.$DynArray("TXBitMapColors",{eltype: $mod.$rtti["TColorLookup"]});
+  rtl.createClass($mod,"TXBitMap",pas.WrapperPanel.TWrapperPanel,function () {
+    this.$init = function () {
+      pas.WrapperPanel.TWrapperPanel.$init.call(this);
+      this.fMapPixelArray = [];
+      this.fColorsArray = null;
+      this.fColorsLookup = [];
+      this.fBitMapWidth = 0;
+      this.fBitMapHeight = 0;
+      this.fCharsPerColor = 0;
+      this.fNumColors = 0;
+    };
+    this.$final = function () {
+      this.fMapPixelArray = undefined;
+      this.fColorsArray = undefined;
+      this.fColorsLookup = undefined;
+      pas.WrapperPanel.TWrapperPanel.$final.call(this);
+    };
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.GetMapData = function () {
+      var Result = "";
+      this.RebuildXPMDataString();
+      Result = this.myNode.GetAttribute("MapData",true).AttribValue;
+      return Result;
+    };
+    this.GetMapColors = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("MapColors",true).AttribValue;
+      return Result;
+    };
+    this.GetImageWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ImageWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetImageHeight = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ImageHeight",true).AttribValue;
+      return Result;
+    };
+    this.GetMapPixelArray = function () {
+      var Result = [];
+      Result = this.fMapPixelArray;
+      return Result;
+    };
+    this.GetActualHeight = function () {
+      var Result = 0;
+      var h = 0;
+      h = pas.HTMLUtils.GetCurrentHeight(this.NodeName);
+      this.myNode.SetAttributeValue("ActualHeight",pas.SysUtils.IntToStr(h),"Integer",true);
+      Result = h;
+      return Result;
+    };
+    this.GetActualWidth = function () {
+      var Result = 0;
+      var w = 0;
+      w = pas.HTMLUtils.GetCurrentWidth(this.NodeName);
+      this.myNode.SetAttributeValue("ActualWidth",pas.SysUtils.IntToStr(w),"Integer",true);
+      Result = w;
+      return Result;
+    };
+    this.SetMapData = function (AValue) {
+      var myxpmArray = null;
+      var bits = null;
+      var bits0 = null;
+      var i = 0;
+      var c = 0;
+      var d = 0;
+      var p = 0;
+      var x = 0;
+      var cpos = 0;
+      var newData = "";
+      var tmp = "";
+      var colorItem = null;
+      var ok = false;
+      var rtmp = 0;
+      var gtmp = 0;
+      var btmp = 0;
+      var atmp = 0;
+      var h = 0;
+      var w = 0;
+      var sh = 0;
+      var sw = 0;
+      var lengthOfColorLine = 0;
+      var lengthOfPixelsLine = 0;
+      ok = true;
+      myxpmArray = pas.Classes.TStringList.$create("Create$1");
+      myxpmArray.FStrictDelimiter = true;
+      myxpmArray.SetLineBreak('",');
+      newData = AValue;
+      newData = pas.StringUtils.myStringReplace(newData,pas.System.LineEnding,"",-1,-1);
+      newData = pas.StringUtils.myStringReplace(newData,String.fromCharCode(10),"",-1,-1);
+      myxpmArray.SetTextStr(newData);
+      if (ok) {
+        bits0 = pas.Classes.TStringList.$create("Create$1");
+        bits0.FStrictDelimiter = true;
+        bits0.SetLineBreak('"');
+        bits = pas.Classes.TStringList.$create("Create$1");
+        bits.FStrictDelimiter = true;
+        bits.SetLineBreak(" ");
+        i = 0;
+        while (i < myxpmArray.GetCount()) {
+          tmp = myxpmArray.Get(i);
+          tmp = $impl.StripComments(myxpmArray.Get(i));
+          x = pas.System.Pos("{",tmp);
+          if (x > 0) tmp = pas.SysUtils.RightStr(tmp,tmp.length - x);
+          if (tmp.charAt(0) === '"') {
+            bits0.SetTextStr(tmp);
+            tmp = bits0.Get(1);
+            bits.SetTextStr(tmp);
+            if (bits.GetCount() === 4) {
+              this.fBitMapWidth = pas.SysUtils.StrToInt(bits.Get(0));
+              this.fBitMapHeight = pas.SysUtils.StrToInt(bits.Get(1));
+              this.fNumColors = pas.SysUtils.StrToInt(bits.Get(2));
+              this.fCharsPerColor = pas.SysUtils.StrToInt(bits.Get(3));
+              lengthOfColorLine = ((1 + this.fCharsPerColor) + 3) + 9;
+              lengthOfPixelsLine = 1 + (this.fBitMapWidth * this.fCharsPerColor);
+            } else {
+              pas.StringUtils.ShowMessage("SetMapData - invalid XPM formatting");
+              ok = false;
+            };
+            d = i;
+            i = myxpmArray.GetCount();
+          };
+          i = i + 1;
+        };
+        this.fColorsArray.Clear();
+        this.fColorsLookup = rtl.arraySetLength(this.fColorsLookup,null,0);
+        bits.SetLineBreak("\n");
+        i = 0;
+        c = 0;
+        while (i < myxpmArray.GetCount()) {
+          tmp = myxpmArray.Get(i);
+          bits0.SetTextStr(myxpmArray.Get(i));
+          if (bits0.GetCount() > 1) {
+            tmp = bits0.Get(1);
+            cpos = 0;
+            p = 2;
+            while (p < (tmp.length - 2)) {
+              if (((tmp.charAt(p - 1) + tmp.charAt((p + 1) - 1)) + tmp.charAt((p + 2) - 1)) === " c ") {
+                cpos = p;
+                tmp = rtl.setCharAt(tmp,p - 1,"\n");
+                tmp = rtl.setCharAt(tmp,(p + 2) - 1,"\n");
+                bits.SetTextStr(tmp);
+                p = tmp.length;
+              };
+              p = p + 1;
+            };
+            if ((bits.GetCount() === 3) && (bits.Get(1) === "c")) {
+              tmp = (((('"' + bits.Get(0)) + " ") + bits.Get(1)) + " ") + bits.Get(2);
+              this.fColorsArray.Add((((('"' + bits.Get(0)) + " ") + bits.Get(1)) + " ") + bits.Get(2));
+              c = i;
+              colorItem = $mod.TColorLookup.$create("Create");
+              colorItem.PixelType = bits.Get(0);
+              if (bits.Get(2) === "none") {
+                colorItem.r = 255;
+                colorItem.g = 255;
+                colorItem.b = 255;
+                colorItem.a = 0;
+              } else {
+                pas.StringUtils.HexRGBToColor(bits.Get(2),{get: function () {
+                    return rtmp;
+                  }, set: function (v) {
+                    rtmp = v;
+                  }},{get: function () {
+                    return gtmp;
+                  }, set: function (v) {
+                    gtmp = v;
+                  }},{get: function () {
+                    return btmp;
+                  }, set: function (v) {
+                    btmp = v;
+                  }},{get: function () {
+                    return atmp;
+                  }, set: function (v) {
+                    atmp = v;
+                  }});
+                colorItem.r = rtmp;
+                colorItem.g = gtmp;
+                colorItem.b = btmp;
+                colorItem.a = 255;
+              };
+              this.fColorsLookup = rtl.arraySetLength(this.fColorsLookup,null,rtl.length(this.fColorsLookup) + 1);
+              this.fColorsLookup[rtl.length(this.fColorsLookup) - 1] = colorItem;
+              bits.Clear();
+            } else {
+              if (this.fColorsArray.GetCount() > 0) {
+                i = myxpmArray.GetCount();
+              };
+            };
+          } else {
+            if (myxpmArray.Get(i).length < lengthOfColorLine) myxpmArray.Put(i + 1,(myxpmArray.Get(i) + '",') + myxpmArray.Get(i + 1));
+            tmp = myxpmArray.Get(i);
+            tmp = myxpmArray.Get(i + 1);
+          };
+          i = i + 1;
+        };
+        if (this.fColorsArray.GetCount() !== this.fNumColors) pas.StringUtils.ShowMessage((("Number or Colours mismatch (NumColors=" + pas.SysUtils.IntToStr(this.fNumColors)) + " count=") + pas.SysUtils.IntToStr(this.fColorsArray.GetCount()));
+        this.myNode.SetAttributeValue$2("MapColors",this.fColorsArray.GetTextStr());
+        this.fMapPixelArray = rtl.arraySetLength(this.fMapPixelArray,"",0);
+        i = myxpmArray.GetCount();
+        console.log('myxpmarray.Count='+i);
+        i = c + 1;
+        while (i < myxpmArray.GetCount()) {
+          tmp = myxpmArray.Get(i);
+          if ($impl.StripComments(myxpmArray.Get(i)).charAt(0) === '"') {
+            bits0.SetTextStr(myxpmArray.Get(i));
+            tmp = bits0.Get(1);
+            this.fMapPixelArray = rtl.arraySetLength(this.fMapPixelArray,"",rtl.length(this.fMapPixelArray) + 1);
+            this.fMapPixelArray[rtl.length(this.fMapPixelArray) - 1] = tmp;
+          } else {
+            console.log('skip '+i);
+            if (myxpmArray.Get(i).length < lengthOfPixelsLine) {
+              myxpmArray.Put(i + 1,('",' + myxpmArray.Get(i)) + myxpmArray.Get(i + 1));
+            } else if (rtl.length(this.fMapPixelArray) > 0) i = myxpmArray.GetCount();
+          };
+          i = i + 1;
+        };
+        if (rtl.length(this.fMapPixelArray) !== this.fBitMapHeight) pas.StringUtils.ShowMessage((("BitMapHeight mismatch (BitMapHeight=" + pas.SysUtils.IntToStr(this.fBitMapHeight)) + " count=") + pas.SysUtils.IntToStr(rtl.length(this.fMapPixelArray)));
+        this.SetMapPixelArray(this.fMapPixelArray);
+        h = this.GetActualHeight();
+        sh = rtl.length(this.fMapPixelArray);
+        if (h > 0) {
+          w = this.GetActualWidth();
+          sw = this.fMapPixelArray[0].length;
+          this.PaintRect(0,0,sw,sh,w,h);
+        };
+        this.myNode.SetAttributeValue$2("MapData",AValue);
+        bits0 = rtl.freeLoc(bits0);
+        bits = rtl.freeLoc(bits);
+      };
+      myxpmArray = rtl.freeLoc(myxpmArray);
+    };
+    this.SetMapColors = function (AValue) {
+      var bits = null;
+      var i = 0;
+      var tmp = "";
+      var NewMapData = "";
+      var oldval = "";
+      oldval = this.myNode.GetAttribute("MapColors",true).AttribValue;
+      if (AValue !== oldval) {
+        this.myNode.SetAttributeValue$2("MapColors",AValue);
+        bits = pas.Classes.TStringList.$create("Create$1");
+        bits.FStrictDelimiter = true;
+        bits.SetLineBreak(",");
+        bits.SetTextStr(AValue);
+        this.fColorsArray.Clear();
+        for (var $l1 = 0, $end2 = bits.GetCount() - 1; $l1 <= $end2; $l1++) {
+          i = $l1;
+          tmp = $impl.StripComments(bits.Get(i));
+          if (tmp !== "") this.fColorsArray.Add(tmp);
+        };
+        bits = rtl.freeLoc(bits);
+        this.fNumColors = this.fColorsArray.GetCount();
+        if (AValue !== "") {
+          this.RebuildXPMDataString();
+          NewMapData = this.myNode.GetAttribute("MapData",false).AttribValue;
+          this.myNode.SetAttributeValue$2("MapData","...");
+          this.SetMapData(NewMapData);
+        };
+      };
+    };
+    this.SetImageWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("ImageWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      if (ob!=null) {
+        pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+        //for correct scaling, have to set width the same as CSS width
+        var obc = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+        obc.setAttribute('width',ob.style.width);
+      };
+    };
+    this.SetImageHeight = function (AValue) {
+      this.myNode.SetAttributeValue$2("ImageHeight",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      if (ob!=null) {
+        pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
+        //for correct scaling, have to set height the same as CSS height
+        var obc = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+        obc.setAttribute('height',ob.style.height);
+      };
+    };
+    this.SetMapPixelArray = function (AValue) {
+      var bits = null;
+      var i = 0;
+      this.fMapPixelArray = AValue;
+      bits = pas.Classes.TStringList.$create("Create$1");
+      bits.FStrictDelimiter = true;
+      bits.SetLineBreak(",");
+      for (var $l1 = 0, $end2 = rtl.length(AValue) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        bits.Add(AValue[i]);
+      };
+      this.myNode.SetAttributeValue("MapPixelArray",bits.GetTextStr(),"StringArray",true);
+      bits = rtl.freeLoc(bits);
+    };
+    this.RebuildXPMDataString = function () {
+      var newmapdata = "";
+      var i = 0;
+      newmapdata = (((((((((((("\/* XPM *\/" + "static char * XMap[] = {") + "\/* <Values>*\/") + "\/* <width\/columns> <height\/rows> <colors> <chars per pixel>*\/") + '"') + pas.SysUtils.IntToStr(this.fBitMapWidth)) + " ") + pas.SysUtils.IntToStr(this.fBitMapHeight)) + " ") + pas.SysUtils.IntToStr(this.fNumColors)) + " ") + pas.SysUtils.IntToStr(this.fCharsPerColor)) + '",') + "\/* <Colors>*\/";
+      for (var $l1 = 0, $end2 = this.fColorsArray.GetCount() - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        newmapdata = (newmapdata + this.fColorsArray.Get(i)) + ",";
+      };
+      newmapdata = newmapdata + "\/* <Pixels>*\/";
+      for (var $l3 = 0, $end4 = rtl.length(this.fMapPixelArray) - 1; $l3 <= $end4; $l3++) {
+        i = $l3;
+        if (i < rtl.length(this.fMapPixelArray)) {
+          newmapdata = ((newmapdata + '"') + this.fMapPixelArray[i]) + '",'}
+         else newmapdata = ((newmapdata + '"') + this.fMapPixelArray[i]) + '"';
+      };
+      newmapdata = newmapdata + "};";
+      this.myNode.SetAttributeValue$2("MapData",newmapdata);
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      this.fColorsArray = pas.Classes.TStringList.$create("Create$1");
+      this.fColorsArray.FStrictDelimiter = true;
+      this.fColorsArray.SetLineBreak('",');
+      this.fMapPixelArray = rtl.arraySetLength(this.fMapPixelArray,"",0);
+      this.fColorsLookup = rtl.arraySetLength(this.fColorsLookup,null,0);
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    this.GetMapPixelArraySection = function (x, y, w, h) {
+      var Result = [];
+      var i = 0;
+      var j = 0;
+      var r = 0;
+      var arr = [];
+      var rowstr = "";
+      r = -1;
+      if ((rtl.length(this.fMapPixelArray) > 0) && (this.fMapPixelArray[0].length > 0)) if ((y + h) < rtl.length(this.fMapPixelArray)) for (var $l1 = y, $end2 = (y + h) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        arr = rtl.arraySetLength(arr,"",i + 1);
+        r = r + 1;
+        rowstr = "";
+        if (((x + 1) + w) < this.fMapPixelArray[i].length) for (var $l3 = x + 1, $end4 = ((x + 1) + w) - 1; $l3 <= $end4; $l3++) {
+          j = $l3;
+          rowstr = rowstr + this.fMapPixelArray[i].charAt(j - 1);
+        };
+        arr[r] = rowstr;
+      };
+      Result = arr;
+      return Result;
+    };
+    this.SetMapPixelArraySection = function (AValue, x, y) {
+      var i = 0;
+      var j = 0;
+      if ((((rtl.length(this.fMapPixelArray) > 0) && (rtl.length(AValue) > 0)) && ((y + rtl.length(AValue)) < rtl.length(this.fMapPixelArray))) && ((x + AValue[0].length) < this.fMapPixelArray[0].length)) {
+        for (var $l1 = 0, $end2 = rtl.length(AValue) - 1; $l1 <= $end2; $l1++) {
+          i = $l1;
+          for (var $l3 = 1, $end4 = AValue[0].length; $l3 <= $end4; $l3++) {
+            j = $l3;
+            this.fMapPixelArray[y + i] = rtl.setCharAt(this.fMapPixelArray[y + i],(x + j) - 1,AValue[i].charAt(j - 1));
+          };
+        };
+      };
+    };
+    this.PaintRect = function (sx, sy, sWidth, sHeight, ImageWidth, ImageHeight) {
+      var NumColours = 0;
+      NumColours = rtl.length(this.fColorsLookup);
+      try {
+         //alert('PaintRect. '+this.NodeName+' Imagewidth='+ImageWidth+' Imageheight='+ImageHeight+' sWidth='+sWidth+' sHeight='+sHeight);
+          var RawImagecanvas  = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+              if (RawImagecanvas!=null) {
+            var RawImagecontext = RawImagecanvas.getContext("2d");
+            var RawImageData = RawImagecontext.createImageData(ImageWidth, ImageHeight);
+       //         RawImagecontext.setTransform(1, 0, 0, 1, 0, 0);       // clear any previous scaling
+                //alert('ImageData length='+RawImageData.data.length);
+      
+                var pixelchars=this.fColorsLookup[0].PixelType.length;      // number or characters in the color strings
+                console.log('pixelchars='+pixelchars);
+      
+                function SetRawPixel(x,y,r,g,b,a)
+            {
+                  //console.log('SetRawPixel '+x+','+y+','+r+','+g+','+b+','+a);
+                  var pixelIndex =  4 * (x + y * ImageWidth);
+                  //console.log('SetRawPixel '+x+','+y+' index='+pixelIndex);
+              RawImageData.data[pixelIndex    ] = r;  //0..255 red   color
+              RawImageData.data[pixelIndex + 1] = g;  //0..255 green color
+              RawImageData.data[pixelIndex + 2] = b;  //0..255 blue  color
+              RawImageData.data[pixelIndex + 3] = a;  //0..255 transparency
+            }
+      
+            function PaintRawImage(sx, sy, sWidth, sHeight) //Copy a rectangle from the Raw Pixel Data
+            {
+              // Canvas X and Y are sx, sy, because we are dealing with a custom component with coincedent origins
+              // context.putImageData(RawImageData, canvasX, canvasY, sx, sy, sWidth, sHeight);
+              // we assume that sx,and sy etc deal with the row indexing and times 4 aspects internally
+              RawImagecontext.putImageData(RawImageData, sx, sy, sx, sy, sWidth, sHeight);
+      
+                  //alert('scale '+(ImageWidth/(sWidth/pixelchars))+','+(ImageHeight/sHeight));
+                  // scale the rendered image (scale the context, then re-draw the image
+                  RawImagecontext.webkitImageSmoothingEnabled = false;
+                  RawImagecontext.mozImageSmoothingEnabled = false;
+                  RawImagecontext.imageSmoothingEnabled = false;
+                  RawImagecontext.setTransform(1, 0, 0, 1, 0, 0);       // clear any previous scaling
+                  RawImagecontext.scale((ImageWidth/(sWidth/pixelchars)),(ImageHeight/sHeight));
+                  RawImagecontext.drawImage(RawImagecanvas, 0, 0);
+            }
+      
+            function LookupColour(ob,instring)
+            {
+                  //console.log('lookup '+instring);
+              var r = 0;
+              var g = 0;
+              var b = 0;
+              var a = 0; // if a lookupchar is not found the pixel is transparent
+              for (var i = 0; i < NumColours; i++)
+              {
+                if (instring == ob.fColorsLookup[i].PixelType)
+                  {
+                      r = ob.fColorsLookup[i].r;
+                      g = ob.fColorsLookup[i].g;
+                      b = ob.fColorsLookup[i].b;
+                      a = 255;
+                              //console.log('found color '+instring+' = '+r+' '+g+' '+b+' '+a);
+                              return [r,g,b,a];
+                  }
+              }
+                   return [r,g,b,a];
+            }
+                //console.log('NumColours='+NumColours);
+                //console.log('sy='+sy+' sHeight='+sHeight);
+            for (var j = 0; j < sHeight; j++)
+            {
+                        var p=0;
+                for (var i = 0; i < sWidth; i+=pixelchars)
+                {
+                          var pix='';
+                          for (var k=0; k<pixelchars; k++) {pix=pix+this.fMapPixelArray[sy+j][sx+i+k];}
+                          var clr=LookupColour(this,pix);
+                          //console.log('SetRawPixel('+sx+p+','+sy+j+','+clr[0]+','+clr[1]+','+clr[2]+','+clr[3]+')');
+                          if (clr[3]==0) {console.log('pixel ('+pix+') not found '+sx+p+','+sy+j);  }
+      
+                          SetRawPixel(sx+p,sy+j,clr[0],clr[1],clr[2],clr[3]);
+                          p=p+1;
+                }
+              }
+                  PaintRawImage(sx,sy,sWidth, sHeight);
+                }
+            } catch(err) { alert(err.message+'  in XBitMap.PaintRect');};
+    };
+    var $r = this.$rtti;
+    $r.addProperty("MapData",3,rtl.string,"GetMapData","SetMapData");
+    $r.addProperty("MapColors",3,rtl.string,"GetMapColors","SetMapColors");
+    $r.addProperty("ImageHeight",3,rtl.string,"GetImageHeight","SetImageHeight");
+    $r.addProperty("ImageWidth",3,rtl.string,"GetImageWidth","SetImageWidth");
+    $r.addProperty("MapPixelArray",3,pas.SysUtils.$rtti["TStringArray"],"GetMapPixelArray","SetMapPixelArray");
+    $r.addProperty("ActualHeight",1,rtl.longint,"GetActualHeight","");
+    $r.addProperty("ActualWidth",1,rtl.longint,"GetActualWidth","");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ActualHeight","Integer","","",true,false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ActualWidth","Integer","","",true,false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ImageWidth","String","250","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ImageHeight","String","200","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Right","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Bitmap Image","",false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"MapColors","String","","",false,false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"MapData","String",((((((((((((((((((((((((((((("\/* XPM *\/" + "static char * XMap[] = {") + "\/* <Values>") + "\/* <width\/columns> <height\/rows> <colors> <chars per pixel>*\/") + '"48 20 2 1",') + "\/* <Colors>*\/") + '"a c #ffffff",') + '"b c #000000",') + "\/* <Pixels>*\/") + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"bbaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"bbaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"bbaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"bbaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"bbaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"bbaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"bbaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"abaabaababaaabaabababaabaabaababaabaaababaabaaab",') + '"bbaabaababaaabaabababaabaabaababaabaaababaabaaab"') + "\/* <Extensions>*\/") + "};","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXBitMap";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var LabelText = "";
+    var OnClickString = "";
+    var marginString = "";
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    marginString = ((((((("margin:" + pas.HTMLUtils.glbMarginSpacing) + " ") + pas.HTMLUtils.glbMarginSpacing) + " ") + pas.HTMLUtils.glbMarginSpacing) + " ") + pas.HTMLUtils.glbMarginSpacing) + ";";
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "', '") + NameSpace) + '\',\'\');" ';
+    try{
+        var wrapperid =  NameSpace+ScreenObjectName;
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+        var MyObjectName=wrapperid+'Contents';
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+    
+        var ImageString = ' <canvas  id='+MyObjectName+ ' style="display: inline-block; width:100%; height:100%;" ' +
+                             OnClickString +
+                             ' >';
+    
+        var HTMLString = labelstring+ImageString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+        }
+        catch(err) { alert(err.message+'  in XBitMap.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXBitMap.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+  $impl.StripComments = function (instr) {
+    var Result = "";
+    var workstr = "";
+    var tmp = "";
+    var x1 = 0;
+    var x2 = 0;
+    workstr = instr;
+    if (instr.length > 3) while (pas.System.Pos("\/*",workstr) > 0) {
+      x1 = pas.System.Pos("\/*",workstr);
+      x2 = pas.System.Pos("*\/",workstr);
+      if (x2 <= x1) x2 = x1 + 2;
+      tmp = pas.SysUtils.LeftStr(workstr,x1 - 1);
+      workstr = tmp + pas.SysUtils.RightStr(workstr,(workstr.length - x2) - 1);
+    };
+    Result = workstr;
+    return Result;
+  };
+});
+rtl.module("XVBox",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXVBox",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.GetInheritColor = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("InheritColor",true).AttribValue);
+      return Result;
+    };
+    this.SetInheritColor = function (AValue) {
+      var clr = "";
+      var parentNode = null;
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("InheritColor",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+        parentNode = pas.NodeUtils.FindParentOfNode$1(pas.NodeUtils.SystemNodeTree,this.myNode);
+        if (parentNode !== null) {
+          if (AValue === true) {
+            clr = parentNode.GetAttribute("BgColor",true).AttribValue;
+            this.myNode.SetAttributeValue$1("BgColor",clr,"Color");
+            var ob = document.getElementById(this.NameSpace+this.NodeName);
+            if (ob!=null) {
+              if (AValue==true ) {
+                 ob.style.backgroundColor='inherit';
+            } };
+          } else {
+            clr = this.myNode.GetAttribute("BgColor",true).AttribValue;
+            var ob = document.getElementById(this.NameSpace+this.NodeName);
+            if (ob!=null) {
+              if (AValue==true ) {
+                 ob.style.backgroundColor=clr;
+            } };
+          };
+        };
+      };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("InheritColor",3,rtl.boolean,"GetInheritColor","SetInheritColor");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerWidth","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerHeight","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BgColor","Color","#FFFFFF","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"InheritColor","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelText");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXVBox";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var OnClickString = "";
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', \'\');" ';
+    try{
+          var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+          var HTMLString='';
+          var wrapperid = NameSpace+ScreenObjectName;
+          var MyObjectName=wrapperid+'Contents';
+    
+          HTMLString = '<div  id="'+MyObjectName+'" class="vboxNoStretch '+NameSpace+ScreenObjectName+'" '  +
+                         ' style="height:100%;width:100%; "' +
+                         OnClickString +
+                         '></div>  ';
+    
+          var wrapper=document.getElementById(wrapperid);
+          wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+      }catch(err) { alert(err.message+'  in XVBox.CreateVHBox');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, Nodename, NameSpace) {
+    var Result = null;
+    Result = $mod.TXVBox.$create("Create$3",[MyForm,Nodename,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XMemo",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXMemo",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("Change");
+      this.myEventTypes.Add("MemoPaste");
+    };
+    this.GetItemValue = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ItemValue",true).AttribValue;
+      return Result;
+    };
+    this.GetReadOnly = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("ReadOnly",true).AttribValue);
+      return Result;
+    };
+    this.GetMemoWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("MemoWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetMemoHeight = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("MemoHeight",true).AttribValue;
+      return Result;
+    };
+    this.SetItemValue = function (AValue) {
+      this.myNode.SetAttributeValue$2("ItemValue",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.value=AValue;  };
+    };
+    this.SetReadOnly = function (AValue) {
+      this.myNode.SetAttributeValue$1("ReadOnly",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        ob.readOnly = AValue  };
+    };
+    this.SetMemoWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("MemoWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      //  if (ob==null) {alert(this.NodeName+'  not found');}
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.SetMemoHeight = function (AValue) {
+      this.myNode.SetAttributeValue$2("MemoHeight",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("ItemValue",3,rtl.string,"GetItemValue","SetItemValue");
+    $r.addProperty("ReadOnly",3,rtl.boolean,"GetReadOnly","SetReadOnly");
+    $r.addProperty("MemoHeight",3,rtl.string,"GetMemoHeight","SetMemoHeight");
+    $r.addProperty("MemoWidth",3,rtl.string,"GetMemoWidth","SetMemoWidth");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerWidth","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerHeight","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"MemoWidth","String","200","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"MemoHeight","String","100","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Top","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Memo Box","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ItemValue","String","....text....","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXMemo","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXMemo";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var LabelText = "";
+    var ReadOnly = false;
+    var OnChangeString = "";
+    var OnClickString = "";
+    var OnPasteString = "";
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    ReadOnly = pas.SysUtils.StrToBool(MyNode.GetAttribute("ReadOnly",true).AttribValue);
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value);" ';
+    OnChangeString = (((((((('onchange="pas.NodeUtils.SetInterfaceProperty(\'' + ScreenObjectName) + "','") + NameSpace) + "','ItemValue',this.value); ") + "pas.Events.handleEvent(null,'Change','") + ScreenObjectName) + "','") + NameSpace) + '\', this.value, \'ItemValue\');" ';
+    OnPasteString = (((('onpaste="var pdata=(event.clipboardData || window.clipboardData).getData(\'text\');' + "pas.Events.handleEvent(null,'MemoPaste','") + ScreenObjectName) + "','") + NameSpace) + '\', pdata);" ';
+    try{
+    
+    
+    
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid = NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var ReadOnlyString = '';
+        if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
+    
+        var Pastetypestring="'MemoPaste'";
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+    
+    
+        var MemoString ='<textarea  id='+MyObjectName+' '+
+                            OnPasteString +
+                            OnClickString +
+                            OnChangeString +
+                            ' class="widgetinner '+wrapperid+'" ' +
+                            ' style="display:inline-block; padding:1px; height:100%; width:100%;"  >'+
+                           '</textarea> ';
+    
+        HTMLString = MemoString+labelstring;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+      }
+      catch(err) { alert(err.message+'  in XMemo.CreateXMemo');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXMemo.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XLabel",["System","Classes","SysUtils","NodeUtils","HTMLUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXLabel",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.GetLabelCaption = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("LabelCaption",true).AttribValue;
+      return Result;
+    };
+    this.SetLabelCaption = function (AValue) {
+      this.myNode.SetAttributeValue$2("LabelCaption",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+      //alert('set labelCaption to '+AValue);
+         ob.innerHTML=AValue;   };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("LabelCaption",3,rtl.string,"GetLabelCaption","SetLabelCaption");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelCaption","String","...Label...","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelText");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"BgColor");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXLabel";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var LabelText = "";
+    var OnClickString = "";
+    var marginString = "";
+    LabelText = MyNode.GetAttribute("LabelCaption",true).AttribValue;
+    marginString = ((((((("margin:" + pas.HTMLUtils.glbMarginSpacing) + " ") + pas.HTMLUtils.glbMarginSpacing) + " ") + pas.HTMLUtils.glbMarginSpacing) + " ") + pas.HTMLUtils.glbMarginSpacing) + ";";
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value);" ';
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var wrapperid = NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var HTMLString = ' <label id='+MyObjectName+' '+
+                       OnClickString +
+                     ' style="display: inline-block;'+marginString+'; backgroundColor=inherit"  >'
+                     +LabelText+'</label> ';
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+        }
+        catch(err) { alert(err.message+'  in XLabel.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXLabel.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("PasteDialogUnit",["System","Classes","SysUtils","WrapperPanel","StringUtils","EventsInterface","XForm","XVBox","XMemo","XLabel","XButton","NodeUtils"],function () {
+  "use strict";
+  var $mod = this;
+  rtl.createClass($mod,"TpasteDialogEvents",pas.System.TObject,function () {
+    this.PasteDoneBtnHandleButtonClick = function (e, nodeID, myValue) {
+      var StringToCopy = "";
+      StringToCopy = $mod.PasteTarget.GetItemValue();
+      // alert('click done button handler');
+       pas.NodeUtils.myCopyToClip('HTML System',StringToCopy);
+      // alert('copy done');
+      $mod.PasteDialog.SetShowing("No");
+    };
+  });
+  this.PasteDialog = null;
+  this.CompletionEvent = null;
+  this.PasteTarget = null;
+  this.PasteDialogEvents = null;
+  this.PasteDoneBtn = null;
+  this.PasteLabel = null;
+  this.SetupPasteDialogForm = function () {
+    var FormNode = null;
+    var VBNode = null;
+    var MemoNode = null;
+    var BtnNode = null;
+    var LabelNode = null;
+    var VB = null;
+    FormNode = pas.WrapperPanel.AddDynamicWidget("TXForm",null,null,"PasteDialog","","Left",-1);
+    $mod.PasteDialog = FormNode;
+    pas.NodeUtils.AddChildToParentNode({p: pas.NodeUtils, get: function () {
+        return this.p.UIRootNode;
+      }, set: function (v) {
+        this.p.UIRootNode = v;
+      }},{get: function () {
+        return FormNode;
+      }, set: function (v) {
+        FormNode = v;
+      }},-1);
+    $mod.PasteDialog.SetCaption("PasteDialog");
+    $mod.PasteDialog.SetTop(214);
+    $mod.PasteDialog.SetLeft(900);
+    $mod.PasteDialog.SetHeight(106);
+    $mod.PasteDialog.SetWidth(320);
+    FormNode.IsDynamic = false;
+    VBNode = pas.WrapperPanel.AddDynamicWidget("TXVBox",$mod.PasteDialog,$mod.PasteDialog.myNode,"Popup1Root","","Left",-1);
+    VBNode.IsDynamic = false;
+    VB = VBNode.ScreenObject;
+    VB.SetContainerHeight("100%");
+    LabelNode = pas.WrapperPanel.AddDynamicWidget("TXLabel",$mod.PasteDialog,VBNode,"PasteLabel","","Left",-1);
+    LabelNode.IsDynamic = false;
+    $mod.PasteLabel = LabelNode.ScreenObject;
+    $mod.PasteLabel.SetLabelCaption("Waiting for a copy\/paste action");
+    MemoNode = pas.WrapperPanel.AddDynamicWidget("TXMemo",$mod.PasteDialog,VBNode,"PasteTarget","","Left",-1);
+    MemoNode.IsDynamic = false;
+    $mod.PasteTarget = MemoNode.ScreenObject;
+    $mod.PasteTarget.SetMemoHeight("40");
+    $mod.PasteTarget.SetMemoWidth("200");
+    BtnNode = pas.WrapperPanel.AddDynamicWidget("TXButton",$mod.PasteDialog,VBNode,"PasteDoneBtn","","Left",-1);
+    BtnNode.IsDynamic = false;
+    $mod.PasteDoneBtn = BtnNode.ScreenObject;
+    $mod.PasteDoneBtn.myNode = BtnNode;
+    $mod.PasteDoneBtn.SetCaption("Done");
+    $mod.PasteDoneBtn.myNode.RegisterEvent("ButtonClick",rtl.createCallback($mod.PasteDialogEvents,"PasteDoneBtnHandleButtonClick"));
+  };
+  $mod.$init = function () {
+    $mod.PasteDialogEvents = $mod.TpasteDialogEvents.$create("Create");
+  };
+});
+rtl.module("NodeUtils",["System","Classes","SysUtils","StringUtils","TypInfo","EventsInterface"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $mod.$rtti.$Class("TDataNode");
+  this.TCodeInputRec = function (s) {
+    if (s) {
+      this.InputNodeName = s.InputNodeName;
+      this.InputAttribName = s.InputAttribName;
+      this.InputSynonym = s.InputSynonym;
+      this.InputValue = s.InputValue;
+    } else {
+      this.InputNodeName = "";
+      this.InputAttribName = "";
+      this.InputSynonym = "";
+      this.InputValue = "";
+    };
+    this.$equal = function (b) {
+      return (this.InputNodeName === b.InputNodeName) && ((this.InputAttribName === b.InputAttribName) && ((this.InputSynonym === b.InputSynonym) && (this.InputValue === b.InputValue)));
+    };
+  };
+  $mod.$rtti.$Record("TCodeInputRec",{}).addFields("InputNodeName",rtl.string,"InputAttribName",rtl.string,"InputSynonym",rtl.string,"InputValue",rtl.string);
+  $mod.$rtti.$DynArray("TCodeInputs",{eltype: $mod.$rtti["TCodeInputRec"]});
+  $mod.$rtti.$MethodVar("TEventHandler",{procsig: rtl.newTIProcSig([["e",pas.EventsInterface.$rtti["TEventStatus"]],["nodeID",rtl.string],["myValue",rtl.string]]), methodkind: 0});
+  this.TEventHandlerRec = function (s) {
+    if (s) {
+      this.TheHandler = s.TheHandler;
+      this.TheCode = s.TheCode;
+      this.InitCode = s.InitCode;
+    } else {
+      this.TheHandler = null;
+      this.TheCode = "";
+      this.InitCode = "";
+    };
+    this.$equal = function (b) {
+      return rtl.eqCallback(this.TheHandler,b.TheHandler) && ((this.TheCode === b.TheCode) && (this.InitCode === b.InitCode));
+    };
+  };
+  $mod.$rtti.$Record("TEventHandlerRec",{}).addFields("TheHandler",$mod.$rtti["TEventHandler"],"TheCode",rtl.string,"InitCode",rtl.string);
+  $mod.$rtti.$MethodVar("TGenericHandler",{procsig: rtl.newTIProcSig([["MyEventType",rtl.string],["myValue",rtl.string],["myNode",$mod.$rtti["TDataNode"]]],rtl.boolean), methodkind: 1});
+  $mod.$rtti.$ProcVar("TAddComponentFunc",{procsig: rtl.newTIProcSig([["MyNode",$mod.$rtti["TDataNode"]],["ParentNode",$mod.$rtti["TDataNode"]],["ScreenObjectName",rtl.string],["NameSpace",rtl.string],["position",rtl.longint],["Alignment",rtl.string]],$mod.$rtti["TDataNode"])});
+  rtl.createClass($mod,"TForm",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.fName = "";
+    };
+    var $r = this.$rtti;
+    $r.addProperty("Name",0,rtl.string,"fName","fName");
+  });
+  $mod.$rtti.$ProcVar("TCreateInObFunc",{procsig: rtl.newTIProcSig([["MyForm",$mod.$rtti["TForm"]],["NodeName",rtl.string],["NameSpace",rtl.string]],pas.System.$rtti["TObject"])});
+  this.TNodeFuncsLookup = function (s) {
+    if (s) {
+      this.NodeType = s.NodeType;
+      this.ScreenObjFunctionPtr = s.ScreenObjFunctionPtr;
+      this.InObFunctionPtr = s.InObFunctionPtr;
+    } else {
+      this.NodeType = "";
+      this.ScreenObjFunctionPtr = null;
+      this.InObFunctionPtr = null;
+    };
+    this.$equal = function (b) {
+      return (this.NodeType === b.NodeType) && (rtl.eqCallback(this.ScreenObjFunctionPtr,b.ScreenObjFunctionPtr) && rtl.eqCallback(this.InObFunctionPtr,b.InObFunctionPtr));
+    };
+  };
+  $mod.$rtti.$Record("TNodeFuncsLookup",{}).addFields("NodeType",rtl.string,"ScreenObjFunctionPtr",$mod.$rtti["TAddComponentFunc"],"InObFunctionPtr",$mod.$rtti["TCreateInObFunc"]);
+  $mod.$rtti.$DynArray("TNodeFuncsTable",{eltype: $mod.$rtti["TNodeFuncsLookup"]});
+  this.TDefaultAttribute = function (s) {
+    if (s) {
+      this.AttribName = s.AttribName;
+      this.AttribType = s.AttribType;
+      this.AttribValue = s.AttribValue;
+      this.AttribReadOnly = s.AttribReadOnly;
+      this.AttribHint = s.AttribHint;
+      this.AttribIncludeInSave = s.AttribIncludeInSave;
+    } else {
+      this.AttribName = "";
+      this.AttribType = "";
+      this.AttribValue = "";
+      this.AttribReadOnly = false;
+      this.AttribHint = "";
+      this.AttribIncludeInSave = false;
+    };
+    this.$equal = function (b) {
+      return (this.AttribName === b.AttribName) && ((this.AttribType === b.AttribType) && ((this.AttribValue === b.AttribValue) && ((this.AttribReadOnly === b.AttribReadOnly) && ((this.AttribHint === b.AttribHint) && (this.AttribIncludeInSave === b.AttribIncludeInSave)))));
+    };
+  };
+  $mod.$rtti.$Record("TDefaultAttribute",{}).addFields("AttribName",rtl.string,"AttribType",rtl.string,"AttribValue",rtl.string,"AttribReadOnly",rtl.boolean,"AttribHint",rtl.string,"AttribIncludeInSave",rtl.boolean);
+  $mod.$rtti.$DynArray("TDefaultAttributesArray",{eltype: $mod.$rtti["TDefaultAttribute"]});
+  this.TDefaultAttribsByType = function (s) {
+    if (s) {
+      this.NodeType = s.NodeType;
+      this.DefaultAttribs = s.DefaultAttribs;
+    } else {
+      this.NodeType = "";
+      this.DefaultAttribs = [];
+    };
+    this.$equal = function (b) {
+      return (this.NodeType === b.NodeType) && (this.DefaultAttribs === b.DefaultAttribs);
+    };
+  };
+  $mod.$rtti.$Record("TDefaultAttribsByType",{}).addFields("NodeType",rtl.string,"DefaultAttribs",$mod.$rtti["TDefaultAttributesArray"]);
+  $mod.$rtti.$DynArray("TDefaultAttribsTable",{eltype: $mod.$rtti["TDefaultAttribsByType"]});
+  this.TNodeAttribute = function (s) {
+    if (s) {
+      this.AttribName = s.AttribName;
+      this.AttribType = s.AttribType;
+      this.AttribValue = s.AttribValue;
+      this.AttribReadOnly = s.AttribReadOnly;
+      this.AttribSource = new $mod.TCodeInputRec(s.AttribSource);
+    } else {
+      this.AttribName = "";
+      this.AttribType = "";
+      this.AttribValue = "";
+      this.AttribReadOnly = false;
+      this.AttribSource = new $mod.TCodeInputRec();
+    };
+    this.$equal = function (b) {
+      return (this.AttribName === b.AttribName) && ((this.AttribType === b.AttribType) && ((this.AttribValue === b.AttribValue) && ((this.AttribReadOnly === b.AttribReadOnly) && this.AttribSource.$equal(b.AttribSource))));
+    };
+  };
+  $mod.$rtti.$Record("TNodeAttribute",{}).addFields("AttribName",rtl.string,"AttribType",rtl.string,"AttribValue",rtl.string,"AttribReadOnly",rtl.boolean,"AttribSource",$mod.$rtti["TCodeInputRec"]);
+  $mod.$rtti.$DynArray("TNodesArray",{eltype: $mod.$rtti["TDataNode"]});
+  rtl.createClass($mod,"TComponentTag",pas.System.TObject,function () {
+    this.$init = function () {
+      pas.System.TObject.$init.call(this);
+      this.HH = "";
+      this.WW = "";
+    };
+  });
+  rtl.createClass($mod,"TDataNode",$mod.TForm,function () {
+    this.$init = function () {
+      $mod.TForm.$init.call(this);
+      this.NodeType = "";
+      this.NodeClass = "";
+      this.NodeName = "";
+      this.NameSpace = "";
+      this.IsDynamic = false;
+      this.ScreenObject = null;
+      this.MyForm = null;
+      this.NodeAttributes = [];
+      this.ChildNodes = [];
+      this.myEventTypes = null;
+      this.myEventHandlers = [];
+    };
+    this.$final = function () {
+      this.ScreenObject = undefined;
+      this.MyForm = undefined;
+      this.NodeAttributes = undefined;
+      this.ChildNodes = undefined;
+      this.myEventTypes = undefined;
+      this.myEventHandlers = undefined;
+      $mod.TForm.$final.call(this);
+    };
+    this.Create$1 = function (MyClass, MyName, MyNameSpace, MyType, NodeIsDynamic) {
+      this.ChildNodes = rtl.arraySetLength(this.ChildNodes,null,0);
+      this.NodeAttributes = rtl.arraySetLength(this.NodeAttributes,$mod.TNodeAttribute,0);
+      this.myEventTypes = pas.Classes.TStringList.$create("Create$1");
+      this.myEventHandlers = rtl.arraySetLength(this.myEventHandlers,$mod.TEventHandlerRec,0);
+      if ((MyNameSpace==null)||(MyNameSpace==undefined))
+      {MyNameSpace='';};
+      this.NodeClass = MyClass;
+      this.NameSpace = MyNameSpace;
+      this.NodeName = MyName;
+      this.NodeType = MyType;
+      this.IsDynamic = NodeIsDynamic;
+    };
+    this.DeleteMe = function () {
+      this.ScreenObject = null;
+      if (this != null) this.$destroy("Destroy");
+    };
+    this.HasAttribute = function (AttrName) {
+      var Result = false;
+      var found = false;
+      var i = 0;
+      found = false;
+      for (var $l1 = 0, $end2 = rtl.length(this.NodeAttributes) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (this.NodeAttributes[i].AttribName === AttrName) found = true;
+      };
+      Result = found;
+      return Result;
+    };
+    this.GetAttribute = function (AttrName, AllowSpace) {
+      var Result = new $mod.TNodeAttribute();
+      var i = 0;
+      var foundAttrib = new $mod.TNodeAttribute();
+      var myAttribs = [];
+      i = 0;
+      foundAttrib.AttribName = "";
+      myAttribs = this.NodeAttributes;
+      while (i < rtl.length(myAttribs)) {
+        if (this.NodeAttributes[i].AttribName === AttrName) {
+          foundAttrib = new $mod.TNodeAttribute(this.NodeAttributes[i]);
+          i = rtl.length(myAttribs);
+        };
+        i = i + 1;
+      };
+      if (foundAttrib.AttribName !== AttrName) if (AllowSpace) {
+        foundAttrib.AttribName = AttrName;
+        foundAttrib.AttribType = "String";
+        foundAttrib.AttribValue = "";
+        foundAttrib.AttribReadOnly = false;
+      } else {
+        pas.StringUtils.ShowMessage((("Attribute " + AttrName) + " not found in node ") + this.NodeName);
+      };
+      Result = new $mod.TNodeAttribute(foundAttrib);
+      return Result;
+    };
+    this.GetAttributeAnyCase = function (AttrName, AllowSpace) {
+      var Result = new $mod.TNodeAttribute();
+      var i = 0;
+      var foundAttrib = new $mod.TNodeAttribute();
+      var myAttribs = [];
+      i = 0;
+      foundAttrib.AttribName = "";
+      myAttribs = this.NodeAttributes;
+      while (i < rtl.length(myAttribs)) {
+        if (pas.SysUtils.Trim(pas.SysUtils.UpperCase(this.NodeAttributes[i].AttribName)) === pas.SysUtils.Trim(pas.SysUtils.UpperCase(AttrName))) {
+          foundAttrib = new $mod.TNodeAttribute(this.NodeAttributes[i]);
+          i = rtl.length(myAttribs);
+        };
+        i = i + 1;
+      };
+      if (pas.SysUtils.Trim(pas.SysUtils.UpperCase(foundAttrib.AttribName)) !== pas.SysUtils.Trim(pas.SysUtils.UpperCase(AttrName))) if (AllowSpace) {
+        foundAttrib.AttribName = AttrName;
+        foundAttrib.AttribType = "String";
+        foundAttrib.AttribValue = "";
+        foundAttrib.AttribReadOnly = false;
+      } else {
+        pas.StringUtils.ShowMessage((("Attribute " + AttrName) + " not found in node ") + this.NodeName);
+      };
+      Result = new $mod.TNodeAttribute(foundAttrib);
+      return Result;
+    };
+    this.GetAttributeAnyCase$1 = function (AttrName) {
+      var Result = new $mod.TNodeAttribute();
+      Result = new $mod.TNodeAttribute(this.GetAttributeAnyCase(AttrName,false));
+      return Result;
+    };
+    this.AddAttribute = function (AttributeName, AttributeType, AttributeValue, AttributeReadOnly) {
+      var numAttributes = 0;
+      var myAttributes = [];
+      myAttributes = this.NodeAttributes;
+      numAttributes = rtl.length(myAttributes);
+      this.NodeAttributes = rtl.arraySetLength(this.NodeAttributes,$mod.TNodeAttribute,numAttributes + 1);
+      this.NodeAttributes[numAttributes].AttribName = AttributeName;
+      this.NodeAttributes[numAttributes].AttribValue = AttributeValue;
+      this.NodeAttributes[numAttributes].AttribType = AttributeType;
+      this.NodeAttributes[numAttributes].AttribReadOnly = AttributeReadOnly;
+      $mod.SortAttribs({p: this, get: function () {
+          return this.p.NodeAttributes;
+        }, set: function (v) {
+          this.p.NodeAttributes = v;
+        }});
+    };
+    this.SetAttributeValue = function (AttrName, NewValue, AttrType, AttribReadOnly) {
+      var foundAttrib = new $mod.TNodeAttribute();
+      var myAttribs = [];
+      var i = 0;
+      var found = false;
+      foundAttrib = new $mod.TNodeAttribute(this.GetAttribute(AttrName,true));
+      if (AttrType !== "") foundAttrib.AttribType = AttrType;
+      foundAttrib.AttribValue = NewValue;
+      found = false;
+      myAttribs = this.NodeAttributes;
+      i = 0;
+      while (i < rtl.length(myAttribs)) {
+        if (this.NodeAttributes[i].AttribName === AttrName) {
+          this.NodeAttributes[i] = new $mod.TNodeAttribute(foundAttrib);
+          i = rtl.length(myAttribs);
+          found = true;
+        };
+        i = i + 1;
+      };
+      if (!found) {
+        this.AddAttribute(foundAttrib.AttribName,foundAttrib.AttribType,foundAttrib.AttribValue,AttribReadOnly);
+      };
+    };
+    this.SetAttributeValue$1 = function (AttrName, NewValue, AttrType) {
+      this.SetAttributeValue(AttrName,NewValue,AttrType,false);
+    };
+    this.SetAttributeValue$2 = function (AttrName, NewValue) {
+      this.SetAttributeValue$1(AttrName,NewValue,"");
+    };
+    this.SetAttributeSource = function (AttrName, SourceNodeName, SourceAttribName) {
+      var foundAttrib = new $mod.TNodeAttribute();
+      var myAttribs = [];
+      var i = 0;
+      var found = false;
+      foundAttrib = new $mod.TNodeAttribute(this.GetAttribute(AttrName,true));
+      if (foundAttrib.AttribName === "") if (SourceNodeName !== "") {
+        pas.StringUtils.ShowMessage((("Unable to set source for missing attribute " + this.NodeName) + ".") + AttrName);
+        return;
+      };
+      foundAttrib.AttribSource.InputNodeName = SourceNodeName;
+      foundAttrib.AttribSource.InputAttribName = SourceAttribName;
+      if (SourceNodeName === "") {
+        foundAttrib.AttribSource.InputSynonym = "";
+        foundAttrib.AttribSource.InputValue = "";
+      };
+      found = false;
+      myAttribs = this.NodeAttributes;
+      i = 0;
+      while (i < rtl.length(myAttribs)) {
+        if (this.NodeAttributes[i].AttribName === AttrName) {
+          this.NodeAttributes[i] = new $mod.TNodeAttribute(foundAttrib);
+          i = rtl.length(myAttribs);
+          found = true;
+        };
+        i = i + 1;
+      };
+    };
+    this.GetChildIndex = function (ChildNode) {
+      var Result = 0;
+      var i = 0;
+      var mychildren = [];
+      Result = -1;
+      mychildren = this.ChildNodes;
+      for (var $l1 = 0, $end2 = rtl.length(mychildren) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (mychildren[i].NodeName === ChildNode.NodeName) Result = i;
+      };
+      return Result;
+    };
+    this.RemoveChildNode = function (ChildNode) {
+      var i = 0;
+      var l = 0;
+      var found = false;
+      var mychildren = [];
+      found = false;
+      mychildren = this.ChildNodes;
+      l = rtl.length(mychildren);
+      i = 0;
+      while (i < rtl.length(mychildren)) {
+        if (found === false) {
+          if (mychildren[i] === ChildNode) {
+            found = true;
+          };
+        };
+        if (found && (i < rtl.length(mychildren))) mychildren[i] = mychildren[i + 1];
+        i = i + 1;
+      };
+      if (found) mychildren = rtl.arraySetLength(mychildren,null,l - 1);
+      this.ChildNodes = mychildren;
+    };
+    this.FindRegisteredEvent = function (EventType) {
+      var Result = null;
+      var i = 0;
+      Result = null;
+      if (rtl.length(this.myEventHandlers) < this.myEventTypes.GetCount()) this.myEventHandlers = rtl.arraySetLength(this.myEventHandlers,$mod.TEventHandlerRec,this.myEventTypes.GetCount());
+      for (var $l1 = 0, $end2 = this.myEventTypes.GetCount() - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (this.myEventTypes.Get(i) === EventType) Result = this.myEventHandlers[i].TheHandler;
+      };
+      return Result;
+    };
+    this.RegisterEvent = function (EventType, TheHandler) {
+      var i = 0;
+      if (rtl.length(this.myEventHandlers) < this.myEventTypes.GetCount()) this.myEventHandlers = rtl.arraySetLength(this.myEventHandlers,$mod.TEventHandlerRec,this.myEventTypes.GetCount());
+      for (var $l1 = 0, $end2 = this.myEventTypes.GetCount() - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (this.myEventTypes.Get(i) === EventType) {
+          this.myEventHandlers[i].TheHandler = TheHandler;
+        };
+      };
+    };
+    this.HasUserEventCode = function (EventType) {
+      var Result = false;
+      var i = 0;
+      Result = false;
+      for (var $l1 = 0, $end2 = rtl.length(this.myEventHandlers) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (this.myEventTypes.Get(i) === EventType) if (pas.SysUtils.Trim(this.myEventHandlers[i].TheCode) !== "") Result = true;
+      };
+      return Result;
+    };
+    this.EventNum = function (EventType) {
+      var Result = 0;
+      var i = 0;
+      Result = -1;
+      for (var $l1 = 0, $end2 = this.myEventTypes.GetCount() - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (this.myEventTypes.Get(i) === EventType) Result = i;
+      };
+      return Result;
+    };
+    this.GetEventCode = function (EventType) {
+      var Result = "";
+      var i = 0;
+      Result = "";
+      for (var $l1 = 0, $end2 = rtl.length(this.myEventHandlers) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (this.myEventTypes.Get(i) === EventType) if (pas.SysUtils.Trim(this.myEventHandlers[i].TheCode) !== "") Result = this.myEventHandlers[i].TheCode;
+      };
+      return Result;
+    };
+    this.GetEventInitCode = function (EventType) {
+      var Result = "";
+      var i = 0;
+      Result = "";
+      for (var $l1 = 0, $end2 = rtl.length(this.myEventHandlers) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (this.myEventTypes.Get(i) === EventType) if (pas.SysUtils.Trim(this.myEventHandlers[i].InitCode) !== "") Result = this.myEventHandlers[i].InitCode;
+      };
+      return Result;
+    };
+    this.AddEvent = function (EventType, MainCode, InitCode) {
+      var j = 0;
+      this.myEventTypes.Add(EventType);
+      this.myEventHandlers = rtl.arraySetLength(this.myEventHandlers,$mod.TEventHandlerRec,this.myEventTypes.GetCount());
+      j = this.myEventTypes.GetCount() - 1;
+      this.myEventHandlers[j].TheCode = MainCode;
+      this.myEventHandlers[j].InitCode = InitCode;
+      this.myEventHandlers[j].TheHandler = null;
+    };
+  });
+  this.AlignmentOptions = ["Left","Right","Centre","Top","Bottom"];
+  this.LabelPosOptions = ["Top","Bottom","Left","Right"];
+  this.ScrollBarsOptions = ["Bottom","Right","Both"];
+  this.TAttribOptionsRec = function (s) {
+    if (s) {
+      this.ComponentType = s.ComponentType;
+      this.AttribName = s.AttribName;
+      this.Options = s.Options;
+    } else {
+      this.ComponentType = "";
+      this.AttribName = "";
+      this.Options = null;
+    };
+    this.$equal = function (b) {
+      return (this.ComponentType === b.ComponentType) && ((this.AttribName === b.AttribName) && (this.Options === b.Options));
+    };
+  };
+  $mod.$rtti.$Record("TAttribOptionsRec",{}).addFields("ComponentType",rtl.string,"AttribName",rtl.string,"Options",pas.Classes.$rtti["TStringList"]);
+  $mod.$rtti.$DynArray("TAttribOptionsArray",{eltype: $mod.$rtti["TAttribOptionsRec"]});
+  rtl.createClass($mod,"TInterfaceObject",$mod.TDataNode,function () {
+    this.$init = function () {
+      $mod.TDataNode.$init.call(this);
+      this.myNode = null;
+    };
+    this.$final = function () {
+      this.myNode = undefined;
+      $mod.TDataNode.$final.call(this);
+    };
+    var $r = this.$rtti;
+    $r.addField("myNode",$mod.$rtti["TDataNode"]);
+  });
+  this.SubstituteSpecials = function (instring) {
+    var Result = "";
+    var tempstr = "";
+    tempstr = instring;
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"<","&lt;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,">","&gt;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"'","&apos;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,'"',"&quot;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"\\n","&bksln;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"\\","&bksl;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,pas.System.LineEnding,"&crlf;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,String.fromCharCode(10),"&crlf;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,$mod.EventAttributeDelimiter,"&eadlm;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,$mod.EventListdelimiter,"&eldlm;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,$mod.delimiterBetweenAttribsAndEvents,"&aedlm;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,$mod.attributeListdelimiter,"&aldlm;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,$mod.EventListdelimiter,"&eldlm;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,$mod.AttribBitsDelimiter,"&abdlm;",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,$mod.AttribLinkDelimiter,"&akdlm;",-1,-1);
+    Result = tempstr;
+    return Result;
+  };
+  this.UnSubstituteSpecials = function (instring) {
+    var Result = "";
+    var tempstr = "";
+    tempstr = instring;
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&lt;","<",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&gt;",">",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&apos;","'",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&quot;",'"',-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&bksln;","\\n",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&bksl;","\\",-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&crlf;",pas.System.LineEnding,-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&eadlm;",$mod.EventAttributeDelimiter,-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&eldlm;",$mod.EventListdelimiter,-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&aedlm;",$mod.delimiterBetweenAttribsAndEvents,-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&aldlm;",$mod.attributeListdelimiter,-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&eldlm;",$mod.EventListdelimiter,-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&abdlm;",$mod.AttribBitsDelimiter,-1,-1);
+    tempstr = pas.StringUtils.myStringReplace(tempstr,"&akdlm;",$mod.AttribLinkDelimiter,-1,-1);
+    Result = tempstr;
+    return Result;
+  };
+  this.CreateFormNode = function (myForm) {
+    var Result = null;
+    var myNode = null;
+    myForm.ChildNodes = rtl.arraySetLength(myForm.ChildNodes,null,0);
+    myForm.NodeAttributes = rtl.arraySetLength(myForm.NodeAttributes,$mod.TNodeAttribute,0);
+    myForm.myEventHandlers = rtl.arraySetLength(myForm.myEventHandlers,$mod.TEventHandlerRec,0);
+    myForm.IsDynamic = false;
+    myForm.NodeName = myForm.fName;
+    myForm.NodeClass = "UI";
+    myForm.NodeType = "TXForm";
+    myForm.ScreenObject = myForm;
+    myForm.MyForm = myForm;
+    myNode = myForm;
+    myForm.myNode = myNode;
+    myForm.SetFormEventTypes();
+    Result = myNode;
+    return Result;
+  };
+  this.AddFormToNodeTree = function (myForm) {
+    var Result = null;
+    var myNode = null;
+    myNode = $mod.CreateFormNode(myForm);
+    $mod.AddChildToParentNode({p: $mod, get: function () {
+        return this.p.UIRootNode;
+      }, set: function (v) {
+        this.p.UIRootNode = v;
+      }},{get: function () {
+        return myNode;
+      }, set: function (v) {
+        myNode = v;
+      }},-1);
+    Result = myNode;
+    return Result;
+  };
+  this.InitialiseCodeTree = function () {
+    var Result = null;
+    var myNode = null;
+    myNode = null;
+    myNode = $mod.TDataNode.$create("Create$1",["Code","CodeUnits","","Root",false]);
+    $mod.AddChildToParentNode({p: $mod, get: function () {
+        return this.p.SystemNodeTree;
+      }, set: function (v) {
+        this.p.SystemNodeTree = v;
+      }},{get: function () {
+        return myNode;
+      }, set: function (v) {
+        myNode = v;
+      }},-1);
+    Result = myNode;
+    return Result;
+  };
+  this.AddDefaultsToTable = function (MyNodeType, myDefaultAttribs) {
+    $mod.DefaultAttribsByType = rtl.arraySetLength($mod.DefaultAttribsByType,$mod.TDefaultAttribsByType,rtl.length($mod.DefaultAttribsByType) + 1);
+    $mod.DefaultAttribsByType[rtl.length($mod.DefaultAttribsByType) - 1].NodeType = MyNodeType;
+    $mod.DefaultAttribsByType[rtl.length($mod.DefaultAttribsByType) - 1].DefaultAttribs = myDefaultAttribs;
+  };
+  this.GetDefaultAttribs = function (NodeType) {
+    var Result = [];
+    var i = 0;
+    var empty = [];
+    var thisrec = new $mod.TDefaultAttribsByType();
+    empty = rtl.arraySetLength(empty,$mod.TDefaultAttribute,0);
+    Result = empty;
+    i = 0;
+    while (i < rtl.length($mod.DefaultAttribsByType)) {
+      if ($mod.DefaultAttribsByType[i].NodeType === NodeType) {
+        thisrec = new $mod.TDefaultAttribsByType($mod.DefaultAttribsByType[i]);
+        Result = thisrec.DefaultAttribs;
+        i = rtl.length($mod.DefaultAttribsByType);
+      };
+      i = i + 1;
+    };
+    return Result;
+  };
+  this.GetDefaultAttrib = function (NodeType, AttrName) {
+    var Result = new $mod.TDefaultAttribute();
+    var i = 0;
+    var j = 0;
+    var dummyrec = new $mod.TDefaultAttribute();
+    var thisrec = new $mod.TDefaultAttribsByType();
+    dummyrec.AttribName = "";
+    Result = new $mod.TDefaultAttribute(dummyrec);
+    i = 0;
+    while (i < rtl.length($mod.DefaultAttribsByType)) {
+      if ($mod.DefaultAttribsByType[i].NodeType === NodeType) {
+        j = 0;
+        thisrec = new $mod.TDefaultAttribsByType($mod.DefaultAttribsByType[i]);
+        while (j < rtl.length(thisrec.DefaultAttribs)) {
+          if ($mod.DefaultAttribsByType[i].DefaultAttribs[j].AttribName === AttrName) {
+            Result = new $mod.TDefaultAttribute($mod.DefaultAttribsByType[i].DefaultAttribs[j]);
+            j = rtl.length($mod.DefaultAttribsByType[i].DefaultAttribs);
+          };
+          j = j + 1;
+        };
+        i = rtl.length($mod.DefaultAttribsByType);
+      };
+      i = i + 1;
+    };
+    return Result;
+  };
+  this.IsADefaultAttrib = function (NodeType, AttrName) {
+    var Result = false;
+    var i = 0;
+    var j = 0;
+    var thisrec = new $mod.TDefaultAttribsByType();
+    Result = false;
+    if (AttrName === "ParentName") Result = true;
+    if (Result === false) {
+      i = 0;
+      while (i < rtl.length($mod.DefaultAttribsByType)) {
+        if ($mod.DefaultAttribsByType[i].NodeType === NodeType) {
+          j = 0;
+          thisrec = new $mod.TDefaultAttribsByType($mod.DefaultAttribsByType[i]);
+          while (j < rtl.length(thisrec.DefaultAttribs)) {
+            if ($mod.DefaultAttribsByType[i].DefaultAttribs[j].AttribName === AttrName) {
+              Result = true;
+              j = rtl.length($mod.DefaultAttribsByType[i].DefaultAttribs);
+            };
+            j = j + 1;
+          };
+          i = rtl.length($mod.DefaultAttribsByType);
+        };
+        i = i + 1;
+      };
+    };
+    return Result;
+  };
+  this.AddDefaultAttribs = function (myComponent, NewNode, defaultAttribs) {
+    var i = 0;
+    $mod.SetNodePropDefaults(NewNode,defaultAttribs);
+    for (var $l1 = 0, $end2 = rtl.length(defaultAttribs) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (defaultAttribs[i].AttribReadOnly === false) {
+        $mod.SetXObjectProperty(myComponent,NewNode,defaultAttribs[i].AttribName,defaultAttribs[i].AttribType,defaultAttribs[i].AttribValue);
+      };
+    };
+  };
+  this.AddDefaultAttribute = function (Attribs, AttrName, AttrType, AttrValue, AttrHint, ro) {
+    $mod.AddDefaultAttribute$1(Attribs,AttrName,AttrType,AttrValue,AttrHint,ro,true);
+  };
+  this.AddDefaultAttribute$1 = function (Attribs, AttrName, AttrType, AttrValue, AttrHint, ro, incl) {
+    var numAttributes = 0;
+    numAttributes = rtl.length(Attribs.get());
+    Attribs.set(rtl.arraySetLength(Attribs.get(),$mod.TDefaultAttribute,numAttributes + 1));
+    Attribs.get()[numAttributes].AttribName = AttrName;
+    Attribs.get()[numAttributes].AttribValue = AttrValue;
+    Attribs.get()[numAttributes].AttribType = AttrType;
+    Attribs.get()[numAttributes].AttribReadOnly = ro;
+    Attribs.get()[numAttributes].AttribHint = AttrHint;
+    Attribs.get()[numAttributes].AttribIncludeInSave = incl;
+  };
+  this.AddAttrib = function (AttrParams, attrName, attrType, attrValue, attrReadOnly) {
+    var i = 0;
+    i = rtl.length(AttrParams.get());
+    AttrParams.set(rtl.arraySetLength(AttrParams.get(),$mod.TNodeAttribute,i + 1));
+    AttrParams.get()[i] = new $mod.TNodeAttribute($impl.MakeAttrib(attrName,attrType,attrValue,attrReadOnly));
+  };
+  this.AddChildToParentNode = function (ParentNode, ChildNode, position) {
+    var numchildren = 0;
+    var i = 0;
+    var pn = null;
+    if (ChildNode.get().NodeName !== "") {
+      pn = $mod.FindParentOfNode$1($mod.SystemNodeTree,ChildNode.get());
+      if (pn !== null) {
+        pn.RemoveChildNode(ChildNode.get());
+      };
+    };
+    numchildren = rtl.length(ParentNode.get().ChildNodes);
+    ParentNode.get().ChildNodes = rtl.arraySetLength(ParentNode.get().ChildNodes,null,numchildren + 1);
+    if (position === -1) {
+      ParentNode.get().ChildNodes[numchildren] = ChildNode.get();
+    } else {
+      for (var $l1 = numchildren, $end2 = position + 1; $l1 >= $end2; $l1--) {
+        i = $l1;
+        ParentNode.get().ChildNodes[i] = ParentNode.get().ChildNodes[i - 1];
+      };
+      ParentNode.get().ChildNodes[position] = ChildNode.get();
+    };
+    ChildNode.get().SetAttributeValue$2("ParentName",ParentNode.get().NodeName);
+  };
+  this.StringToCodeInputs = function (InputString) {
+    var Result = [];
+    var myInputs = [];
+    var Inputs = null;
+    var InputBits = null;
+    var InputStr = "";
+    var j = 0;
+    var k = 0;
+    myInputs = rtl.arraySetLength(myInputs,$mod.TCodeInputRec,0);
+    if (InputString !== "") {
+      Inputs = pas.StringUtils.stringsplit(InputString,$mod.AttribLinkDelimiter);
+      myInputs = rtl.arraySetLength(myInputs,$mod.TCodeInputRec,0);
+      k = 0;
+      for (var $l1 = 0, $end2 = Inputs.GetCount() - 1; $l1 <= $end2; $l1++) {
+        j = $l1;
+        InputStr = Inputs.Get(j);
+        InputBits = pas.StringUtils.stringsplit(InputStr,".");
+        if (pas.SysUtils.Trim(InputBits.Get(0)) !== "") {
+          myInputs = rtl.arraySetLength(myInputs,$mod.TCodeInputRec,k + 1);
+          myInputs[k].InputSynonym = InputBits.Get(0);
+          myInputs[k].InputNodeName = InputBits.Get(1);
+          if (InputBits.GetCount() > 2) myInputs[k].InputAttribName = InputBits.Get(2);
+          k = k + 1;
+        };
+      };
+    };
+    Result = myInputs;
+    return Result;
+  };
+  this.CodeInputsToString = function (myInputs) {
+    var Result = "";
+    var j = 0;
+    var InputsString = "";
+    InputsString = "";
+    for (var $l1 = 0, $end2 = rtl.length(myInputs) - 1; $l1 <= $end2; $l1++) {
+      j = $l1;
+      InputsString = (((((InputsString + myInputs[j].InputSynonym) + ".") + myInputs[j].InputNodeName) + ".") + myInputs[j].InputAttribName) + $mod.AttribLinkDelimiter;
+    };
+    Result = InputsString;
+    return Result;
+  };
+  this.NodeTreeToXML = function (CurrentItem, ParentNode, DynamicOnly, QuotedString) {
+    var Result = "";
+    var XMLString = "";
+    var ParentName = "";
+    var i = 0;
+    var numchildren = 0;
+    var numAttributes = 0;
+    var CurrentChildNodes = [];
+    var myAttribs = [];
+    var AQuote1 = "";
+    var AQuote2 = "";
+    var DfltAttrib = new $mod.TDefaultAttribute();
+    XMLString = "";
+    if (CurrentItem.NodeName === "ResourceRoot") XMLString = "";
+    if (QuotedString) XMLString = "";
+    if (QuotedString) {
+      AQuote1 = "'";
+      AQuote2 = "' +";
+    } else {
+      AQuote1 = "";
+      AQuote2 = "";
+    };
+    if (ParentNode !== null) ParentName = ParentNode.NodeName;
+    if ((((((((((CurrentItem.NodeClass === "Root") || (CurrentItem.NodeClass === "UI")) || (CurrentItem.NodeClass === "NV")) || (CurrentItem.NodeClass === "SVG")) || (CurrentItem.NodeClass === "Code")) || ((CurrentItem.NodeType === "TXComposite") && (CurrentItem.NodeClass === "RUI"))) || ((CurrentItem.NodeName === "Composites") && (CurrentItem.NodeClass === "RUI"))) && (CurrentItem.NodeName !== "XGPUCodeEditorForm")) && (CurrentItem.NodeName !== "PasteDialog")) && (CurrentItem.NodeName !== "CompilerLogForm")) {
+      if (((CurrentItem.IsDynamic === true) || (DynamicOnly === false)) && (CurrentItem.NodeName !== "Composites")) {
+        XMLString = ((((AQuote2 + pas.System.LineEnding) + AQuote1) + $mod.StartXMLString) + CurrentItem.NodeType) + $mod.attributeListdelimiter;
+        XMLString = (((XMLString + " Class ") + $mod.NameValuePairdelimiter) + CurrentItem.NodeClass) + $mod.attributeListdelimiter;
+        XMLString = (((XMLString + " Name ") + $mod.NameValuePairdelimiter) + CurrentItem.NodeName) + $mod.attributeListdelimiter;
+        XMLString = (((XMLString + " NameSpace ") + $mod.NameValuePairdelimiter) + CurrentItem.NameSpace) + $mod.attributeListdelimiter;
+        myAttribs = CurrentItem.NodeAttributes;
+        numAttributes = rtl.length(myAttribs);
+        for (var $l1 = 0, $end2 = numAttributes - 1; $l1 <= $end2; $l1++) {
+          i = $l1;
+          DfltAttrib = new $mod.TDefaultAttribute($mod.GetDefaultAttrib(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName));
+          if (DfltAttrib.AttribName === "") DfltAttrib.AttribIncludeInSave = true;
+          if ((((pas.WrapperPanel.FindSuppressedProperty(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName) < 0) && (DfltAttrib.AttribIncludeInSave === true)) && (CurrentItem.NodeAttributes[i].AttribName !== "ParentName")) && ((CurrentItem.NodeAttributes[i].AttribName !== "XMLString") || ((CurrentItem.NodeAttributes[i].AttribName === "XMLString") && (CurrentItem.IsDynamic === false)))) {
+            XMLString = ((((((((((((XMLString + CurrentItem.NodeAttributes[i].AttribName) + $mod.AttribBitsDelimiter) + " ") + CurrentItem.NodeAttributes[i].AttribType) + $mod.AttribBitsDelimiter) + $mod.SubstituteSpecials(CurrentItem.NodeAttributes[i].AttribValue)) + $mod.AttribBitsDelimiter) + pas.StringUtils.MyBoolToStr(CurrentItem.NodeAttributes[i].AttribReadOnly)) + $mod.AttribBitsDelimiter) + CurrentItem.NodeAttributes[i].AttribSource.InputNodeName) + ".") + CurrentItem.NodeAttributes[i].AttribSource.InputAttribName) + $mod.attributeListdelimiter;
+          };
+        };
+        XMLString = (((((((((XMLString + "ParentName") + $mod.AttribBitsDelimiter) + " String") + $mod.AttribBitsDelimiter) + $mod.SubstituteSpecials(ParentName)) + $mod.AttribBitsDelimiter) + "True") + $mod.AttribBitsDelimiter) + ".") + $mod.attributeListdelimiter;
+        if (CurrentItem.IsDynamic || (CurrentItem === $mod.UIRootNode)) {
+          XMLString = XMLString + $mod.delimiterBetweenAttribsAndEvents;
+          if (CurrentItem.myEventTypes.GetCount() > 0) if (CurrentItem.myEventTypes.GetCount() !== rtl.length(CurrentItem.myEventHandlers)) CurrentItem.myEventHandlers = rtl.arraySetLength(CurrentItem.myEventHandlers,$mod.TEventHandlerRec,CurrentItem.myEventTypes.GetCount());
+          for (var $l3 = 0, $end4 = CurrentItem.myEventTypes.GetCount() - 1; $l3 <= $end4; $l3++) {
+            i = $l3;
+            XMLString = (((((XMLString + CurrentItem.myEventTypes.Get(i)) + $mod.AttribBitsDelimiter) + $mod.SubstituteSpecials(pas.SysUtils.Trim(CurrentItem.myEventHandlers[i].TheCode))) + $mod.AttribBitsDelimiter) + $mod.SubstituteSpecials(pas.SysUtils.Trim(CurrentItem.myEventHandlers[i].InitCode))) + $mod.attributeListdelimiter;
+          };
+        };
+        XMLString = XMLString + $mod.EndXMLString;
+      };
+      CurrentChildNodes = CurrentItem.ChildNodes;
+      numchildren = rtl.length(CurrentChildNodes);
+      for (var $l5 = 0, $end6 = numchildren - 1; $l5 <= $end6; $l5++) {
+        i = $l5;
+        XMLString = XMLString + $mod.NodeTreeToXML(CurrentItem.ChildNodes[i],CurrentItem,DynamicOnly,QuotedString);
+      };
+      XMLString = (((XMLString + $mod.StartXMLString) + $mod.ToggleFlagMarker) + CurrentItem.NodeType) + $mod.EndXMLString;
+    };
+    Result = XMLString;
+    return Result;
+  };
+  this.FindDataNodeById = function (InTree, ScreenObjectID, NameSpace, showerror) {
+    var Result = null;
+    var FoundItem = null;
+    var TempItem = null;
+    var FoundParent = null;
+    var pos = 0;
+    pos = -1;
+    if (pas.SysUtils.Trim(ScreenObjectID) === "") pas.StringUtils.ShowMessage("FindDataNodeById: oops no id");
+    FoundItem = null;
+    FoundParent = null;
+    TempItem = $impl.ScanChildrenForNodeByName(InTree,ScreenObjectID,NameSpace,{get: function () {
+        return FoundParent;
+      }, set: function (v) {
+        FoundParent = v;
+      }},{get: function () {
+        return pos;
+      }, set: function (v) {
+        pos = v;
+      }});
+    if (TempItem !== null) {
+      FoundItem = TempItem;
+    } else {
+      if (showerror) pas.StringUtils.ShowMessage(((("Error in NodeUtils.FindDataNodeById >" + NameSpace) + ",") + ScreenObjectID) + "< not found");
+    };
+    Result = FoundItem;
+    return Result;
+  };
+  this.FindParentOfNode = function (InTree, targetNode, showerror, position) {
+    var Result = null;
+    var FoundItem = null;
+    var TempItem = null;
+    var FoundParent = null;
+    FoundItem = null;
+    TempItem = null;
+    FoundParent = null;
+    position.set(-1);
+    TempItem = $impl.ScanChildrenForNode(InTree,targetNode,{get: function () {
+        return FoundParent;
+      }, set: function (v) {
+        FoundParent = v;
+      }},position);
+    if ((TempItem !== null) && (FoundParent !== null)) {
+      FoundItem = FoundParent;
+    } else if (showerror) pas.StringUtils.ShowMessage((((("Error in Nodeutils.FindParentOfNode >" + targetNode.NodeType) + "(") + targetNode.NodeName) + ")") + " < not found");
+    Result = FoundItem;
+    return Result;
+  };
+  this.FindParentOfNode$1 = function (InTree, targetNode) {
+    var Result = null;
+    var pos = 0;
+    Result = $mod.FindParentOfNode(InTree,targetNode,false,{get: function () {
+        return pos;
+      }, set: function (v) {
+        pos = v;
+      }});
+    return Result;
+  };
+  this.FindParentOfNodeByName = function (InTree, ScreenObjectID, Namespace, showerror, position) {
+    var Result = null;
+    var FoundItem = null;
+    var TempItem = null;
+    var FoundParent = null;
+    FoundItem = null;
+    TempItem = null;
+    FoundParent = null;
+    position.set(-1);
+    TempItem = $impl.ScanChildrenForNodeByName(InTree,ScreenObjectID,Namespace,{get: function () {
+        return FoundParent;
+      }, set: function (v) {
+        FoundParent = v;
+      }},position);
+    if ((TempItem !== null) && (FoundParent !== null)) {
+      FoundItem = FoundParent;
+    } else if (showerror) pas.StringUtils.ShowMessage(("Error in Nodeutils.FindParentOfNode >" + ScreenObjectID) + "< not found");
+    Result = FoundItem;
+    return Result;
+  };
+  this.FindParentOfNodeByName$1 = function (InTree, ScreenObjectID, Namespace, showError) {
+    var Result = null;
+    var pos = 0;
+    Result = $mod.FindParentOfNodeByName(InTree,ScreenObjectID,Namespace,false,{get: function () {
+        return pos;
+      }, set: function (v) {
+        pos = v;
+      }});
+    return Result;
+  };
+  this.FindParentOfNodeByName$2 = function (InTree, ScreenObjectID, Namespace) {
+    var Result = null;
+    var pos = 0;
+    Result = $mod.FindParentOfNodeByName(InTree,ScreenObjectID,Namespace,false,{get: function () {
+        return pos;
+      }, set: function (v) {
+        pos = v;
+      }});
+    return Result;
+  };
+  this.ReParentNode = function (MyNode, NewParent) {
+    var OldParent = null;
+    var pos = 0;
+    OldParent = $mod.FindParentOfNodeByName($mod.SystemNodeTree,MyNode.NodeName,MyNode.NameSpace,false,{get: function () {
+        return pos;
+      }, set: function (v) {
+        pos = v;
+      }});
+    if (OldParent !== NewParent) {
+      if (OldParent !== null) {
+        OldParent.RemoveChildNode(MyNode);
+      };
+      $mod.AddChildToParentNode({get: function () {
+          return NewParent;
+        }, set: function (v) {
+          NewParent = v;
+        }},{get: function () {
+          return MyNode;
+        }, set: function (v) {
+          MyNode = v;
+        }},-1);
+    };
+  };
+  this.DeleteNode = function (ParentNode, MyNode) {
+    var handlers = [];
+    var supp = false;
+    supp = $mod.SuppressEvents;
+    $mod.SuppressEvents = true;
+    handlers = rtl.arraySetLength(handlers,$mod.TEventHandlerRec,0);
+    MyNode.myEventHandlers = handlers;
+    $mod.DeleteNodeChildren(MyNode);
+    $impl.DeleteScreenObject(MyNode);
+    if (ParentNode === null) ParentNode = $mod.FindParentOfNode$1($mod.SystemNodeTree,MyNode);
+    if (ParentNode !== null) {
+      ParentNode.RemoveChildNode(MyNode);
+    };
+    MyNode.DeleteMe();
+    $mod.SuppressEvents = supp;
+  };
+  this.CopyNode = function (SourceNode, DrillDown) {
+    var Result = null;
+    var NewNode = null;
+    var myAttribs = [];
+    var i = 0;
+    myAttribs = rtl.arraySetLength(myAttribs,$mod.TNodeAttribute,rtl.length(SourceNode.NodeAttributes));
+    for (var $l1 = 0, $end2 = rtl.length(SourceNode.NodeAttributes) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      myAttribs[i] = new $mod.TNodeAttribute(SourceNode.NodeAttributes[i]);
+    };
+    NewNode = $mod.TDataNode.$create("Create$1",[SourceNode.NodeClass,SourceNode.NodeName,SourceNode.NameSpace,SourceNode.NodeType,false]);
+    NewNode.IsDynamic = true;
+    NewNode.NodeAttributes = myAttribs;
+    NewNode.myEventTypes = pas.Classes.TStringList.$create("Create$1");
+    for (var $l3 = 0, $end4 = SourceNode.myEventTypes.GetCount() - 1; $l3 <= $end4; $l3++) {
+      i = $l3;
+      NewNode.AddEvent(SourceNode.myEventTypes.Get(i),"","");
+    };
+    $impl.CopyEventHandlers(NewNode,SourceNode,SourceNode.NodeType === "TXCompositeIntf");
+    NewNode.ChildNodes = rtl.arraySetLength(NewNode.ChildNodes,null,0);
+    if (DrillDown) {
+      NewNode.ChildNodes = rtl.arraySetLength(NewNode.ChildNodes,null,rtl.length(SourceNode.ChildNodes));
+      for (var $l5 = 0, $end6 = rtl.length(SourceNode.ChildNodes) - 1; $l5 <= $end6; $l5++) {
+        i = $l5;
+        NewNode.ChildNodes[i] = $mod.CopyNode(SourceNode.ChildNodes[i],DrillDown);
+      };
+    };
+    Result = NewNode;
+    return Result;
+  };
+  this.AddChildToDataNode = function (ParentNode, MyClass, MyName, MyType, Namespace, MyAttributes, position) {
+    var Result = null;
+    var numchildren = 0;
+    var tempDataNodeArray = [];
+    var newNode = null;
+    var i = 0;
+    if ($mod.NodeNameIsUnique(null,MyName,Namespace,true)) {
+      tempDataNodeArray = ParentNode.ChildNodes;
+      numchildren = rtl.length(tempDataNodeArray);
+      ParentNode.ChildNodes = rtl.arraySetLength(ParentNode.ChildNodes,null,numchildren + 1);
+      newNode = $mod.TDataNode.$create("Create$1",[MyClass,MyName,Namespace,MyType,false]);
+      newNode.NodeAttributes = MyAttributes;
+      if (position === -1) {
+        ParentNode.ChildNodes[numchildren] = newNode;
+        Result = ParentNode.ChildNodes[numchildren];
+      } else {
+        for (var $l1 = numchildren, $end2 = position + 1; $l1 >= $end2; $l1--) {
+          i = $l1;
+          ParentNode.ChildNodes[i] = ParentNode.ChildNodes[i - 1];
+        };
+        ParentNode.ChildNodes[position] = newNode;
+        Result = ParentNode.ChildNodes[position];
+      };
+    } else Result = null;
+    return Result;
+  };
+  this.LookupComponentFunc = function (NodeType) {
+    var Result = null;
+    var i = 0;
+    i = 0;
+    Result = null;
+    while (i < rtl.length($mod.NodeFuncsLookup)) {
+      if ($mod.NodeFuncsLookup[i].NodeType === NodeType) {
+        Result = $mod.NodeFuncsLookup[i].ScreenObjFunctionPtr;
+        i = rtl.length($mod.NodeFuncsLookup);
+      };
+      i = i + 1;
+    };
+    return Result;
+  };
+  this.NodeIsDescendantOf = function (ThisNode, AncestorName) {
+    var Result = 0;
+    var myresult = 0;
+    var parentNode = null;
+    var CurrentNode = null;
+    var done = false;
+    myresult = -1;
+    if (ThisNode !== null) {
+      if (ThisNode.NodeName === AncestorName) {
+        myresult = 0}
+       else {
+        done = false;
+        CurrentNode = ThisNode;
+        while (done === false) {
+          if (CurrentNode.NodeName === $mod.SystemRootName) {
+            done = true;
+            myresult = -1;
+          } else {
+            parentNode = $mod.FindParentOfNode$1($mod.SystemNodeTree,CurrentNode);
+            if (parentNode !== null) {
+              myresult = myresult + 1;
+              if (parentNode.NodeName === AncestorName) {
+                done = true;
+              } else CurrentNode = parentNode;
+            } else {
+              done = true;
+              myresult = -1;
+            };
+          };
+        };
+      };
+    };
+    Result = myresult;
+    return Result;
+  };
+  this.NodeIsInXForm = function (ThisNode) {
+    var Result = false;
+    var myresult = false;
+    var parentNode = null;
+    var CurrentNode = null;
+    var done = false;
+    myresult = false;
+    if (((ThisNode.NodeType === "TXForm") && (ThisNode.IsDynamic === true)) && (ThisNode.ScreenObject !== $mod.MainForm)) {
+      myresult = true}
+     else {
+      done = false;
+      CurrentNode = ThisNode;
+      while (done === false) {
+        if (CurrentNode.NodeName === $mod.SystemRootName) {
+          done = true;
+          myresult = false;
+        } else {
+          parentNode = $mod.FindParentOfNode$1($mod.SystemNodeTree,CurrentNode);
+          if (parentNode !== null) {
+            if (((parentNode.NodeType === "TXForm") && (parentNode.IsDynamic === true)) && (parentNode.ScreenObject !== $mod.MainForm)) {
+              done = true;
+              myresult = true;
+            } else CurrentNode = parentNode;
+          } else {
+            done = true;
+            myresult = false;
+          };
+        };
+      };
+    };
+    Result = myresult;
+    return Result;
+  };
+  this.DeleteNodeChildren = function (ParentNode) {
+    var i = 0;
+    var handlers = [];
+    if (ParentNode === null) {
+      pas.StringUtils.ShowMessage("parentnode nil in DeleteNodeChildren")}
+     else {
+      for (var $l1 = 0, $end2 = rtl.length(ParentNode.ChildNodes) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        handlers = rtl.arraySetLength(handlers,$mod.TEventHandlerRec,0);
+        ParentNode.ChildNodes[i].myEventHandlers = handlers;
+        $mod.DeleteNodeChildren(ParentNode.ChildNodes[i]);
+        $impl.DeleteScreenObject(ParentNode.ChildNodes[i]);
+        ParentNode.ChildNodes[i].DeleteMe();
+      };
+      ParentNode.ChildNodes = rtl.arraySetLength(ParentNode.ChildNodes,null,0);
+    };
+  };
+  this.InsertSystemNode = function (ParentNode, SourceNode, Position) {
+    var Result = null;
+    var myparent = null;
+    var myself = null;
+    var i = 0;
+    var DfltAttrib = new $mod.TDefaultAttribute();
+    myparent = ParentNode;
+    if ((myparent !== null) && (myparent.NodeName !== "")) {
+      if (((SourceNode.NodeClass === "UI") || (SourceNode.NodeClass === "NV")) || (SourceNode.NodeClass === "SVG")) {
+        myself = pas.WrapperPanel.AddDynamicWidget(SourceNode.NodeType,ParentNode.MyForm,ParentNode,SourceNode.NodeName,SourceNode.NameSpace,"Left",Position);
+        myself.NameSpace = SourceNode.NameSpace;
+        $impl.CopyEventHandlers(myself,SourceNode,SourceNode.NodeType === "TXCompositeIntf");
+        for (var $l1 = 0, $end2 = rtl.length(SourceNode.NodeAttributes) - 1; $l1 <= $end2; $l1++) {
+          i = $l1;
+          DfltAttrib = new $mod.TDefaultAttribute($mod.GetDefaultAttrib(SourceNode.NodeType,SourceNode.NodeAttributes[i].AttribName));
+          if ((SourceNode.NodeAttributes[i].AttribReadOnly === false) || (DfltAttrib.AttribIncludeInSave === true)) {
+            if (SourceNode.NodeAttributes[i].AttribName !== "ParentName") $mod.EditNodeAttributeValue(myself,new $mod.TNodeAttribute(SourceNode.NodeAttributes[i]),true);
+          };
+        };
+        for (var $l3 = 0, $end4 = rtl.length(SourceNode.ChildNodes) - 1; $l3 <= $end4; $l3++) {
+          i = $l3;
+          $mod.InsertSystemNode(myself,SourceNode.ChildNodes[i],-1);
+        };
+      } else if ((SourceNode.NodeClass === "Code") || (SourceNode.NodeClass === "RUI")) {
+        myself = SourceNode;
+        myself.IsDynamic = true;
+        $mod.AddChildToParentNode({get: function () {
+            return myparent;
+          }, set: function (v) {
+            myparent = v;
+          }},{get: function () {
+            return myself;
+          }, set: function (v) {
+            myself = v;
+          }},Position);
+      };
+    };
+    Result = myself;
+    return Result;
+  };
+  this.ClearAttribs = function (AttrParams) {
+    AttrParams.set(rtl.arraySetLength(AttrParams.get(),$mod.TNodeAttribute,0));
+  };
+  this.NodeNameIsUnique = function (myNode, NodeName, Namespace, showerror) {
+    var Result = false;
+    var myresult = false;
+    var founditem = null;
+    myresult = true;
+    founditem = $mod.FindDataNodeById($mod.SystemNodeTree,NodeName,Namespace,false);
+    if (((founditem !== null) && (founditem !== myNode)) && (founditem.NodeName === NodeName)) {
+      if (showerror) pas.StringUtils.ShowMessage(("Error. Name >" + NodeName) + "< is not unique when creating a new object");
+      myresult = false;
+    };
+    Result = myresult;
+    return Result;
+  };
+  this.SetUniqueName = function (myNode, Formname, NewName) {
+    var Result = "";
+    var ApplyName = "";
+    var i = 0;
+    ApplyName = NewName;
+    i = 1;
+    while ($mod.NodeNameIsUnique(myNode,ApplyName,myNode.NameSpace,false) === false) {
+      ApplyName = (Formname + NewName) + pas.SysUtils.IntToStr(i);
+      i = i + 1;
+    };
+    Result = ApplyName;
+    return Result;
+  };
+  this.InitSystemNodetree = function () {
+    $mod.SystemNodeTree = $mod.TDataNode.$create("Create$1",["Root","ApplicationRoot","","Root",false]);
+    $mod.UIRootNode = $mod.TDataNode.$create("Create$1",["Root",$mod.SystemRootName,"","Root",false]);
+    $mod.AddChildToParentNode({p: $mod, get: function () {
+        return this.p.SystemNodeTree;
+      }, set: function (v) {
+        this.p.SystemNodeTree = v;
+      }},{p: $mod, get: function () {
+        return this.p.UIRootNode;
+      }, set: function (v) {
+        this.p.UIRootNode = v;
+      }},-1);
+    $mod.CodeRootNode = $mod.TDataNode.$create("Create$1",["Code",$mod.CodeRootName,"","Root",false]);
+    $mod.AddChildToParentNode({p: $mod, get: function () {
+        return this.p.SystemNodeTree;
+      }, set: function (v) {
+        this.p.SystemNodeTree = v;
+      }},{p: $mod, get: function () {
+        return this.p.CodeRootNode;
+      }, set: function (v) {
+        this.p.CodeRootNode = v;
+      }},-1);
+  };
+  this.ClearAllDynamicNodes = function (StartNode) {
+    var i = 0;
+    if (StartNode === $mod.UIRootNode) {
+      for (var $l1 = 0, $end2 = rtl.length(StartNode.myEventHandlers) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        StartNode.myEventHandlers[i].InitCode = "";
+        StartNode.myEventHandlers[i].TheCode = "";
+        StartNode.myEventHandlers[i].TheHandler = null;
+      };
+    };
+    for (var $l3 = rtl.length(StartNode.ChildNodes) - 1; $l3 >= 0; $l3--) {
+      i = $l3;
+      $mod.ClearAllDynamicNodes(StartNode.ChildNodes[i]);
+      if (StartNode.ChildNodes[i].IsDynamic) $mod.DeleteNode(StartNode,StartNode.ChildNodes[i]);
+    };
+  };
+  this.NilScreenObject = function (MyNode) {
+    var i = 0;
+    if (MyNode.ScreenObject !== null) {
+      MyNode.ScreenObject = null;
+    };
+    for (var $l1 = 0, $end2 = rtl.length(MyNode.ChildNodes) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      $mod.NilScreenObject(MyNode.ChildNodes[i]);
+    };
+  };
+  this.AlignmentResetInvalidCombinations = function (OldAlignment, myName, myClass, ParentAlignChildrenVertical, IsContainer, HasSibs) {
+    var Result = "";
+    var MyAlignment = "";
+    var ShowMessages = false;
+    ShowMessages = true;
+    MyAlignment = OldAlignment;
+    if (MyAlignment === "") {
+      ShowMessages = false;
+      if (ParentAlignChildrenVertical === true) {
+        MyAlignment = "Left"}
+       else MyAlignment = "Top";
+    };
+    if ((MyAlignment === "Right") || (MyAlignment === "Left")) {
+      if (ParentAlignChildrenVertical === false) {
+        MyAlignment = "Top";
+      };
+    } else if ((MyAlignment === "Top") || (MyAlignment === "Bottom")) {
+      if (ParentAlignChildrenVertical === true) {
+        MyAlignment = "Left";
+      };
+    };
+    if (((MyAlignment === "Right") || (MyAlignment === "Centre")) && IsContainer) if (HasSibs) {
+      MyAlignment = "Left";
+      if (ShowMessages && !$mod.StartingUp) pas.StringUtils.ShowMessage(((("Place this " + myClass) + "(") + myName) + ") inside its own parent VBox to set Alignment Right or Centre");
+    };
+    if (((MyAlignment === "Bottom") || (MyAlignment === "Centre")) && IsContainer) if (HasSibs) {
+      MyAlignment = "Top";
+      if (ShowMessages && !$mod.StartingUp) pas.StringUtils.ShowMessage(((("Place this " + myClass) + "(") + myName) + ") inside its own parent HBox to set Alignment Bottom or Centre");
+    };
+    Result = MyAlignment;
+    return Result;
+  };
+  this.SortAttribs = function (Attribs) {
+    var i = 0;
+    var n = 0;
+    var Swapped = false;
+    n = rtl.length(Attribs.get());
+    do {
+      Swapped = false;
+      for (var $l1 = 1, $end2 = n - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if ($impl.CompareAttribName(Attribs.get()[i - 1],Attribs.get()[i]) > 0) {
+          $impl.SwapAttrib({a: i - 1, p: Attribs.get(), get: function () {
+              return this.p[this.a];
+            }, set: function (v) {
+              this.p[this.a] = v;
+            }},{a: i, p: Attribs.get(), get: function () {
+              return this.p[this.a];
+            }, set: function (v) {
+              this.p[this.a] = v;
+            }});
+          Swapped = true;
+        };
+      };
+      n -= 1;
+    } while (Swapped);
+  };
+  this.AddAttribOptions = function (ComponentType, AttribName, Options) {
+    var AttribOptionsRec = new $mod.TAttribOptionsRec();
+    var i = 0;
+    AttribOptionsRec.ComponentType = ComponentType;
+    AttribOptionsRec.AttribName = AttribName;
+    AttribOptionsRec.Options = pas.Classes.TStringList.$create("Create$1");
+    for (var $l1 = 0, $end2 = rtl.length(Options) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      AttribOptionsRec.Options.Add(Options[i]);
+    };
+    $mod.AttribOptionsArray = rtl.arraySetLength($mod.AttribOptionsArray,$mod.TAttribOptionsRec,rtl.length($mod.AttribOptionsArray) + 1);
+    $mod.AttribOptionsArray[rtl.length($mod.AttribOptionsArray) - 1] = new $mod.TAttribOptionsRec(AttribOptionsRec);
+  };
+  this.LookupAttribOptions = function (ComponentType, AttribName) {
+    var Result = null;
+    var i = 0;
+    i = 0;
+    Result = null;
+    while (i < rtl.length($mod.AttribOptionsArray)) {
+      if (($mod.AttribOptionsArray[i].ComponentType === ComponentType) && ($mod.AttribOptionsArray[i].AttribName === AttribName)) {
+        Result = $mod.AttribOptionsArray[i].Options;
+        i = rtl.length($mod.AttribOptionsArray);
+      };
+      i = i + 1;
+    };
+    return Result;
+  };
+  this.XMLToNodeTree = function (XMLString, UIParentNode, ExpandingComposite) {
+    var Result = "";
+    var i = 0;
+    var TempChar = "";
+    var NextChar = "";
+    var NewString = "";
+    var RootNodeName = "";
+    var NewNameSpace = "";
+    var BracesToggleFlag = false;
+    var ok = false;
+    if ($impl.checkData(XMLString) === true) {
+      $mod.StartingUp = true;
+      RootNodeName = $mod.SystemRootName;
+      var ob=document.getElementById(RootNodeName);
+      $mod.SystemNodeTree.ScreenObject=ob;
+      if (!ExpandingComposite) {
+        NewNameSpace = ""}
+       else NewNameSpace = UIParentNode.NodeName;
+      NewString = "";
+      i = 0;
+      while (i < XMLString.length) {
+        i = i + 1;
+        TempChar = XMLString.charAt(i - 1);
+        if (TempChar === "<") {
+          TempChar = "";
+          BracesToggleFlag = true;
+          NextChar = XMLString.charAt((i + 1) - 1);
+          if (NextChar === "\/") BracesToggleFlag = false;
+        };
+        if (TempChar === ">") {
+          if (BracesToggleFlag === true) {
+            ok = $impl.addComponentFromXML(NewString,UIParentNode,NewNameSpace,ExpandingComposite);
+            if (!ok) i = XMLString.length;
+          };
+          BracesToggleFlag = false;
+          NewString = "";
+        };
+        if (BracesToggleFlag === true) {
+          NewString = NewString + TempChar;
+        };
+      };
+      $mod.StartingUp = false;
+    } else pas.StringUtils.ShowMessage("Error .....Unable to load data");
+    return Result;
+  };
+  this.SetXObjectProperty = function (myObj, targetNode, PropName, AttrType, newValue) {
+    var pType = 0;
+    if ((myObj !== null) && pas.TypInfo.IsPublishedProp(myObj,PropName)) {
+      pType = pas.TypInfo.PropType(myObj,PropName);
+      if (pType === pas.TypInfo.TTypeKind.tkString) {
+        pas.TypInfo.SetStringProp(myObj,PropName,newValue);
+      } else if (pType === pas.TypInfo.TTypeKind.tkInteger) {
+        pas.TypInfo.SetNativeIntProp(myObj,PropName,pas.SysUtils.StrToInt(newValue));
+      } else if (pType === pas.TypInfo.TTypeKind.tkBool) {
+        pas.TypInfo.SetBoolProp(myObj,PropName,pas.StringUtils.MyStrToBool(newValue));
+      } else if (pType === pas.TypInfo.TTypeKind.tkDynArray) {
+        targetNode.SetAttributeValue$2(PropName,newValue);
+      } else pas.StringUtils.ShowMessage((("EditAttributeValue. ** Need to handle property type for " + targetNode.NodeName) + ".") + PropName);
+    };
+  };
+  this.EditNodeAttributeValue = function (targetNode, SourceAttrib, AddIfMissing) {
+    var targetAttrib = new $mod.TNodeAttribute();
+    var myObj = null;
+    var AttrNameToEdit = "";
+    var newValue = "";
+    var IsReadOnly = false;
+    var i = 0;
+    AttrNameToEdit = SourceAttrib.AttribName;
+    newValue = SourceAttrib.AttribValue;
+    IsReadOnly = SourceAttrib.AttribReadOnly;
+    targetAttrib = new $mod.TNodeAttribute(targetNode.GetAttributeAnyCase(AttrNameToEdit,AddIfMissing));
+    if (targetAttrib.AttribName !== "") {
+      AttrNameToEdit = targetAttrib.AttribName;
+      targetAttrib.AttribReadOnly = IsReadOnly;
+      if ((SourceAttrib.AttribType !== "String") && (targetAttrib.AttribType === "String")) targetAttrib.AttribType = SourceAttrib.AttribType;
+      myObj = targetNode;
+      if (((myObj !== null) && (IsReadOnly === false)) && pas.TypInfo.IsPublishedProp(myObj,AttrNameToEdit)) {
+        $mod.SetXObjectProperty(myObj,targetNode,AttrNameToEdit,targetAttrib.AttribType,newValue);
+      } else {
+        targetNode.SetAttributeValue$2(AttrNameToEdit,newValue);
+      };
+      if (targetNode.IsDynamic === true) {
+        if (SourceAttrib.AttribSource.InputNodeName !== "") {
+          for (var $l1 = 0, $end2 = rtl.length(targetNode.NodeAttributes) - 1; $l1 <= $end2; $l1++) {
+            i = $l1;
+            if (targetNode.NodeAttributes[i].AttribName === SourceAttrib.AttribName) targetNode.NodeAttributes[i].AttribSource = new $mod.TCodeInputRec(SourceAttrib.AttribSource);
+          };
+        };
+        $mod.PushSourceToAttributes(targetNode,new $mod.TNodeAttribute(SourceAttrib));
+      };
+    };
+  };
+  this.EditAttributeValue = function (NodeNameToEdit, NameSpace, SourceAttrib, AddIfMissing) {
+    var targetNode = null;
+    targetNode = $mod.FindDataNodeById($mod.SystemNodeTree,NodeNameToEdit,NameSpace,true);
+    if (targetNode !== null) {
+      $mod.EditNodeAttributeValue(targetNode,new $mod.TNodeAttribute(SourceAttrib),AddIfMissing);
+    };
+  };
+  this.EditAttributeValue$1 = function (NodeNameToEdit, NameSpace, AttrNameToEdit, newValue, AddIfMissing) {
+    var targetNode = null;
+    var SourceAttrib = new $mod.TNodeAttribute();
+    targetNode = $mod.FindDataNodeById($mod.SystemNodeTree,NodeNameToEdit,NameSpace,true);
+    if (targetNode !== null) {
+      SourceAttrib.AttribName = AttrNameToEdit;
+      SourceAttrib.AttribValue = newValue;
+      SourceAttrib.AttribType = "String";
+      SourceAttrib.AttribReadOnly = false;
+      $mod.EditNodeAttributeValue(targetNode,new $mod.TNodeAttribute(SourceAttrib),AddIfMissing);
+    };
+  };
+  this.EditAttributeValue$2 = function (NodeToEdit, AttrNameToEdit, newValue, AddIfMissing) {
+    var SourceAttrib = new $mod.TNodeAttribute();
+    SourceAttrib.AttribName = AttrNameToEdit;
+    SourceAttrib.AttribValue = newValue;
+    SourceAttrib.AttribType = "String";
+    SourceAttrib.AttribReadOnly = false;
+    $mod.EditNodeAttributeValue(NodeToEdit,new $mod.TNodeAttribute(SourceAttrib),AddIfMissing);
+  };
+  this.EditAttributeValue2 = function (NodeNameToEdit, NameSpace, AttrNameToEdit, newValue) {
+    $mod.EditAttributeValue$1(NodeNameToEdit,NameSpace,AttrNameToEdit,newValue,false);
+  };
+  this.EditAttributeValueIndexed = function (NodeNameToEdit, NameSpace, AttrNameToEdit, newValue, x, y) {
+    var targetNode = null;
+    var targetAttrib = new $mod.TNodeAttribute();
+    var myObj = null;
+    targetNode = $mod.FindDataNodeById($mod.SystemNodeTree,NodeNameToEdit,NameSpace,true);
+    if (targetNode !== null) {
+      targetAttrib = new $mod.TNodeAttribute(targetNode.GetAttributeAnyCase$1(AttrNameToEdit));
+      if (targetAttrib.AttribName !== "") {
+        AttrNameToEdit = targetAttrib.AttribName;
+        if (targetNode.ScreenObject === null) {
+          myObj = targetNode}
+         else myObj = targetNode.ScreenObject;
+        if (myObj !== null) {
+          if (pas.XBitMap.TXBitMap.isPrototypeOf(myObj)) if (AttrNameToEdit === "MapPixelArray") myObj.SetMapPixelArraySection(newValue,x,y);
+        };
+      };
+    };
+  };
+  this.FindCompositeContainer = function (StartNode) {
+    var Result = null;
+    var SearchNode = null;
+    var CompositeNode = null;
+    var ok = false;
+    ok = false;
+    SearchNode = StartNode;
+    while (ok === false) {
+      SearchNode = $mod.FindParentOfNode$1($mod.SystemNodeTree,SearchNode);
+      if ((SearchNode.NodeType !== "TXComposite") || (SearchNode.NameSpace !== "")) {
+        ok = false}
+       else {
+        ok = true;
+        CompositeNode = SearchNode;
+      };
+    };
+    Result = CompositeNode;
+    return Result;
+  };
+  this.FindInterfaceNode = function (StartNode, NameSpace, PropName) {
+    var Result = null;
+    var SearchNode = null;
+    var InterfaceNode = null;
+    var i = 0;
+    InterfaceNode = null;
+    if (((StartNode.NodeType === "TXCompositeIntf") && (StartNode.NameSpace === NameSpace)) && StartNode.HasAttribute(PropName)) {
+      InterfaceNode = StartNode;
+    } else {
+      i = 0;
+      while ((i < rtl.length(StartNode.ChildNodes)) && (InterfaceNode === null)) {
+        SearchNode = StartNode.ChildNodes[i];
+        InterfaceNode = $mod.FindInterfaceNode(SearchNode,NameSpace,PropName);
+        i = i + 1;
+      };
+    };
+    Result = InterfaceNode;
+    return Result;
+  };
+  this.PushSourceToAttributes = function (SourceNode, SourceAttrib) {
+    var i = 0;
+    var TargetNode = null;
+    if (!$mod.StartingUp && (rtl.length($mod.SourcedAttribs) > 0)) {
+      for (var $l1 = 0, $end2 = rtl.length($mod.SourcedAttribs) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        TargetNode = $mod.SourcedAttribs[i].TheNode;
+        $mod.SourcedAttribs[i].TheAttribute.AttribValue = TargetNode.GetAttribute($mod.SourcedAttribs[i].TheAttribute.AttribName,false).AttribValue;
+        if ((($mod.SourcedAttribs[i].TheAttribute.AttribSource.InputNodeName === SourceNode.NodeName) && !$impl.AttributeValuesEquivalent($mod.SourcedAttribs[i].TheAttribute.AttribValue,SourceAttrib.AttribValue,$mod.SourcedAttribs[i].TheAttribute.AttribType)) && ($mod.SourcedAttribs[i].InProgress === false)) {
+          $impl.PushThisAttributeValue(i,SourceNode);
+        };
+      };
+    };
+  };
+  this.PushAllSourcesToAttributes = function () {
+    var i = 0;
+    var SourceAttrib = new $mod.TNodeAttribute();
+    var SourceNode = null;
+    var TargetNode = null;
+    var Done = false;
+    if (rtl.length($mod.SourcedAttribs) > 0) {
+      Done = false;
+      while (Done === false) {
+        Done = true;
+        for (var $l1 = 0, $end2 = rtl.length($mod.SourcedAttribs) - 1; $l1 <= $end2; $l1++) {
+          i = $l1;
+          TargetNode = $mod.SourcedAttribs[i].TheNode;
+          $mod.SourcedAttribs[i].TheAttribute.AttribValue = TargetNode.GetAttribute($mod.SourcedAttribs[i].TheAttribute.AttribName,false).AttribValue;
+          $mod.SourcedAttribs[i].InProgress = true;
+          if ($mod.SourcedAttribs[i].SourceNode !== null) {
+            SourceNode = $mod.SourcedAttribs[i].SourceNode;
+            SourceAttrib = new $mod.TNodeAttribute(SourceNode.GetAttribute($mod.SourcedAttribs[i].TheAttribute.AttribSource.InputAttribName,false));
+            if (!$impl.AttributeValuesEquivalent($mod.SourcedAttribs[i].TheAttribute.AttribValue,SourceAttrib.AttribValue,$mod.SourcedAttribs[i].TheAttribute.AttribType)) {
+              Done = false;
+              $impl.PushThisAttributeValue(i,SourceNode);
+            };
+          };
+          $mod.SourcedAttribs[i].InProgress = false;
+        };
+      };
+    };
+  };
+  this.PushNodeSourcesToAttributes = function (FromNode) {
+    var i = 0;
+    var TargetNode = null;
+    if (rtl.length($mod.SourcedAttribs) > 0) {
+      for (var $l1 = 0, $end2 = rtl.length($mod.SourcedAttribs) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        TargetNode = $mod.SourcedAttribs[i].TheNode;
+        $mod.SourcedAttribs[i].TheAttribute.AttribValue = TargetNode.GetAttribute($mod.SourcedAttribs[i].TheAttribute.AttribName,false).AttribValue;
+        if ($mod.SourcedAttribs[i].SourceNode === FromNode) {
+          $impl.PushThisAttributeValue(i,FromNode);
+        };
+      };
+    };
+  };
+  this.myCopyToClip = function (stringname, instring) {
+    try {
+    
+       // Register a copy handler which will directly add the text to the DataTransfer object.
+         function copyHandler(event) {
+           if (event.clipboardData) {
+             event.clipboardData.setData("text/plain", instring);
+           }
+           else {
+             // Internet Explorer is special, and needs to be given both a different
+             // MIME type, and have the method called on a different object.
+             clipboardData.setData("Text", instring);
+           }
+           event.preventDefault();
+         }
+       document.addEventListener("copy", copyHandler);
+    
+       // Create a dummy text area and select it, as Safari, Chrome and Edge require the
+       // text area to be selected to trigger an execCommand("copy") event.
+       var textField=document.getElementById('NodeUtilsCopyArea');
+       if (textField==null) {
+         textField = document.createElement('textarea');
+         textField.id = 'NodeUtilsCopyArea';
+         document.body.appendChild(textField);
+         }
+       textField.value = 'a';             //something very short (quick)
+       textField.focus();
+       textField.select();
+    
+       // Trigger the copy command,
+       var successful = document.execCommand("copy");
+    
+       // and then remove the event listener
+       document.removeEventListener("copy", copyHandler);
+       textField.remove();
+    
+       var msg = successful ? 'successful' : 'unsuccessful';
+       alert('Saving the '+stringname+' to the Clipboard was ' + msg);
+    
+    
+        } catch(err) { alert(err.message+'  in NodeUtils.myCopyToClip'); };
+  };
+  this.FindNodesOfType = function (StartNode, NodeType) {
+    var Result = [];
+    var newNodes = [];
+    var descendants = [];
+    var i = 0;
+    var j = 0;
+    var l = 0;
+    newNodes = rtl.arraySetLength(newNodes,null,0);
+    for (var $l1 = 0, $end2 = rtl.length(StartNode.ChildNodes) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (StartNode.ChildNodes[i].NodeType === NodeType) {
+        newNodes = rtl.arraySetLength(newNodes,null,rtl.length(newNodes) + 1);
+        newNodes[rtl.length(newNodes) - 1] = StartNode.ChildNodes[i];
+      };
+      descendants = $mod.FindNodesOfType(StartNode.ChildNodes[i],NodeType);
+      l = rtl.length(newNodes);
+      newNodes = rtl.arraySetLength(newNodes,null,l + rtl.length(descendants));
+      for (var $l3 = 0, $end4 = rtl.length(descendants) - 1; $l3 <= $end4; $l3++) {
+        j = $l3;
+        newNodes[l + j] = descendants[j];
+      };
+    };
+    Result = newNodes;
+    return Result;
+  };
+  this.SetNodePropDefaults = function (myNode, defaultAttribs) {
+    var i = 0;
+    for (var $l1 = 0, $end2 = rtl.length(defaultAttribs) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (myNode.HasAttribute(defaultAttribs[i].AttribName) === false) myNode.AddAttribute(defaultAttribs[i].AttribName,defaultAttribs[i].AttribType,defaultAttribs[i].AttribValue,defaultAttribs[i].AttribReadOnly);
+    };
+  };
+  this.UnSuspendFrames = function (StartNode) {
+    var i = 0;
+    if (StartNode.IsDynamic) if (StartNode.HasAttribute("SuspendRefresh")) $mod.EditAttributeValue$1(StartNode.NodeName,StartNode.NameSpace,"SuspendRefresh","False",false);
+    for (var $l1 = 0, $end2 = rtl.length(StartNode.ChildNodes) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      $mod.UnSuspendFrames(StartNode.ChildNodes[i]);
+    };
+  };
+  this.RefreshComponentProps = function (myComponent) {
+    var i = 0;
+    for (var $l1 = 0, $end2 = rtl.length(myComponent.NodeAttributes) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (myComponent.NodeAttributes[i].AttribReadOnly === false) {
+        $mod.SetXObjectProperty(myComponent,myComponent,myComponent.NodeAttributes[i].AttribName,myComponent.NodeAttributes[i].AttribType,myComponent.NodeAttributes[i].AttribValue);
+      };
+    };
+  };
+  this.InitFormObject = function (myForm, NodeName) {
+    var myNode = null;
+    myForm.fName = NodeName;
+    myNode = $mod.AddFormToNodeTree(myForm);
+  };
+  this.AddNodeFuncLookup = function (NodeType, InObFuncPtr, ScreenObjFunc) {
+    var myRec = new $mod.TNodeFuncsLookup();
+    var l = 0;
+    if (NodeType === "") return;
+    l = rtl.length($mod.NodeFuncsLookup);
+    $mod.NodeFuncsLookup = rtl.arraySetLength($mod.NodeFuncsLookup,$mod.TNodeFuncsLookup,l + 1);
+    myRec.NodeType = NodeType;
+    myRec.InObFunctionPtr = InObFuncPtr;
+    myRec.ScreenObjFunctionPtr = ScreenObjFunc;
+    $mod.NodeFuncsLookup[l] = new $mod.TNodeFuncsLookup(myRec);
+  };
+  this.SetInterfaceProperty = function (myName, NameSpace, PropName, NewValue) {
+    var myObj = null;
+    var MyPropType = 0;
+    var valueStr = "";
+    var i = 0;
+    valueStr = NewValue;
+    myObj = $mod.FindDataNodeById($mod.SystemNodeTree,myName,NameSpace,false);
+    if (myObj !== null) {
+      MyPropType = pas.TypInfo.PropType(myObj,PropName);
+      if (MyPropType === pas.TypInfo.TTypeKind.tkString) {
+        pas.TypInfo.SetStringProp(myObj,PropName,NewValue);
+      } else if (MyPropType === pas.TypInfo.TTypeKind.tkBool) {
+        pas.TypInfo.SetBoolProp(myObj,PropName,pas.StringUtils.MyStrToBool(NewValue));
+      } else if (MyPropType === pas.TypInfo.TTypeKind.tkInteger) {
+        i = pas.SysUtils.StrToInt(valueStr);
+        pas.TypInfo.SetNativeIntProp(myObj,PropName,i);
+      } else pas.StringUtils.ShowMessage("SetInterfaceProperty.  Need to handle property type for " + PropName);
+    } else pas.StringUtils.ShowMessage("SetInterfaceProperty cannot find node " + myName);
+  };
+  this.mygetClipboardData = function (stringname) {
+    var Result = "";
+    pas.PasteDialogUnit.PasteDoneBtn.SetIsVisible(false);
+    pas.PasteDialogUnit.PasteLabel.SetLabelCaption("Waiting for a copy\/paste action");
+    pas.PasteDialogUnit.PasteTarget.SetIsVisible(true);
+    pas.XForm.OpenModal("PasteDialog","");
+    try {
+             var pasteTarget = document.getElementById('PasteTargetContents');
+             pasteTarget.spellcheck=false;
+    
+             pasteTarget.value= '';
+             pasteTarget.style.height =  '19px';
+             pasteTarget.style.width =  '100px';
+            pasteTarget.focus();
+             alert('After closing this message box, Confirm Paste from clipboard by hitting "Ctrl-V"  Any other action will abandon this paste operation');
+    
+         } catch(err) { alert(err.message+'  in NodeUtils.myGetClipboardData'); };
+    Result = "Wait for Dialog To Close";
+    return Result;
+  };
+  this.FinishHTMLPasteAction = function (myValue) {
+    var Result = "";
+    $impl.closeClipboardPasteDialog(myValue);
+    return Result;
+  };
+  this.TSourcedAttrib = function (s) {
+    if (s) {
+      this.TheAttribute = new $mod.TNodeAttribute(s.TheAttribute);
+      this.TheNode = s.TheNode;
+      this.SourceNode = s.SourceNode;
+      this.InProgress = s.InProgress;
+    } else {
+      this.TheAttribute = new $mod.TNodeAttribute();
+      this.TheNode = null;
+      this.SourceNode = null;
+      this.InProgress = false;
+    };
+    this.$equal = function (b) {
+      return this.TheAttribute.$equal(b.TheAttribute) && ((this.TheNode === b.TheNode) && ((this.SourceNode === b.SourceNode) && (this.InProgress === b.InProgress)));
+    };
+  };
+  $mod.$rtti.$Record("TSourcedAttrib",{}).addFields("TheAttribute",$mod.$rtti["TNodeAttribute"],"TheNode",$mod.$rtti["TDataNode"],"SourceNode",$mod.$rtti["TDataNode"],"InProgress",rtl.boolean);
+  this.MainForm = null;
+  this.SuppressEvents = false;
+  this.AttribOptionsArray = [];
+  this.ProjectDirectory = "";
+  this.DefaultAttribsByType = [];
+  this.SourcedAttribs = [];
+  this.TMethod = function (s) {
+    if (s) {
+      this.Code = s.Code;
+      this.Data = s.Data;
+    } else {
+      this.Code = null;
+      this.Data = null;
+    };
+    this.$equal = function (b) {
+      return (this.Code === b.Code) && (this.Data === b.Data);
+    };
+  };
+  $mod.$rtti.$Record("TMethod",{}).addFields("Code",rtl.pointer,"Data",rtl.pointer);
+  this.CreateInterfaceObject = function (MyForm, NodeType, NodeName, NameSpace) {
+    var Result = null;
+    var myObj = null;
+    var inobFn = null;
+    var mynode = null;
+    inobFn = $impl.LookupNodeInObFunc(NodeType);
+    if (inobFn === null) {
+      pas.StringUtils.ShowMessage("no interface object creation function for " + mynode.NodeName)}
+     else {
+      myObj = inobFn(MyForm,NodeName,NameSpace);
+    };
+    Result = myObj;
+    return Result;
+  };
+  this.LoadedSystemString = "";
+  this.SystemRootName = "UIRootNode";
+  this.CodeRootName = "CodeUnits";
+  this.PortraitMode = false;
+  this.SystemNodeTree = null;
+  this.UIRootNode = null;
+  this.CodeRootNode = null;
+  this.StartingUp = false;
+  this.NodeFuncsLookup = [];
+  this.EventAttributeDelimiter = "|@|";
+  this.EventListdelimiter = "|^|";
+  this.EventHistorydelimiter = "|~|";
+  this.delimiterBetweenAttribsAndEvents = "|@@|";
+  this.attributeListdelimiter = "|;";
+  this.NameValuePairdelimiter = "|=";
+  this.AttribBitsDelimiter = "|{";
+  this.AttribLinkDelimiter = "|}";
+  this.StartXMLString = "<";
+  this.ToggleFlagMarker = "\/";
+  this.EndXMLString = ">";
+  this.AttributeTypes = '["String","Integer","Boolean","Color","TableString","TreeString"]';
+  $mod.$init = function () {
+    $mod.SourcedAttribs = rtl.arraySetLength($mod.SourcedAttribs,$mod.TSourcedAttrib,0);
+    $mod.InitSystemNodetree();
+    $mod.SuppressEvents = false;
+  };
+},["WrapperPanel","XForm","XBitMap","PasteDialogUnit"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.ScanChildrenForNode = function (CurrentItem, targetNode, FoundParent, position) {
+    var Result = null;
+    var FoundItem = null;
+    var TempItem = null;
+    var TempArrayOfChildren = [];
+    var NumChildren = 0;
+    var i = 0;
+    FoundItem = null;
+    FoundParent.set(null);
+    if (CurrentItem === targetNode) {
+      FoundItem = CurrentItem;
+    } else {
+      TempArrayOfChildren = CurrentItem.ChildNodes;
+      NumChildren = rtl.length(TempArrayOfChildren);
+      i = 0;
+      while (i < NumChildren) {
+        if (FoundItem === null) {
+          TempItem = CurrentItem.ChildNodes[i];
+          if (TempItem === targetNode) {
+            FoundItem = TempItem;
+            FoundParent.set(CurrentItem);
+            position.set(i);
+            i = NumChildren;
+          } else FoundItem = $impl.ScanChildrenForNode(TempItem,targetNode,FoundParent,position);
+        };
+        i = i + 1;
+      };
+    };
+    Result = FoundItem;
+    return Result;
+  };
+  $impl.ScanChildrenForNodeByName = function (CurrentItem, ScreenObjectID, NameSpace, FoundParent, position) {
+    var Result = null;
+    var FoundItem = null;
+    var TempItem = null;
+    var TempArrayOfChildren = [];
+    var NumChildren = 0;
+    var i = 0;
+    FoundItem = null;
+    FoundParent.set(null);
+    if (CurrentItem !== null) {
+      if ((NameSpace==undefined)||(NameSpace==null)) {alert('NameSpace is undefined. Looking for '+ScreenObjectID); }
+      if ((CurrentItem.NodeName==undefined)||(CurrentItem.NodeName==null)) {alert('node has undefined NodeName'); }
+      if ((CurrentItem.NameSpace==undefined)||(CurrentItem.NameSpace==null)) {alert('node '+CurrentItem.NodeName+' has undefined namespace'); };
+      if ((pas.SysUtils.Trim(pas.SysUtils.UpperCase(CurrentItem.NodeName)) === pas.SysUtils.Trim(pas.SysUtils.UpperCase(ScreenObjectID))) && (pas.SysUtils.Trim(pas.SysUtils.UpperCase(CurrentItem.NameSpace)) === pas.SysUtils.Trim(pas.SysUtils.UpperCase(NameSpace)))) {
+        FoundItem = CurrentItem;
+      } else {
+        TempArrayOfChildren = CurrentItem.ChildNodes;
+        NumChildren = rtl.length(TempArrayOfChildren);
+        i = 0;
+        while (i < NumChildren) {
+          if (FoundItem === null) {
+            TempItem = CurrentItem.ChildNodes[i];
+            if ((TempItem.NodeName==undefined)||(TempItem.NodeName==null)) {alert('node has undefined NodeName'); }
+            if ((TempItem.NameSpace==undefined)||(TempItem.NameSpace==null)) {alert('node '+TempItem.NodeName+' has undefined namespace'); };
+            if ((pas.SysUtils.Trim(pas.SysUtils.UpperCase(TempItem.NodeName)) === pas.SysUtils.Trim(pas.SysUtils.UpperCase(ScreenObjectID))) && (pas.SysUtils.Trim(pas.SysUtils.UpperCase(TempItem.NameSpace)) === pas.SysUtils.Trim(pas.SysUtils.UpperCase(NameSpace)))) {
+              FoundItem = TempItem;
+              FoundParent.set(CurrentItem);
+              position.set(i);
+              i = NumChildren;
+            } else FoundItem = $impl.ScanChildrenForNodeByName(TempItem,ScreenObjectID,NameSpace,FoundParent,position);
+          };
+          i = i + 1;
+        };
+      };
+    } else {
+      pas.StringUtils.ShowMessage("null datanode discovered in ScanChildrenForNodeByName while looking for " + ScreenObjectID);
+    };
+    Result = FoundItem;
+    return Result;
+  };
+  $impl.MakeAttrib = function (attrName, attrType, attrValue, attrReadOnly) {
+    var Result = new $mod.TNodeAttribute();
+    var newAttrib = new $mod.TNodeAttribute();
+    newAttrib.AttribName = attrName;
+    newAttrib.AttribType = attrType;
+    newAttrib.AttribValue = attrValue;
+    newAttrib.AttribReadOnly = attrReadOnly;
+    Result = new $mod.TNodeAttribute(newAttrib);
+    return Result;
+  };
+  $impl.CopyEventHandlers = function (myNode, SourceNode, AddIfMissing) {
+    var Result = false;
+    var i = 0;
+    var j = 0;
+    var ok = false;
+    if (myNode !== null) {
+      myNode.myEventHandlers = rtl.arraySetLength(myNode.myEventHandlers,$mod.TEventHandlerRec,myNode.myEventTypes.GetCount());
+      for (var $l1 = 0, $end2 = SourceNode.myEventTypes.GetCount() - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        j = myNode.myEventTypes.IndexOf(SourceNode.myEventTypes.Get(i));
+        if (j < 0) {
+          if (AddIfMissing) {
+            myNode.AddEvent(SourceNode.myEventTypes.Get(i),SourceNode.myEventHandlers[i].TheCode,SourceNode.myEventHandlers[i].InitCode);
+          } else ok = false;
+        } else if (j === i) {
+          myNode.myEventHandlers[j].TheCode = SourceNode.myEventHandlers[i].TheCode;
+          myNode.myEventHandlers[j].InitCode = SourceNode.myEventHandlers[i].InitCode;
+        } else {
+          myNode.myEventHandlers[j].TheCode = SourceNode.myEventHandlers[i].TheCode;
+          myNode.myEventHandlers[j].InitCode = SourceNode.myEventHandlers[i].InitCode;
+        };
+      };
+      Result = ok;
+    } else Result = false;
+    return Result;
+  };
+  $impl.AttribsFromXML = function (attributeList, offset, ParentName) {
+    var Result = [];
+    var myAttribs = [];
+    var AttribBits = null;
+    var sourceBits = null;
+    var i = 0;
+    var tmp = "";
+    myAttribs = rtl.arraySetLength(myAttribs,$mod.TNodeAttribute,attributeList.GetCount() - offset);
+    for (var $l1 = offset, $end2 = attributeList.GetCount() - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      AttribBits = pas.StringUtils.stringsplit(attributeList.Get(i),$mod.AttribBitsDelimiter);
+      myAttribs[i - offset].AttribName = pas.StringUtils.TrimWhiteSpace(AttribBits.Get(0));
+      myAttribs[i - offset].AttribType = pas.StringUtils.TrimWhiteSpace(AttribBits.Get(1));
+      myAttribs[i - offset].AttribValue = $mod.UnSubstituteSpecials(AttribBits.Get(2));
+      myAttribs[i - offset].AttribReadOnly = pas.StringUtils.MyStrToBool(pas.StringUtils.TrimWhiteSpace(AttribBits.Get(3)));
+      if (AttribBits.GetCount() > 4) {
+        tmp = pas.StringUtils.TrimWhiteSpace(AttribBits.Get(4));
+        sourceBits = pas.StringUtils.stringsplit(tmp,".");
+        if (sourceBits.GetCount() > 0) if (sourceBits.Get(0) !== "") {
+          myAttribs[i - offset].AttribSource.InputNodeName = sourceBits.Get(0);
+          if (sourceBits.GetCount() > 1) myAttribs[i - offset].AttribSource.InputAttribName = sourceBits.Get(1);
+        };
+      };
+      if (myAttribs[i - offset].AttribName === "ParentName") ParentName.set(AttribBits.Get(2));
+    };
+    Result = myAttribs;
+    return Result;
+  };
+  $impl.EventsFromXML = function (eventsList, EventNames) {
+    var Result = [];
+    var myEvents = [];
+    var AttribBits = null;
+    var i = 0;
+    var t1 = "";
+    var t2 = "";
+    var tmp = "";
+    myEvents = rtl.arraySetLength(myEvents,$mod.TEventHandlerRec,eventsList.GetCount());
+    for (var $l1 = 0, $end2 = eventsList.GetCount() - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      t1 = eventsList.Get(i);
+      AttribBits = pas.StringUtils.stringsplit(eventsList.Get(i),$mod.AttribBitsDelimiter);
+      t2 = AttribBits.Get(0);
+      tmp = AttribBits.Get(1);
+      EventNames.get().Add(pas.StringUtils.TrimWhiteSpace(AttribBits.Get(0)));
+      myEvents[i].TheCode = $mod.UnSubstituteSpecials(AttribBits.Get(1));
+      if (AttribBits.GetCount() > 2) {
+        tmp = AttribBits.Get(2);
+        myEvents[i].InitCode = $mod.UnSubstituteSpecials(AttribBits.Get(2));
+      };
+    };
+    Result = myEvents;
+    return Result;
+  };
+  $impl.UpdateEvents = function (EventNames, SourceHandlers, TargetNode) {
+    var i = 0;
+    var j = 0;
+    var found = false;
+    for (var $l1 = 0, $end2 = EventNames.GetCount() - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      found = false;
+      TargetNode.myEventHandlers = rtl.arraySetLength(TargetNode.myEventHandlers,$mod.TEventHandlerRec,TargetNode.myEventTypes.GetCount());
+      for (var $l3 = 0, $end4 = TargetNode.myEventTypes.GetCount() - 1; $l3 <= $end4; $l3++) {
+        j = $l3;
+        if (TargetNode.myEventTypes.Get(j) === EventNames.Get(i)) {
+          found = true;
+          TargetNode.myEventHandlers[j].InitCode = SourceHandlers[i].InitCode;
+          TargetNode.myEventHandlers[j].TheCode = SourceHandlers[i].TheCode;
+          TargetNode.myEventHandlers[j].TheHandler = null;
+        };
+      };
+      if (!found) {
+        TargetNode.AddEvent(EventNames.Get(i),SourceHandlers[i].TheCode,SourceHandlers[i].InitCode);
+      };
+    };
+  };
+  $impl.BuildSourceNodeFromXML = function (XMLString, ParentName, NewNameSpace, ExpandingComposite, NodeClass) {
+    var Result = null;
+    var ScreenObjectName = "";
+    var ScreenObjectType = "";
+    var NameSpace = "";
+    var AttribsEvents = null;
+    var attributeList = null;
+    var EventsList = null;
+    var EventNames = null;
+    var NameValuePair = null;
+    var i = 0;
+    var offset = 0;
+    var myAttribs = [];
+    var myEventHandlers = [];
+    var mynode = null;
+    var foundNode = null;
+    var NodeString = "";
+    Result = null;
+    NodeString = XMLString;
+    AttribsEvents = pas.StringUtils.stringsplit(NodeString,$mod.delimiterBetweenAttribsAndEvents);
+    attributeList = pas.StringUtils.stringsplit(AttribsEvents.Get(0),$mod.attributeListdelimiter);
+    if (AttribsEvents.GetCount() > 1) {
+      EventsList = pas.StringUtils.stringsplit(AttribsEvents.Get(1),$mod.attributeListdelimiter)}
+     else EventsList = pas.Classes.TStringList.$create("Create$1");
+    ScreenObjectType = attributeList.Get(0);
+    NameValuePair = pas.StringUtils.stringsplit(attributeList.Get(1),$mod.NameValuePairdelimiter);
+    NodeClass.set(pas.StringUtils.TrimWhiteSpace(NameValuePair.Get(1)));
+    NameValuePair = pas.StringUtils.stringsplit(attributeList.Get(2),$mod.NameValuePairdelimiter);
+    ScreenObjectName = pas.StringUtils.TrimWhiteSpace(NameValuePair.Get(1));
+    offset = 3;
+    NameSpace = "";
+    if (pas.StringUtils.FoundString(attributeList.Get(3),"NameSpace") > 0) {
+      NameValuePair = pas.StringUtils.stringsplit(attributeList.Get(3),$mod.NameValuePairdelimiter);
+      if (NameValuePair.GetCount() > 1) {
+        NameSpace = pas.StringUtils.TrimWhiteSpace(NameValuePair.Get(1))}
+       else NameSpace = "";
+      offset = 4;
+    };
+    NameSpace = NewNameSpace.get() + NameSpace;
+    if (ExpandingComposite && (NodeClass.get() === "RUI")) {
+      return Result;
+    };
+    if (NodeClass.get() !== "Root") {
+      myAttribs = $impl.AttribsFromXML(attributeList,offset,ParentName);
+      EventNames = pas.Classes.TStringList.$create("Create$1");
+      myEventHandlers = $impl.EventsFromXML(EventsList,{get: function () {
+          return EventNames;
+        }, set: function (v) {
+          EventNames = v;
+        }});
+      if (foundNode === null) {
+        mynode = $mod.TDataNode.$create("Create$1",[NodeClass.get(),ScreenObjectName,NameSpace,ScreenObjectType,true])}
+       else mynode = foundNode;
+      mynode.NodeAttributes = myAttribs;
+      mynode.myEventTypes = EventNames;
+      mynode.myEventHandlers = myEventHandlers;
+      Result = mynode;
+    } else {
+      mynode = $mod.FindDataNodeById($mod.SystemNodeTree,ScreenObjectName,"",false);
+      if (mynode !== null) {
+        myAttribs = $impl.AttribsFromXML(attributeList,offset,ParentName);
+        for (var $l1 = 0, $end2 = rtl.length(myAttribs) - 1; $l1 <= $end2; $l1++) {
+          i = $l1;
+          mynode.SetAttributeValue$2(myAttribs[i].AttribName,myAttribs[i].AttribValue);
+        };
+        EventNames = pas.Classes.TStringList.$create("Create$1");
+        myEventHandlers = $impl.EventsFromXML(EventsList,{get: function () {
+            return EventNames;
+          }, set: function (v) {
+            EventNames = v;
+          }});
+        $impl.UpdateEvents(EventNames,myEventHandlers,mynode);
+      };
+    };
+    return Result;
+  };
+  $impl.addComponentFromXML = function (XMLString, DefaultParent, BaseNameSpace, ExpandingComposite) {
+    var Result = false;
+    var ParentName = "";
+    var mf = "";
+    var ScreenObjectName = "";
+    var ScreenObjectType = "";
+    var NodeClass = "";
+    var tmp = "";
+    var NewNameSpace = "";
+    var i = 0;
+    var pos = 0;
+    var ParentNode = null;
+    var mynode = null;
+    var SourceNode = null;
+    var fn = null;
+    var myDynamicWrapper = null;
+    Result = true;
+    SourceNode = $impl.BuildSourceNodeFromXML(XMLString,{get: function () {
+        return ParentName;
+      }, set: function (v) {
+        ParentName = v;
+      }},{get: function () {
+        return BaseNameSpace;
+      }, set: function (v) {
+        BaseNameSpace = v;
+      }},ExpandingComposite,{get: function () {
+        return NodeClass;
+      }, set: function (v) {
+        NodeClass = v;
+      }});
+    if (((SourceNode === null) && ExpandingComposite) && (NodeClass === "RUI")) Result = false;
+    if (SourceNode !== null) {
+      NewNameSpace = SourceNode.NameSpace;
+      if (!ExpandingComposite || (((SourceNode.NodeType !== "TXMenuItem") && (SourceNode.NodeType !== "RawUnit")) && (SourceNode.NodeClass !== "RUI"))) {
+        ScreenObjectName = SourceNode.NodeName;
+        ScreenObjectType = SourceNode.NodeType;
+        ParentNode = null;
+        if (ParentName !== "") {
+          ParentNode = $mod.FindDataNodeById($mod.SystemNodeTree,ParentName,BaseNameSpace,false);
+          if ((ParentNode === null) && (SourceNode.NameSpace !== "")) ParentNode = $mod.FindDataNodeById($mod.SystemNodeTree,ParentName,SourceNode.NameSpace,false);
+          if ((ParentNode === null) && (SourceNode.NameSpace !== "")) {
+            i = pas.StringUtils.FoundString(SourceNode.NameSpace,ParentName);
+            if ((i > 1) && (i === ((SourceNode.NameSpace.length - ParentName.length) + 1))) {
+              tmp = pas.System.Copy(SourceNode.NameSpace,1,i - 1);
+              ParentNode = $mod.FindDataNodeById($mod.SystemNodeTree,ParentName,tmp,false);
+            };
+          };
+        };
+        if (ParentNode === null) ParentNode = DefaultParent;
+        if (BaseNameSpace !== "") if ((ParentNode.NameSpace !== BaseNameSpace) && (ParentNode.NodeType !== "TXComposite")) ParentNode = DefaultParent;
+        if ((SourceNode.NodeClass === "NV") && (SourceNode.NameSpace === "")) ParentNode = DefaultParent;
+        mynode = null;
+        if (SourceNode.NameSpace === "") mynode = $mod.FindDataNodeById($mod.SystemNodeTree,SourceNode.NodeName,"",false);
+        if (mynode === null) {
+          if ((((SourceNode.NodeClass === "UI") && (SourceNode.NodeType !== "")) || ((SourceNode.NodeClass === "NV") && (SourceNode.NodeType !== ""))) || (SourceNode.NodeClass === "SVG")) {
+            myDynamicWrapper = $mod.CreateInterfaceObject(ParentNode.MyForm,ScreenObjectType,ScreenObjectName,NewNameSpace);
+            if (myDynamicWrapper !== null) {
+              mynode = myDynamicWrapper;
+              myDynamicWrapper.myNode = mynode;
+              mynode.myEventTypes = SourceNode.myEventTypes;
+              mynode.IsDynamic = true;
+              if (SourceNode.myEventTypes.GetCount() !== rtl.length(SourceNode.myEventHandlers)) {
+                pas.StringUtils.ShowMessage(("Component " + SourceNode.NodeName) + " has mismatched event types - check user events code")}
+               else mynode.myEventHandlers = SourceNode.myEventHandlers;
+            };
+            if (mynode === null) pas.StringUtils.ShowMessage("mynode is nil in addComponentFromXML");
+          } else if ((SourceNode.NodeClass === "Code") || (SourceNode.NodeClass === "RUI")) {
+            mynode = SourceNode;
+          };
+        };
+        $mod.ReParentNode(mynode,ParentNode);
+        if ((((SourceNode.NodeClass === "UI") && (SourceNode.NodeType !== "")) || ((SourceNode.NodeClass === "NV") && (SourceNode.NodeType !== ""))) || (SourceNode.NodeClass === "SVG")) {
+          for (var $l1 = 0, $end2 = rtl.length(SourceNode.NodeAttributes) - 1; $l1 <= $end2; $l1++) {
+            i = $l1;
+            mynode.SetAttributeValue$2(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
+            mynode.SetAttributeSource(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribSource.InputNodeName,SourceNode.NodeAttributes[i].AttribSource.InputAttribName);
+          };
+          if ($mod.MainForm !== null) {
+            mf = $mod.MainForm.fName}
+           else mf = ".";
+          pos = -1;
+          if (ScreenObjectName!=mf) {
+                // object may already exist if this is a system re-load, so delete the old one.
+                var ob = document.getElementById(NewNameSpace+ScreenObjectName);
+                if (ob!=null) {
+                   //alert('looking for inner component of parent '+ParentNode.NodeName);
+                   var Parent = pas.HTMLUtils.ScreenObjectInnerComponent(ParentNode);
+                  if (Parent!=null) {
+          //          alert('removing object '+NewNameSpace+ScreenObjectName+' while loading '+XMLString);
+                     pos=Array.from(ob.parentNode.children).indexOf(ob);
+                     Parent.removeChild(ob); }
+                }
+              };
+          if (mynode === null) pas.StringUtils.ShowMessage((((("oops no node " + SourceNode.NodeType) + " ") + SourceNode.NameSpace) + ":") + SourceNode.NodeName);
+          fn = $mod.LookupComponentFunc(SourceNode.NodeType);
+          fn(mynode,ParentNode,SourceNode.NodeName,NewNameSpace,pos,"Left");
+        };
+        if (mynode.HasAttribute("SuspendRefresh")) mynode.SetAttributeValue$2("SuspendRefresh","False");
+      };
+    };
+    return Result;
+  };
+  $impl.closeClipboardPasteDialog = function (myValue) {
+    var Result = "";
+    //alert('closeClipboardPasteDialog '+myValue);
+          try {
+                 myTimeout(function() {
+                    try {
+                     var pasteTarget = document.getElementById('PasteTargetContents');
+                      var PasteString = myValue;
+                      // myValue should hold the pasted data direct from the clipboard.
+                      // However if it's blank, revert to the text content of pasteTarget...
+                      if (PasteString=='') {PasteString = pasteTarget.value};
+    
+                      pas.XForm.CloseModal('PasteDialog','');
+    
+                     if (pas.PasteDialogUnit.CompletionEvent!=null) {
+                        //alert('call completion event '+pas.PasteDialogUnit.CompletionEvent.EventType+' '+pas.PasteDialogUnit.CompletionEvent.NodeId);
+                        pas.PasteDialogUnit.CompletionEvent.ReturnString=PasteString;
+                        pas.Events.handleEvent(pas.PasteDialogUnit.CompletionEvent,
+                                               pas.PasteDialogUnit.CompletionEvent.EventType,
+                                               pas.PasteDialogUnit.CompletionEvent.NodeId,
+                                               pas.PasteDialogUnit.CompletionEvent.NameSpace,
+                                               PasteString,'');
+                        pas.PasteDialogUnit.CompletionEvent=null;
+                      }
+                    } catch(err) { alert(err.message+'  in NodeUtils.closeClipboardPasteDialog'); }
+                 }, 10);
+             } catch(err) { alert(err.message+'  in NodeUtils.closeClipboardPasteDialog'); };
+    Result = "";
+    return Result;
+  };
+  $impl.LookupNodeInObFunc = function (NodeType) {
+    var Result = null;
+    var i = 0;
+    i = 0;
+    while (i < rtl.length($mod.NodeFuncsLookup)) {
+      if ($mod.NodeFuncsLookup[i].NodeType === NodeType) {
+        Result = $mod.NodeFuncsLookup[i].InObFunctionPtr;
+        i = rtl.length($mod.NodeFuncsLookup);
+      };
+      i = i + 1;
+    };
+    return Result;
+  };
+  $impl.AttributeValuesEquivalent = function (Value1, Value2, AttribType) {
+    var Result = false;
+    if (AttribType === "String") {
+      Result = Value1 === Value2}
+     else if ((AttribType === "Boolean") || (AttribType === "Color")) {
+      Result = pas.SysUtils.UpperCase(Value1) === pas.SysUtils.UpperCase(Value2)}
+     else if (AttribType === "Integer") {
+      Result = pas.SysUtils.StrToInt(Value1) === pas.SysUtils.StrToInt(Value2)}
+     else Result = Value1 === Value2;
+    return Result;
+  };
+  $impl.PushThisAttributeValue = function (i, SourceNode) {
+    var TargetAttrib = new $mod.TNodeAttribute();
+    var SourceAttrib = new $mod.TNodeAttribute();
+    var TargetNode = null;
+    TargetNode = $mod.SourcedAttribs[i].TheNode;
+    $mod.SourcedAttribs[i].InProgress = true;
+    SourceAttrib = new $mod.TNodeAttribute(SourceNode.GetAttribute($mod.SourcedAttribs[i].TheAttribute.AttribSource.InputAttribName,false));
+    TargetAttrib.AttribName = $mod.SourcedAttribs[i].TheAttribute.AttribName;
+    TargetAttrib.AttribType = $mod.SourcedAttribs[i].TheAttribute.AttribType;
+    TargetAttrib.AttribReadOnly = false;
+    TargetAttrib.AttribValue = SourceAttrib.AttribValue;
+    $mod.EditNodeAttributeValue(TargetNode,new $mod.TNodeAttribute(TargetAttrib),false);
+    $mod.SourcedAttribs[i].InProgress = false;
+  };
+  $impl.DeleteScreenObject = function (MyNode) {
+    var Result = "";
+    var ObjName = "";
+    ObjName = MyNode.NameSpace + MyNode.NodeName;
+    try{
+    var ThisObject = document.getElementById(ObjName);
+    if (ThisObject!=null) {
+       ThisObject.parentNode.removeChild(ThisObject);
+      }
+    }catch(err) { alert(err.message+' in NodeUtils.DeleteScreenObject');};
+    $mod.NilScreenObject(MyNode);
+    return Result;
+  };
+  $impl.checkData = function (SystemDescription) {
+    var Result = false;
+    var teststring = "";
+    var sys = "";
+    var i = 0;
+    var MatchFound = false;
+    MatchFound = true;
+    sys = pas.SysUtils.Trim(SystemDescription);
+    teststring = "<Root|; Class |=R";
+    for (var $l1 = 1, $end2 = teststring.length; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (sys.charAt(i - 1) !== teststring.charAt(i - 1)) MatchFound = false;
+    };
+    if (MatchFound === false) {
+      MatchFound = true;
+      teststring = "<TXComposite";
+      for (var $l3 = 1, $end4 = teststring.length; $l3 <= $end4; $l3++) {
+        i = $l3;
+        if (sys.charAt(i - 1) !== teststring.charAt(i - 1)) MatchFound = false;
+      };
+    };
+    Result = MatchFound;
+    return Result;
+  };
+  $impl.CompareAttribName = function (Attr1, Attr2) {
+    var Result = 0;
+    Result = pas.SysUtils.CompareText(Attr1.AttribName,Attr2.AttribName);
+    return Result;
+  };
+  $impl.SwapAttrib = function (Attr1, Attr2) {
+    var temp = new $mod.TNodeAttribute();
+    temp = new $mod.TNodeAttribute(Attr1.get());
+    Attr1.set(new $mod.TNodeAttribute(Attr2.get()));
+    Attr2.set(new $mod.TNodeAttribute(temp));
+  };
+});
+rtl.module("XComboBox",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXComboBox",pas.WrapperPanel.TWrapperPanel,function () {
+    this.$init = function () {
+      pas.WrapperPanel.TWrapperPanel.$init.call(this);
+      this.fPriorIndex = 0;
+    };
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("Change");
+    };
+    this.GetItemIndex = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("ItemIndex",true).AttribValue);
+      return Result;
+    };
+    this.GetItemValue = function () {
+      var Result = "";
+      var i = 0;
+      var val = "";
+      i = pas.SysUtils.StrToInt(this.myNode.GetAttribute("ItemIndex",true).AttribValue);
+      if (i > -1) {
+        var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+        if (ob!=null) {
+          val=ob.options[i].value;
+        };
+        Result = val;
+      };
+      return Result;
+    };
+    this.GetReadOnly = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("ReadOnly",true).AttribValue);
+      return Result;
+    };
+    this.GetBoxWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("BoxWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetOptionList = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("OptionList",true).AttribValue;
+      return Result;
+    };
+    this.SetItemIndex = function (AValue) {
+      this.myNode.SetAttributeValue$1("ItemIndex",pas.SysUtils.IntToStr(AValue),"Integer");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.selectedIndex=AValue;
+         this.myNode.SetAttributeValue('ItemValue',ob.value,'String',false);
+         };
+    };
+    this.SetItemValue = function (AValue) {
+      var i = 0;
+      var options = null;
+      options = pas.StringUtils.JSONStringToStringList(this.GetOptionList());
+      i = options.IndexOf(AValue);
+      this.SetItemIndex(i);
+    };
+    this.SetReadOnly = function (AValue) {
+      this.myNode.SetAttributeValue$1("ReadOnly",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        ob.readOnly = AValue  };
+    };
+    this.SetBoxWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("BoxWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      //  if (ob==null) {alert(this.NodeName+'Contents'+'  not found');}
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.SetOptionList = function (AValue) {
+      this.myNode.SetAttributeValue$1("OptionList",AValue,"String");
+      function removeOptions(selectbox)
+          {
+              var i;
+              for(i = selectbox.options.length - 1 ; i >= 0 ; i--)
+              {
+                  selectbox.remove(i);
+              }
+          }
+      
+          var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+          if (ob!=null) {
+            removeOptions(ob);
+            var selectedIndex = this.ItemIndex;
+      
+            try {
+            var optionlistarray=JSON.parse( AValue);
+            for (var i=0; i<optionlistarray.length; i++){
+              var option = document.createElement("option");
+              option.text = optionlistarray[i];
+              if (i==this.ItemIndex ){option.selected=true;}
+              ob.add(option);
+            }
+            }
+            catch(err) {  alert("Error in TXComboBox.SetOptionList: "+ err.message); };
+          };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      this.fPriorIndex = 0;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    this.IndexOfOption = function (AValue) {
+      var Result = 0;
+      var i = 0;
+      var options = null;
+      options = pas.StringUtils.JSONStringToStringList(this.GetOptionList());
+      i = options.IndexOf(AValue);
+      Result = i;
+      return Result;
+    };
+    var $r = this.$rtti;
+    $r.addProperty("ItemIndex",3,rtl.longint,"GetItemIndex","SetItemIndex");
+    $r.addProperty("ItemValue",3,rtl.string,"GetItemValue","SetItemValue");
+    $r.addProperty("ReadOnly",3,rtl.boolean,"GetReadOnly","SetReadOnly");
+    $r.addProperty("BoxWidth",3,rtl.string,"GetBoxWidth","SetBoxWidth");
+    $r.addProperty("OptionList",3,rtl.string,"GetOptionList","SetOptionList");
+    $r.addProperty("PriorIndex",0,rtl.longint,"fPriorIndex","fPriorIndex");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BoxWidth","String","200","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Right","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Combo Box","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ItemIndex","Integer","-1","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"OptionList","String",'["Option 1","Option 2","Option 3"]',"",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXComboBox","ItemValue");
+    pas.WrapperPanel.SuppressDesignerProperty("TXComboBox","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXComboBox";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ItemIndex = "";
+    var LabelText = "";
+    var OptionList = "";
+    var ReadOnly = false;
+    var OnChangeString = "";
+    var OnClickString = "";
+    OptionList = MyNode.GetAttribute("OptionList",true).AttribValue;
+    ItemIndex = MyNode.GetAttribute("ItemIndex",true).AttribValue;
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    ReadOnly = pas.SysUtils.StrToBool(MyNode.GetAttribute("ReadOnly",true).AttribValue);
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value);" ';
+    OnChangeString = (((((((((((((('onchange="pas.NodeUtils.SetInterfaceProperty(\'' + ScreenObjectName) + "','") + NameSpace) + "','ItemIndex',pas.SysUtils.IntToStr(this.selectedIndex)); ") + "pas.Events.handleEvent(null,'Change','") + ScreenObjectName) + "','") + NameSpace) + "', this.options[selectedIndex].value, 'ItemValue');") + "pas.NodeUtils.SetInterfaceProperty('") + ScreenObjectName) + "','") + NameSpace) + "','PriorIndex',pas.SysUtils.IntToStr(this.selectedIndex)); ") + '" ';
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid =  NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var ReadOnlyString = '';
+        if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
+    
+        var TypeString = 'text';
+    
+        var inputtext= ItemIndex;
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+        var ComboString = '<select id="'+MyObjectName+'" ' + ReadOnlyString +
+                      OnChangeString +
+                      OnClickString +
+                      ' class="widgetinner '+wrapperid+'" ' +
+                      ' style="display: inline-block;"   value='+ItemIndex+'> ';
+    
+         var optionlistarray=JSON.parse( OptionList);
+         for (var i=0; i<optionlistarray.length; i++){
+           var selectedflag ='';
+           if (i==ItemIndex ){selectedflag = 'selected'}
+           ComboString = ComboString +'<option value="'+optionlistarray[i]+'" '+selectedflag+'>'+optionlistarray[i]+'</option> ';
+         }
+         ComboString = ComboString +'</select> ';
+    
+        HTMLString = labelstring+ComboString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+        // attempt to fix the height for a combo box to one line-height... (still not displayed same as editbox...tbd!!!!)
+    //    var dummyEBoxString = '<input type="'+TypeString+'"  id='+MyObjectName+'dummy ' +
+    //                     ' class="widgetinner '+wrapperid+'" ' +
+    //                     ' style="display: inline-block;" >';
+    //    wrapper.insertAdjacentHTML('beforeend', dummyEBoxString);
+    
+        pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
+    
+    //    var ob=document.getElementById(MyObjectName);
+    //    var dum=document.getElementById(MyObjectName+'dummy');
+    //    var obStyle = window.getComputedStyle(dum);
+    //    ob.style.height = obStyle.getPropertyValue('line-height');
+    //    //alert('combobox height='+ob.style.height);
+    //    wrapper.removeChild(dum);
+      }
+      catch(err) { alert(err.message+'  in XComboBox.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXComboBox.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XTree",["System","Classes","SysUtils","NodeUtils","StringUtils","EventsInterface","Events","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $mod.$rtti.$MethodVar("TTreeNodeHint",{procsig: rtl.newTIProcSig([["TreeLabelStr",rtl.string]],rtl.string), methodkind: 1});
+  this.TreeNodeHighlightColor = "#ffff00";
+  this.addTreeStyles = function (dummy) {
+    var Result = "";
+    try{
+         // ----------------------------------------check if the style has already been set
+         var x = document.getElementsByTagName("STYLE");
+         var StyleIsSet = false;
+         if (x.length>0){
+           for (var i=0; i<x.length; i++){
+             var y= x[i].innerHTML;
+             if (y.indexOf("summary.hasChildren") !=-1) { StyleIsSet =true}
+           }
+         }
+         if (StyleIsSet == false){
+            //<-------------- Styles to switch the child marker on and off on the summary line ---------------
+            var styletext = '<style> summary.noChildren::-webkit-details-marker { display:none; } </style>'
+                           + '<style> summary.hasChildren {color:black; }</style> ';
+            //----------------------------- now append the style declarations to the head of the HTML page
+            document.head.innerHTML = document.head.innerHTML+styletext;
+         }
+    }catch(err) {alert('Error in XTree.addTreeStyles '+ err.message);};
+    return Result;
+  };
+  this.addTreeNode = function (WrapperNodeId, NameSpace, parentName, NameOfDetailsList, SummaryText, HasChildren, color, isopen, NodeHintFunc, Draggable) {
+    var Result = "";
+    var newnodeid = "";
+    try{
+    
+     //alert('addTreeNode '+WrapperNodeId+' parentName='+parentName+' SummaryText='+SummaryText);
+    
+      var SystemNodeText='';
+      if (Array.isArray(SummaryText)){
+        SystemNodeText=SummaryText[0];
+        }
+      else {
+        SystemNodeText=SummaryText;
+        }
+     // alert('addTreeNode '+WrapperNodeId+' parentName='+parentName+' nodetext='+SystemNodeText);
+    
+      var myHint='';
+      if (NodeHintFunc!=null) {
+         myHint = NodeHintFunc(SystemNodeText);
+         //alert('Hint '+myHint);
+         }
+    
+    //if (NameSpace!='') {alert('NS='+NameSpace+' addTreeNode '+NameOfDetailsList+' to '+parentName);}
+      var parent = (document.getElementById(parentName));
+      if (parent==null) {alert('addTreeNode cannot find parent '+parentName);}
+      else
+      {
+      var div = document.createElement("div");
+      div.style.width  = parent.width;
+      div.style.marginLeft = "25px";
+      div.id = NameOfDetailsList+'OuterDiv';
+    
+      var dragstartstring='event.stopPropagation(); pas.XTree.DragStart("'+WrapperNodeId+'","'+NameSpace+'","'+NameOfDetailsList+'" ,"'+SummaryText+'"); ';
+      var dragOverEventString='if (pas.XTree.HandleTreeNodeDragOver(event.target,"'+WrapperNodeId+'","'+NameSpace+'","'+SummaryText+'")==true) {event.preventDefault();};';
+      var dropEventString='event.stopPropagation(); pas.XTree.HandleTreeNodeDrop(event.target,"'+WrapperNodeId+'","'+NameSpace+'","'+SummaryText+'"); ';
+      var dragEventString =  'draggable="true" '
+        +" ondragstart = '"+dragstartstring+"' "
+        +" ondragover = '"+dragOverEventString+"' "
+        +" ondrop =  '"+dropEventString+"' ";
+    
+      var ClickEventString = 'event.stopPropagation(); '+
+                             'pas.XTree.HandleTreeNodeClick("'+WrapperNodeId+'","'+NameSpace+'","'+NameOfDetailsList+'Summary"); '+
+                             'pas.Events.handleEvent(null, "TreeNodeClick" ,"'+NameOfDetailsList+'","'+NameSpace+'" ,"'+NameOfDetailsList+'"); '+
+                             '';
+      if (HasChildren==true){
+        if(isopen==true){
+          div.innerHTML = "<details open id="+NameOfDetailsList+"><summary id="+NameOfDetailsList+"Summary "
+                          +dragEventString
+                          +"  onclick ='"+ClickEventString
+                          +"' class='widgetinner "+NameSpace+WrapperNodeId+" hasChildren ' style='background-color:"+color+";'>"+SummaryText+"</summary></details>";}
+          else {
+          div.innerHTML = "<details  id="+NameOfDetailsList+"><summary id="+NameOfDetailsList+"Summary "
+                          +dragEventString
+                          +" onclick ='" +ClickEventString
+                          +"' class='widgetinner "+NameSpace+WrapperNodeId+" hasChildren ' style='background-color:"+color+";'>"+SummaryText+"</summary></details>";
+        }
+      }
+      else {
+        div.innerHTML = "<details id = "+NameOfDetailsList+" ><summary id="+NameOfDetailsList+"Summary "
+                         +dragEventString
+                         +" onclick ='"+ClickEventString
+                         +"'  class='widgetinner "+NameSpace+WrapperNodeId+" noChildren' style='background-color:"+color+";' >"+SummaryText+"</summary></details>";
+      }
+       div.title = myHint;
+    
+       parent.appendChild(div);
+    
+       newnodeid = NameOfDetailsList;
+      }
+     }catch(err) {alert('Error in XTree.addTreeNode '+ err.message);};
+    Result = newnodeid;
+    return Result;
+  };
+  this.addnode = function (WrapperNodeId, NameSpace, ParentName, currentNodeTree, IdOfNodeBeingAdded, OpenToLevel, level, normalColor, NodeHintFunc, Draggable) {
+    var Result = "";
+    var newnodeid = "";
+    try {
+       //alert('addnode: '+WrapperNodeId+' '+ParentName+' '+currentNodeTree+' newnode='+IdOfNodeBeingAdded);
+       //alert('addnode: '+WrapperNodeId+' parentname:'+ParentName+'  newnode='+IdOfNodeBeingAdded);
+           var isopen=false;
+           if (level<OpenToLevel) {isopen=true;}  //by default just show the first n levels of the tree
+           var localcurrentNodeTree=currentNodeTree;
+    
+           if ((localcurrentNodeTree.length>1)&&(Array.isArray(localcurrentNodeTree))){
+           // This node has children so create the parent node
+             newnodeid=pas.XTree.addTreeNode(WrapperNodeId,NameSpace,ParentName,IdOfNodeBeingAdded,localcurrentNodeTree[0],
+                                          true,normalColor,isopen,NodeHintFunc,Draggable);
+    
+           // then make the recursive call for each of its children
+           for (var i=1; i<localcurrentNodeTree.length; i++){
+             var NameOfChildNode = IdOfNodeBeingAdded+'_'+(i-1)
+             pas.XTree.addnode(WrapperNodeId,NameSpace,IdOfNodeBeingAdded,localcurrentNodeTree[i],
+                               NameOfChildNode,OpenToLevel,level+1,normalColor,NodeHintFunc,Draggable);}
+           }
+           else {
+           // This node does not have children so just create the node
+           //if (currentNodeTree=='StyleRule') {alert('addTreeNode: '+WrapperNodeId+' '+ParentName+' '+localcurrentNodeTree+' newnode='+IdOfNodeBeingAdded);}
+             newnodeid=pas.XTree.addTreeNode(WrapperNodeId,NameSpace,ParentName,IdOfNodeBeingAdded,localcurrentNodeTree,
+                                          false,normalColor,true,NodeHintFunc,Draggable);
+           //if (currentNodeTree=='StyleRule') {alert('node added');}
+           }
+        }catch(err){alert('Error in XTree.addnode '+ err.message);};
+    Result = newnodeid;
+    return Result;
+  };
+  this.SetOpenStatusOfNodeChildren = function (NodeName, NameOfSelectedNode, level) {
+    var Result = false;
+    var containsSelectedNode = false;
+    try{
+      containsSelectedNode = false;
+      if (NodeName!='') {
+         var parentNode=document.getElementById(NodeName);
+         if (parentNode != null){
+         if (parentNode.children.length>0) {
+            for (var i=0; i<parentNode.children.length; i++) {
+              var TempContainsSelectedNode = pas.XTree.SetOpenStatusOfNodeChildren( parentNode.children[i].id,NameOfSelectedNode,level+1);
+              if (TempContainsSelectedNode==true){containsSelectedNode = true};
+              if ( parentNode.children[i].id== NameOfSelectedNode ){containsSelectedNode = true};
+            }
+            var test = parentNode.getAttributeNode("open");
+            if ((containsSelectedNode == true)||(level < 1) )
+              {parentNode.setAttribute("open", "") }
+         } }
+      }
+    }catch(err) { alert(err.message+'  in XTree.SetOpenStatusOfNodeChildren'); };
+    Result = containsSelectedNode;
+    return Result;
+  };
+  this.GetTreeRootID = function (NodeID) {
+    var Result = "";
+    try{
+    //alert('GetTreeRootID. NodeID='+NodeID);
+        var TreeRootID = "";
+        var instring = pas.StringUtils.TrimWhiteSpace(NodeID);
+        var EndOfTreeRootID = pas.StringUtils.FoundString(instring,"Node" );
+        for (var i=0; i<EndOfTreeRootID-1; i++){ TreeRootID = TreeRootID+instring[i];}
+     }catch(err) { alert(err.message+'  in XTree.GetTreeRootID'); }
+     return TreeRootID;
+    return Result;
+  };
+  this.deselectNodeChildren = function (NodeName, normalColor) {
+    var Result = "";
+    try{
+          if (NodeName!='') {
+          var parentNode=document.getElementById(NodeName);
+          parentNode.style.background=normalColor;
+    
+          if (parentNode.children.length>0) {
+            for (var i=0; i<parentNode.children.length; i++) {
+              pas.XTree.deselectNodeChildren( parentNode.children[i].id,normalColor);
+            }
+          }
+          }
+        }catch(err) { alert(err.message+'  in XTree.deselectNodeChildren'); };
+    return Result;
+  };
+  this.clearNodeSelectedMarker = function (NameOfDetailsList, normalColor) {
+    var Result = "";
+    try{
+    //      alert('clearNodeSelectedMarker. NameOfDetailsList='+NameOfDetailsList+' normalColor='+normalColor);
+          // go down the tree from the root clearing the selected colour
+    
+      //    var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'ContentsScroll';  // the tree nodes container
+          var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'Node';  // the tree nodes container
+          //alert('tree root id='+TreeRootID);
+          var root = (document.getElementById(TreeRootID));
+          if (root==null) {
+            alert('root is null ('+TreeRootID+')')}
+          else {
+            pas.XTree.deselectNodeChildren(root.id,normalColor); }
+    
+        }catch(err) { alert(err.message+'  in XTree.clearNodeSelectedMarker'); };
+    return Result;
+  };
+  this.OpenAndScrollToSelectedNode = function (NameOfDetailsList) {
+    var Result = "";
+    try{
+    //  var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'ContentsScroll'; // the tree nodes container
+      var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'Node'; // the tree nodes container
+      var root = (document.getElementById(TreeRootID));
+      pas.XTree.SetOpenStatusOfNodeChildren(root.id,NameOfDetailsList,0);
+      var SelectedNode=document.getElementById(NameOfDetailsList);
+      var AlignToTop = false;
+      SelectedNode.scrollIntoView(AlignToTop);
+    }catch(err) { alert(err.message+'  in XTree.OpenAndScrollToSelectedNode'); };
+    return Result;
+  };
+  this.clearTreeNode = function (parentName) {
+    try {
+     parent = (document.getElementById(parentName));
+     if (parent!=null) {
+       //alert('clearTreeNode '+parentName);
+       parent.innerHTML = '';}
+    }catch(err){alert('Error in XTree.clearTreeNode '+ err.message);};
+  };
+  this.HandleTreeNodeClick = function (WrapperNodeId, NameSpace, SelectedNodeObjectId) {
+    var myNode = null;
+    var NodeText = "";
+    myNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,WrapperNodeId,NameSpace,true);
+    NodeText = $impl.NodeTextFromId(myNode,SelectedNodeObjectId);
+    myNode.SetSelectedNodeId(SelectedNodeObjectId);
+  };
+  this.DragStart = function (nodeId, NameSpace, NameOfDetailsList, SummaryText) {
+    var treeNode = null;
+    var myXTree = null;
+    treeNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,nodeId,NameSpace,true);
+    myXTree = treeNode.ScreenObject;
+    $mod.DraggingTree = myXTree;
+    myXTree.fNodeBeingDragged = SummaryText;
+    pas.Events.handleEvent( null,'DragStart' ,NameOfDetailsList,NameSpace,SummaryText);
+  };
+  this.HandleTreeNodeDragOver = function (ob, DestTreeId, NameSpace, DstText) {
+    var Result = false;
+    var thisXTree = null;
+    var thisNode = null;
+    var e = null;
+    var NodeObj = null;
+    Result = true;
+    if ($mod.DraggingTree !== null) {
+      thisNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,DestTreeId,NameSpace,true);
+      thisXTree = thisNode.ScreenObject;
+      NodeObj = pas.EventsInterface.TNodeEventValue.$create("Create");
+      e = pas.EventsInterface.TEventStatus.$create("Create$1",["DropAccepted",thisNode.NodeName]);
+      e.NameSpace = NameSpace;
+      NodeObj.DstText = DstText;
+      NodeObj.myTree = thisXTree;
+      NodeObj.SrcText = $mod.DraggingTree.fNodeBeingDragged;
+      NodeObj.SourceName = $mod.DraggingTree.myNode.NodeName;
+      NodeObj.myNode = ob;
+      e.ValueObject = NodeObj;
+      pas.Events.ExecuteEventHandler(e,"DropAccepted",thisNode.NodeName,"",thisXTree);
+      Result = pas.StringUtils.MyStrToBool(e.ReturnString);
+    };
+    return Result;
+  };
+  this.HandleTreeNodeDrop = function (ob, DestTreeId, NameSpace, DstText) {
+    var thisXTree = null;
+    var thisNode = null;
+    var e = null;
+    var NodeObj = null;
+    if ($mod.DraggingTree !== null) {
+      thisNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,DestTreeId,NameSpace,true);
+      thisXTree = thisNode.ScreenObject;
+      NodeObj = pas.EventsInterface.TNodeEventValue.$create("Create");
+      e = pas.EventsInterface.TEventStatus.$create("Create$1",["Drop",thisNode.NodeName]);
+      e.NameSpace = NameSpace;
+      NodeObj.DstText = DstText;
+      NodeObj.myTree = thisXTree;
+      NodeObj.SrcText = $mod.DraggingTree.fNodeBeingDragged;
+      NodeObj.SourceName = $mod.DraggingTree.myNode.NodeName;
+      NodeObj.myNode = ob;
+      e.ValueObject = NodeObj;
+      pas.Events.handleEvent(e, 'Drop' ,ob.id,NameSpace ,DstText);
+      //pas.Events.handleEvent(e, 'Drop' ,ob.id,NameSpace ,ob.id);
+    };
+  };
+  this.NodeIdFromText = function (TreeNode, NodeText) {
+    var Result = "";
+    var TreeObject = null;
+    var FoundId = "";
+    TreeObject = TreeNode;
+    //alert('NodeIdFromText.  NodeName='+TreeNode.NameSpace+'.'+TreeNode.NodeName+' Text='+NodeText);
+    //  var ob = document.getElementById(TreeObject.NameSpace+TreeObject.NodeName+'ContentsScroll');  // the tree nodes container
+      var ob = document.getElementById(TreeObject.NameSpace+TreeObject.NodeName+'Node');  // the tree nodes container
+        if (ob!=null) {
+                function checkChildren(obj) {
+                   for (var i=0; i<obj.children.length; i++) {
+                     if (obj.children[i].innerHTML==NodeText) {
+                       //alert('found '+NodeText+' at '+ obj.children[i].id);   //Summary level
+                       //return obj.id;                                         //id is name minus 'Summary' suffix
+                       return obj.children[i].id;                                         //id is name including 'Summary' suffix
+                     }
+                     else {
+                       var tmp=checkChildren(obj.children[i]);
+                       if (tmp!='') {return tmp;}
+                     }
+                   }
+                   return '';
+                }
+          //alert('top text is '+ ob.innerHTML);
+          if (ob.innerHTML==NodeText) {
+            //alert('top found '+NodeText+' at '+ ob.id);
+            FoundId=ob.id;
+          }
+          else {
+            FoundId=checkChildren(ob);
+          }
+        };
+    Result = FoundId;
+    return Result;
+  };
+  this.SetDraggableAttribute = function (NodeName, draggable) {
+    try{
+          if (NodeName!='') {
+          var parentNode=document.getElementById(NodeName);
+          var d = draggable.toLowerCase();
+          if (parentNode.tagName=='SUMMARY') {parentNode.setAttribute('draggable',d);}
+    
+          if (parentNode.children.length>0) {
+            for (var i=0; i<parentNode.children.length; i++) {
+              pas.XTree.SetDraggableAttribute( parentNode.children[i].id,d);
+            }
+          }
+          }
+        }catch(err) { alert(err.message+'  in XTree.SetDraggableAttribute'); };
+  };
+  rtl.createClass($mod,"TXTree",pas.WrapperPanel.TWrapperPanel,function () {
+    this.$init = function () {
+      pas.WrapperPanel.TWrapperPanel.$init.call(this);
+      this.fAllowDrop = false;
+      this.fTreeNodeHint = null;
+      this.fSelectedNodeId = "";
+      this.fNodeBeingDragged = "";
+    };
+    this.$final = function () {
+      this.fTreeNodeHint = undefined;
+      pas.WrapperPanel.TWrapperPanel.$final.call(this);
+    };
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Created");
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("TreeNodeClick");
+      this.myEventTypes.Add("DragStart");
+      this.myEventTypes.Add("Drop");
+      this.myEventTypes.Add("DropAccepted");
+    };
+    this.GetTreeData = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("TreeData",true).AttribValue;
+      return Result;
+    };
+    this.GetSelectedNodeText = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("SelectedNodeText",true).AttribValue;
+      return Result;
+    };
+    this.GetSelectedTextPath = function () {
+      var Result = "";
+      var pth = "";
+      var localSelectedNodeId = "";
+      pth = "";
+      localSelectedNodeId = this.fSelectedNodeId;
+      if (localSelectedNodeId !== "") {
+        pth = $impl.GetPathToNode(this.NodeName,localSelectedNodeId);
+      };
+      this.myNode.SetAttributeValue$1("SelectedTextPath",pth,"String");
+      Result = pth;
+      return Result;
+    };
+    this.GetTreeWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("TreeWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetTreeHeight = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("TreeHeight",true).AttribValue;
+      return Result;
+    };
+    this.GetReadOnly = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("ReadOnly",true).AttribValue);
+      return Result;
+    };
+    this.GetDraggable = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("Draggable",true).AttribValue);
+      return Result;
+    };
+    this.GetopenTolevel = function () {
+      var Result = 0;
+      var str = "";
+      str = this.myNode.GetAttribute("OpenToLevel",true).AttribValue;
+      if (str !== "") {
+        Result = pas.SysUtils.StrToInt(str)}
+       else Result = 0;
+      return Result;
+    };
+    this.SetTreeData = function (NodeTreeString) {
+      var SelectedId = "";
+      var myNodeName = "";
+      var myNameSpace = "";
+      var NodeHintFunc = null;
+      var localDraggable = false;
+      var openlvl = 0;
+      this.myNode.SetAttributeValue$1("TreeData",NodeTreeString,"TreeString");
+      openlvl = this.GetopenTolevel();
+      localDraggable = this.GetDraggable();
+      SelectedId = this.fSelectedNodeId;
+      myNodeName = this.NodeName;
+      myNameSpace = this.NameSpace;
+      $mod.clearTreeNode((myNameSpace + myNodeName) + "Node");
+      NodeHintFunc = this.myNode.fTreeNodeHint;
+      try {
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        //var TreeName = myNameSpace+myNodeName+'ContentsScroll';
+        var ParentName = myNameSpace+myNodeName+'Node';
+        var localNodeTree =JSON.parse(NodeTreeString);
+        //alert('localNodeTree ='+localNodeTree);
+        //alert('SetTreeData '+TreeName+' Namespace='+myNameSpace);
+        pas.XTree.addnode(myNodeName,myNameSpace,ParentName,localNodeTree,
+                          ParentName+'0',
+                          openlvl,0,this.BgColor,NodeHintFunc,localDraggable) ;
+      }
+      }
+      catch(err) {  alert("Error in TXTree.SetTreeData: "+ err.message); };
+      this.SetHTMLClasses(this.GetHTMLClasses());
+      this.SetSelectedNodeText("");
+    };
+    this.SetSelectedNodeText = function (AValue) {
+      var NodeId = "";
+      var pth = "";
+      if (AValue !== this.GetSelectedNodeText()) {
+        this.myNode.SetAttributeValue$2("SelectedNodeText",AValue);
+        if (AValue !== "") {
+          NodeId = $mod.NodeIdFromText(this,AValue);
+          this.SetSelectedNodeId(NodeId);
+          pth = this.GetSelectedTextPath();
+        };
+      };
+    };
+    this.SetTreeWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("TreeWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.SetTreeHeight = function (AValue) {
+      this.myNode.SetAttributeValue$2("TreeHeight",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
+    };
+    this.SetReadOnly = function (AValue) {
+      this.myNode.SetAttributeValue$1("ReadOnly",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        ob.readOnly = AValue  };
+    };
+    this.SetDraggable = function (AValue) {
+      this.myNode.SetAttributeValue$1("Draggable",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        //draggable attribute must be set for all the tree nodes (with summary tag)
+        pas.XTree.SetDraggableAttribute(ob.id, AValue.toString());
+        };
+    };
+    this.SetOpenToLevel = function (AValue) {
+      var oldval = 0;
+      oldval = this.GetopenTolevel();
+      this.myNode.SetAttributeValue$1("OpenToLevel",pas.SysUtils.IntToStr(AValue),"Integer");
+      if (oldval !== AValue) {
+        this.SetTreeData(this.GetTreeData());
+      };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    this.DeSelectNode = function () {
+      var normalColor = "";
+      normalColor = this.GetBgColor();
+      $mod.deselectNodeChildren(this.NameSpace + this.NodeName,normalColor);
+    };
+    this.InsertNewSiblingNode = function (NodeText) {
+      var Result = "";
+      var localSelectedNodeId = "";
+      var localDraggable = false;
+      var newnodeid = "";
+      localSelectedNodeId = this.fSelectedNodeId;
+      localDraggable = this.GetDraggable();
+      Result = "";
+      if (localSelectedNodeId !== "") {
+        //alert('WrapperNodeId='+this.NodeName+' localSelectedNodeId='+localSelectedNodeId+' this.SelectedNodeId='+this.SelectedNodeId);  //!!!! why is this.SelectedNodeId undefined??
+        var ob = document.getElementById(localSelectedNodeId);
+        // find parent of selected node
+        var parentnode=pas.HTMLUtils.getParentByTagName(this.NameSpace+this.NodeName,ob.parentNode,'details');
+        if (parentnode!=null) {
+           //alert('found parent '+parentnode.id+' (tag is '+parentnode.tagName+')');
+           var idx=this.NumChildNodes(parentnode.id);
+           newnodeid=pas.XTree.addnode(this.NodeName,this.NameSpace,parentnode.id,NodeText,
+                                         (parentnode.id+'_'+(idx)),           //!! need the same id that will be produced when tree is rebuilt
+                                         1,0,this.BgColor,null,localDraggable);
+        }
+          else {alert('parentnode not found');};
+        this.SetTreeData(this.BuildTreeDataString());
+      } else pas.StringUtils.ShowMessage("Please select a tree node first");
+      Result = newnodeid;
+      return Result;
+    };
+    this.InsertNewChildNode = function (NodeText) {
+      var Result = "";
+      var localSelectedNodeId = "";
+      var localDraggable = false;
+      var newnodeid = "";
+      localSelectedNodeId = this.fSelectedNodeId;
+      localDraggable = this.GetDraggable();
+      newnodeid = "";
+      if (localSelectedNodeId !== "") {
+        //if (NodeText=='StyleRule') {alert('WrapperNodeId='+this.NodeName+' localSelectedNodeId='+localSelectedNodeId);}
+        var ob = document.getElementById(localSelectedNodeId);
+        if (ob!=null) {
+          if (ob.tagName=='SUMMARY') {ob = ob.parentNode;}  // ob should be the DETAILS element for this node.
+          // find existing child nodes
+          var idx=this.NumChildNodes(ob.id);
+          //if (NodeText=='StyleRule') {alert('adding under parent '+ob.id+' (tag is '+ob.tagName+')');}
+          newnodeid=pas.XTree.addnode(this.NodeName,this.NameSpace,ob.id,NodeText,
+                                      (ob.id+'_'+(idx)),                        //!! need the same id that will be produced when tree is rebuilt
+                                      1,0,this.BgColor,null,localDraggable);
+          ob=document.getElementById(newnodeid);
+          if (ob.tagName=='SUMMARY') {ob = ob.parentNode;}  // ob should be the DETAILS element for this node.
+          newnodeid=ob.id;
+        }
+        else {alert('node '+localSelectedNodeId+' not found'); };
+        this.SetTreeData(this.BuildTreeDataString());
+      } else pas.StringUtils.ShowMessage("Please select a tree node first");
+      Result = newnodeid;
+      return Result;
+    };
+    this.DeleteSelectedNode = function () {
+      var localSelectedNodeId = "";
+      localSelectedNodeId = this.fSelectedNodeId;
+      if (localSelectedNodeId !== "") {
+        var ob = document.getElementById(localSelectedNodeId);
+        // delete the HTML node that is the DIV parent of the selected node
+        var divp = pas.HTMLUtils.getParentByTagName(this.NameSpace+this.NodeName,ob,'div');
+        divp.remove();
+        this.SetTreeData(this.BuildTreeDataString());
+      } else pas.StringUtils.ShowMessage("DeleteSelectedNode: Please select a tree node first");
+    };
+    this.MoveNode = function (SourceNodeText, DestNodeText) {
+      var str = "";
+      this.SetSelectedNodeText(SourceNodeText);
+      this.DeleteSelectedNode();
+      this.SetSelectedNodeText(DestNodeText);
+      this.InsertNewSiblingNode(SourceNodeText);
+      this.SetSelectedNodeText(SourceNodeText);
+      str = this.BuildTreeDataString();
+      this.SetTreeData(str);
+    };
+    this.NodeTextIsUnique = function (NodeText) {
+      var Result = false;
+      var FoundId = "";
+      //   var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsScroll');  // the tree nodes container
+          var ob = document.getElementById(this.NameSpace+this.NodeName+'Node');  // the tree nodes container
+          if (ob!=null) {
+                  function checkChildren(obj) {
+                     for (var i=0; i<obj.children.length; i++) {
+                       if (obj.children[i].innerHTML==NodeText) {
+                         //alert('found '+NodeText+' at '+ obj.children[i].id);   //Summary level
+                         //return obj.id;                                         //id is name minus 'Summary' suffix
+                         return obj.children[i].id;                                         //id is name including 'Summary' suffix
+                       }
+                       else {
+                         var tmp=checkChildren(obj.children[i]);
+                         if (tmp!='') {return tmp;}
+                       }
+                     }
+                     return '';
+                  }
+      
+            if (ob.innerHTML==NodeText) {
+               FoundId=ob.id;
+            }
+            else {
+              FoundId=checkChildren(ob);
+            }
+          };
+      if (FoundId !== "") {
+        Result = false}
+       else Result = true;
+      return Result;
+    };
+    this.BuildTreeDataString = function () {
+      var Result = "";
+      var str = "";
+      str = "";
+      //alert('treedata for '+this.NodeName);
+       //   var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsScroll');  // the tree nodes top container
+          var ob = document.getElementById(this.NameSpace+this.NodeName+'Node');  // the tree nodes top container
+          if (ob!=null) {
+                  function fetchChildren(obj,str) {
+                    //alert('fetchChildren of '+obj.id+' tag='+obj.tagName);
+                    if (obj.tagName=='SUMMARY') {return str + '"'+obj.innerHTML+'"';}
+                    if ((obj.tagName!='DETAILS')&&(obj.tagName!='DIV')) {return str;}
+      
+                    // DETAILS or DIV tag...
+                     if (obj.children.length==0) {
+                       return str;
+                     }
+                     else
+                     {
+                     var hasChildNodes = ((obj.tagName=='DETAILS')&&(pas.HTMLUtils.ContainsChildWithTag(obj,'DIV')));
+                     if (hasChildNodes) {str=str+'[';}
+                     for (var i=0; i<obj.children.length; i++) {
+                        if (i>0) {str = str + ','; }
+                        str=fetchChildren(obj.children[i],str);
+                       }
+                     if (hasChildNodes) {str=str+']';}
+                     }
+                     return str;
+                  }
+          str=fetchChildren(ob,str);
+          }
+          else
+            alert('ob not found');
+      Result = str;
+      return Result;
+    };
+    this.SelectTreeNodeById = function (NodeId) {
+      var normalColor = "";
+      var ParentId = "";
+      normalColor = this.GetBgColor();
+      ParentId = pas.StringUtils.myStringReplace(NodeId,"Summary","",-1,-1);
+      try{
+         //alert('SelectTreeNodeById NodeId='+ NodeId+' TreeName='+this.NodeName);
+         if (NodeId!='') {
+           // NodeId is the name (id) of a tree node
+           var myself = document.getElementById(ParentId);
+           if (myself!=null)
+           {
+           var HTMLString = myself.innerHTML;
+           var hasChildren = pas.StringUtils.FoundString(HTMLString,"hasChildren");
+      
+           // go down the tree from the root clearing the selected colour
+           pas.XTree.clearNodeSelectedMarker(ParentId,normalColor);  // clear old selected nodes if selecting a new one
+      
+           pas.XTree.OpenAndScrollToSelectedNode(ParentId);
+      
+           //alert('SelectTreeNodeById 1. looking for '+NodeId);
+           // Highlight this selected node in yellow
+           var mySummary=document.getElementById(NodeId);
+           mySummary.style.background=pas.XTree.TreeNodeHighlightColor;
+      
+           if (hasChildren>0)   // toggle the open attribute
+           {
+               //alert('has children');
+               var test = myself.getAttributeNode("open");
+               //alert('test='+test);
+               if (test == null){
+                  myself.setAttribute("open", "");
+                  } else {
+                  myself.removeAttribute("open");}
+            }
+             //**** have to do this to force the document to repaint this element (eg if node has been opened)
+             HTMLString = myself.innerHTML;
+             myself.innerHTML = HTMLString;
+             }
+           }
+           else alert('Cannot find node '+NodeId);
+           }catch(err) { alert(err.message+'  in XTree.SelectTreeNodeById'); };
+    };
+    this.SetSelectedNodeId = function (AValue) {
+      var nodeId = "";
+      var nodeText = "";
+      nodeId = AValue;
+      var ob=document.getElementById(nodeId);
+      if (ob.tagName=='DETAILS') {
+        ob=ob.getElementsByTagName('SUMMARY')[0];
+        nodeId=ob.id;
+        }
+      nodeText=ob.innerHTML;
+      this.fSelectedNodeId = nodeId;
+      this.myNode.SetAttributeValue$2("SelectedNodeText",nodeText);
+      if (nodeId !== "") {
+        this.SelectTreeNodeById(nodeId);
+      };
+    };
+    this.GetChildNodes = function (nodeId) {
+      var Result = [];
+      var nodes = [];
+      nodes = rtl.arraySetLength(nodes,"",0);
+      //alert('GetChildNodes for '+nodeId);
+          try {
+          var ob = document.getElementById(nodeId);  //nodeId should be a 'DETAILS' node
+          if (ob!=null) {
+                  function fetchChildren(obj) {
+                    //alert('GetChildNodes.fetchChildren of '+obj.id+' tag='+obj.tagName);
+      
+                    if ((obj.tagName!='DETAILS')) {return;}
+      
+                    // DETAILS tag...
+                     if (obj.children.length==0) {
+                       return;
+                     }
+                     else
+                     {
+                     var hasChildNodes = ((obj.tagName=='DETAILS')&&(pas.HTMLUtils.ContainsChildWithTag(obj,'DIV')));
+                     if (hasChildNodes) {
+                       for (var i=0; i<obj.children.length; i++) {
+                         //alert('found child '+obj.children[i].id);
+                           if (obj.children[i].tagName=='DIV') {
+                             //alert('child is div.');
+                             var childDiv=obj.children[i];
+                             var dtl = childDiv.getElementsByTagName("DETAILS");
+                             nodes.push(dtl[0].id);
+                             }
+                         }
+                     }
+                    }
+                  }
+          fetchChildren(ob);
+          }
+          else
+            alert('GetChildNodes. '+nodeId+' not found');
+      
+          }catch(err) {alert('Error in XTree.GetChildNodes '+ err.message);};
+      Result = nodes;
+      return Result;
+    };
+    this.TextOfNode = function (nodeId) {
+      var Result = "";
+      var str = "";
+      //alert('GetChildNodes for '+nodeId);
+      try {
+      var ob = document.getElementById(nodeId);  //nodeId should be a 'DETAILS' node
+      if (ob!=null) {
+        var summNode=ob.children[0];
+        str=summNode.innerHTML;
+      }
+      }catch(err) {alert('Error in XTree.GetChildNodes '+ err.message);};
+      Result = str;
+      return Result;
+    };
+    this.NumChildNodes = function (nodeid) {
+      var Result = 0;
+      var nodes = [];
+      var num = 0;
+      nodes = this.GetChildNodes(nodeid);
+      num = rtl.length(nodes);
+      Result = num;
+      return Result;
+    };
+    this.SetNodeText = function (nodeid, newtext) {
+      var ob = document.getElementById(nodeid);     // should be a SUMMARY element
+      ob.innerHTML=newtext;
+      this.SetTreeData(this.BuildTreeDataString());
+    };
+    this.getParentOfNode = function (nodeid) {
+      var Result = "";
+      var ParentId = "";
+      var ob=document.getElementById(nodeid);
+      //alert('selected='+SelectedNodeId);
+      // expected to be a SUMMARY element
+      // parent will be a DETAILS element
+      // parent will be a DIV element
+      // parent will be the actual node parent - another DETAILS element
+      if (ob.tagName=='SUMMARY') {ob=ob.parentNode;}
+      if (ob.tagName=='DETAILS') {
+        ob=ob.parentNode;
+        if (ob.tagName=='DIV') {ob=ob.parentNode;}
+        ParentId=ob.id;
+      };
+      Result = ParentId;
+      return Result;
+    };
+    var $r = this.$rtti;
+    $r.addProperty("SelectedNodeText",3,rtl.string,"GetSelectedNodeText","SetSelectedNodeText");
+    $r.addProperty("SelectedTextPath",1,rtl.string,"GetSelectedTextPath","");
+    $r.addProperty("TreeData",3,rtl.string,"GetTreeData","SetTreeData");
+    $r.addProperty("TreeHeight",3,rtl.string,"GetTreeHeight","SetTreeHeight");
+    $r.addProperty("TreeWidth",3,rtl.string,"GetTreeWidth","SetTreeWidth");
+    $r.addProperty("ReadOnly",3,rtl.boolean,"GetReadOnly","SetReadOnly");
+    $r.addProperty("Draggable",3,rtl.boolean,"GetDraggable","SetDraggable");
+    $r.addProperty("OpenToLevel",3,rtl.longint,"GetopenTolevel","SetOpenToLevel");
+    $r.addProperty("AllowDrop",0,rtl.boolean,"fAllowDrop","fAllowDrop");
+    $r.addProperty("TreeNodeHintFunc",0,$mod.$rtti["TTreeNodeHint"],"fTreeNodeHint","fTreeNodeHint");
+    $r.addProperty("NodeBeingDragged",0,rtl.string,"fNodeBeingDragged","fNodeBeingDragged");
+    $r.addProperty("SelectedNodeId",2,rtl.string,"fSelectedNodeId","SetSelectedNodeId");
+  });
+  this.DraggingTree = null;
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"TreeWidth","String","200","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"TreeHeight","String","150","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Top","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Tree View","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BgColor","Color","#FFFFFF","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Draggable","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SelectedNodeText","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SelectedTextPath","String","","",true,false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"OpenToLevel","Integer","1","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"TreeData","Integer",$impl.ExampleNodeTree,"",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXTree","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXTree";
+  $impl.ExampleNodeTree = '["myTreeName",["Layout","TestStuff"],"SimpleItems","Collection Items",["Media items","TestMoreStuff"],"Option Forms"]';
+  $impl.myDefaultAttribs = [];
+  $impl.GetPathToNode = function (TreeName, NameOfSelectedNode) {
+    var Result = "";
+    var str = "";
+    try{
+        var thisNode=document.getElementById(NameOfSelectedNode);
+        var parent=thisNode;
+       // alert('thisNode='+thisNode.id+' '+thisNode.tagName);
+    
+        do
+        {
+          var idx='';
+          parent = parent.parentNode;     // should be a DETAILS element
+          //alert('parentid='+parent.id+' tag='+parent.tagName);
+          if (parent.tagName=="DETAILS") {
+            var list = parent.getElementsByTagName("SUMMARY");
+            // should contain just one SUMMARY element
+            if (list.length>0) {
+              var summ=list[0];
+              var localDiv=parent.parentNode;
+              var parentDiv=localDiv.parentNode;
+              var DList = parentDiv.children;
+              // find the sibling number of this summary element
+              var i=0;
+              var j=-1;
+              do {
+                // just count the DIV children up to this node (localDiv)
+                if (DList[i].tagName=='DIV') {j=j+1;}
+                if (DList[i]==localDiv) {
+                    idx=j+':';
+                    i=DList.length;
+                  }
+                i=i+1;
+              }
+              while (i<DList.length);
+    
+              if (str!="") {str=idx+summ.innerHTML+"/"+str;}
+              else {str=idx+summ.innerHTML;}
+    
+            }
+          }
+        }
+        while ((parent.id!=TreeName)&&(parent.id!=TreeName+"Contents")&&(thisNode.parentNode!=null)&&(thisNode.parentNode!=undefined))
+        }catch(err) { alert(err.message+'  in XTree.GetPathToNode'); };
+    Result = str;
+    return Result;
+  };
+  $impl.NodeTextFromId = function (TreeNode, NodeId) {
+    var Result = "";
+    var TreeObject = null;
+    var FoundText = "";
+    TreeObject = TreeNode;
+    // var ob = document.getElementById(TreeObject.NameSpace+TreeObject.NodeName+'ContentsScroll');  // the tree nodes container
+    var ob = document.getElementById(TreeObject.NameSpace+TreeObject.NodeName+'Node');  // the tree nodes container
+      if (ob!=null) {
+         var node = document.getElementById(NodeId);
+        // NB. the node object should be a <summary> object, where innerHTML is simply the visible node text.
+        //alert('node '+NodeId+' text is '+ node.innerHTML);
+        FoundText=node.innerHTML;
+      };
+    Result = FoundText;
+    return Result;
+  };
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var NodeTree = "";
+    var LabelText = "";
+    var LabelPos = "";
+    var normalColor = "";
+    var Ht = "";
+    var Wd = "";
+    var NodeName = "";
+    var NodeHintFunc = null;
+    var openlvl = 0;
+    NodeTree = MyNode.GetAttribute("TreeData",true).AttribValue;
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    LabelPos = pas.SysUtils.UpperCase(MyNode.GetAttribute("LabelPos",true).AttribValue);
+    openlvl = pas.SysUtils.StrToInt(MyNode.GetAttribute("OpenToLevel",true).AttribValue);
+    normalColor = MyNode.GetAttribute("BgColor",true).AttribValue;
+    Wd = " width:100%; ";
+    Ht = " height:100%; ";
+    NodeName = MyNode.NodeName;
+    NodeHintFunc = MyNode.fTreeNodeHint;
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+        var wrapperid = NameSpace+ScreenObjectName;
+        var wrapper=document.getElementById(wrapperid);
+    
+        var MyObjectName=wrapperid+'Contents';
+        var localcontainer = document.createElement("div");
+        localcontainer.id = MyObjectName;
+        localcontainer.style.display="inline-block;";
+        localcontainer.style.height="100%";
+        localcontainer.style.width="100%";
+        wrapper.appendChild(localcontainer);
+    
+        pas.XTree.addTreeStyles();// this style script removes the arrowhead on all nodes that do not have children
+    
+    
+        // put in a scrollbox to contain all the tree nodes
+        //alert('tree container id='+wrapperid+'Node');
+        var ContainerString = '<div style = "overflow:scroll; display:inline-block;'+
+                                    'background-color:'+normalColor+';'+Ht+Wd+'" '+
+                                    'id='+wrapperid+'Node class="'+NameSpace+ScreenObjectName+'"></div> ';
+        localcontainer.insertAdjacentHTML( 'beforeend', ContainerString );
+    
+        var TreeName = wrapperid+'Node';
+        var localNodeTree =JSON.parse(NodeTree);
+        //alert('NodeName='+NodeName+' Treename='+TreeName);
+    
+        pas.XTree.addnode(NodeName,NameSpace,TreeName,localNodeTree,(TreeName+'0'),
+                          openlvl,0,normalColor,NodeHintFunc,true) ;
+    
+    
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+        if (LabelPos=='LEFT') {
+          wrapper.insertAdjacentHTML( 'afterbegin', labelstring );
+        }
+        else {
+          wrapper.insertAdjacentHTML( 'beforeend', labelstring );
+          }
+    
+        }
+        catch(err) { alert(err.message+'  in XTree.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXTree.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("Events",["System","SysUtils","Classes","StringUtils","NodeUtils","EventsInterface","HTMLUtils"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.FindEventFunction = function (NameSpace, myName, EventType, MyNode, DoBind) {
+    var Result = null;
+    var UnitName = "";
+    var fn = null;
+    UnitName = pas.StringUtils.MainUnitName + "Events";
+    fn = null;
+    try {
+    //alert('FindEventFunction NS='+NameSpace+' myName='+myName+' MyNode='+MyNode.NameSpace+'.'+MyNode.NodeName);
+    
+      fn=null;
+      var handlerName=NameSpace+myName+'Handle'+EventType;
+    
+      // FIRST ..... Look for a compiled handler function in the Form ....
+      if (MyNode.MyForm!=null) {
+        fn = MyNode.MyForm[handlerName];
+        if (fn!=null) {
+          fn = fn.bind(MyNode.MyForm);     // so that the 'this' context will be preserved
+        }
+      }
+    
+      // SECOND .....
+      if (fn==null) {
+      // the component may have been created dynamically at run-time.
+      // in which case look for a registered event.
+        fn = MyNode.FindRegisteredEvent(EventType);
+      }
+    
+      // THIRD ......
+      if (fn==null) {
+      // the component may have been created dynamically at run-time
+      // with dynamically added event code (eg. using the XIDE project)
+      // in which case look for the event handler in module XIDEMainEvents
+        if (NameSpace!='') {UnitName = NameSpace;}
+    
+        //alert('FindEventFunction looking in dynamic events unit '+UnitName+' for '+handlerName);
+        var mdl=pas[UnitName];
+        if ((mdl!=null)&&(mdl!=undefined)) {
+          //alert('found module '+UnitName);
+            fn = mdl[ handlerName];
+            if (fn!=null) {
+              //alert('found function '+handlerName);
+              if (DoBind) {
+              fn = fn.bind(mdl); }    // so that the 'this' context will be preserved
+            }
+          }
+        }
+    
+        // FOURTH ......
+        if (fn==null) {
+        // the event we seek may be a thread event, for a TXThreads component.
+        // These events are compiled into a separate unit (MainUnitName+'EventsThreads')
+    
+          //alert('FindEventFunction looking in thread events unit '+UnitName+'Threads for '+handlerName);
+          var mdl=pas[UnitName+'Threads'];
+          if ((mdl!=null)&&(mdl!=undefined)) {
+            //alert('found module '+UnitName);
+              fn = mdl[ handlerName];
+              if (fn!=null) {
+                //alert('found function '+handlerName);
+                if (DoBind) {
+                fn = fn.bind(mdl); }    // so that the 'this' context will be preserved
+              }
+            }
+          }
+        if (fn==undefined) {fn=null;}
+    
+    }catch(err) { alert(err.message+'  in Events.FindEventFunction '+myName+' '+EventType);};
+    Result = fn;
+    return Result;
+  };
+  this.DllName = "";
+  this.ExecuteEventHandler = function (e, MyEventType, nodeID, myValue, myNode) {
+    var i = 0;
+    var NumHandlers = 0;
+    NumHandlers = myNode.myEventTypes.GetCount();
+    for (var $l1 = 0, $end2 = NumHandlers - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (myNode.myEventTypes.Get(i) === MyEventType) {
+        $impl.RunComponentEvent(e,nodeID,e.NameSpace,MyEventType,myNode,myValue);
+      };
+    };
+  };
+  this.handleEvent = function (e, MyEventType, nodeID, NameSpace, myValue, PropName) {
+    var CurrentNode = null;
+    if (pas.NodeUtils.StartingUp === false) {
+      if (e === null) {
+        e = pas.EventsInterface.TEventStatus.$create("Create$1",[MyEventType,nodeID]);
+        e.NameSpace = NameSpace;
+      };
+      if (((MyEventType === "TreeNodeClick") || (MyEventType === "DragStart")) || (MyEventType === "Drop")) {
+        CurrentNode = pas.HTMLUtils.GetDataNodeFromTreeNode(nodeID,NameSpace);
+      } else CurrentNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,nodeID,NameSpace,false);
+      if ((CurrentNode !== null) && (pas.NodeUtils.MainForm !== null)) {
+        if (e.InitRunning === false) {
+          $impl.ExecuteEventTrappers(e,MyEventType,CurrentNode.NodeName,myValue,CurrentNode)}
+         else e.ContinueAfterTrappers = true;
+        if (e.ContinueAfterTrappers) {
+          $mod.ExecuteEventHandler(e,MyEventType,CurrentNode.NodeName,myValue,CurrentNode);
+        };
+      };
+    };
+  };
+  this.handleEvent$1 = function (e, MyEventType, nodeID, NameSpace, myValue) {
+    $mod.handleEvent(e,MyEventType,nodeID,NameSpace,myValue,"");
+  };
+  this.handleEvent$2 = function (MyEventType, nodeID, NameSpace, myValue) {
+    $mod.handleEvent(null,MyEventType,nodeID,NameSpace,myValue,"");
+  };
+  $mod.$init = function () {
+  };
+},[],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.RunComponentEvent = function (e, myName, NameSpace, EventType, MyNode, MyValue) {
+    var UnitName = "";
+    var fn = null;
+    UnitName = pas.StringUtils.MainUnitName + "Events";
+    fn = $mod.FindEventFunction(NameSpace,myName,EventType,MyNode,true);
+    try {
+        // Execute the function, if found....
+      if (fn!=null)  {
+      fn(e,myName,MyValue);
+       // alert('function done.');
+    }
+    }catch(err) { alert(err.message+'  in Events.RunComponentEvent '+myName+' '+EventType);};
+  };
+  $impl.ExecuteEventTrappers = function (e, MyEventType, nodeID, myValue, myNode) {
+    var Result = "";
+    var i = 0;
+    var j = 0;
+    var NumHandlers = 0;
+    var trappers = [];
+    var newe = null;
+    trappers = pas.NodeUtils.FindNodesOfType(pas.NodeUtils.SystemNodeTree,"TXTrapEvents");
+    for (var $l1 = 0, $end2 = rtl.length(trappers) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (trappers[i].NodeClass === "NV") {
+        NumHandlers = trappers[i].myEventTypes.GetCount();
+        for (var $l3 = 0, $end4 = NumHandlers - 1; $l3 <= $end4; $l3++) {
+          j = $l3;
+          newe = pas.EventsInterface.TEventStatus.$create("Create$1",[MyEventType,nodeID]);
+          newe.eventValue = myValue;
+          newe.NameSpace = e.NameSpace;
+          $impl.RunComponentEvent(newe,trappers[i].NodeName,trappers[i].NameSpace,trappers[i].myEventTypes.Get(j),trappers[i],"");
+          e.ContinueAfterTrappers = newe.ContinueAfterTrappers;
+        };
+      };
+    };
+    return Result;
+  };
+});
+rtl.module("StringUtils",["System","Classes","SysUtils","EventsInterface"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.FoundString = function (inString, searchString) {
+    var Result = 0;
+    var match = false;
+    var found = false;
+    var i = 0;
+    var tempresult = 0;
+    var tempstr = "";
+    tempresult = 0;
+    found = false;
+    for (var $l1 = 1, $end2 = inString.length; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (found === false) {
+        tempstr = inString.charAt(i - 1);
+        if (tempstr === searchString.charAt(0)) {
+          match = $impl.CheckMatch(inString,searchString,i);
+          if (match === true) {
+            tempresult = i;
+            found = true;
+          };
+        };
+      };
+    };
+    Result = tempresult;
+    return Result;
+  };
+  this.FoundStringCI = function (inString, searchString) {
+    var Result = 0;
+    var tempresult = 0;
+    tempresult = $mod.FoundString(pas.SysUtils.UpperCase(inString),pas.SysUtils.UpperCase(searchString));
+    Result = tempresult;
+    return Result;
+  };
+  this.myStringReplace = function (Instring, OldString, NewString, ReplaceNum, MaxStringLength) {
+    var Result = "";
+    var i = 0;
+    var matchLength = 0;
+    var match = false;
+    var replaceCount = 0;
+    var finalstring = "";
+    var tempstr = "";
+    finalstring = "";
+    replaceCount = 0;
+    matchLength = 0;
+    if (ReplaceNum < 0) ReplaceNum = 999999;
+    if (MaxStringLength < 0) MaxStringLength = 9999999;
+    for (var $l1 = 1, $end2 = Instring.length; $l1 <= $end2; $l1++) {
+      i = $l1;
+      tempstr = Instring.charAt(i - 1);
+      if (((tempstr !== OldString.charAt(0)) && (i > matchLength)) || (i > MaxStringLength)) {
+        finalstring = finalstring + tempstr;
+      } else if (i > matchLength) {
+        match = $impl.CheckMatch(Instring,OldString,i);
+        if ((match === false) || (replaceCount >= ReplaceNum)) {
+          finalstring = finalstring + tempstr}
+         else {
+          replaceCount = replaceCount + 1;
+          finalstring = finalstring + NewString;
+          matchLength = (i + OldString.length) - 1;
+        };
+      };
+    };
+    Result = finalstring;
+    return Result;
+  };
+  this.MyBoolToStr = function (inBool) {
+    var Result = "";
+    if (inBool === true) {
+      Result = "True"}
+     else if (inBool === false) {
+      Result = "False"}
+     else {
+      $mod.ShowMessage("invalid boolean");
+      alert('inBool='+inBool);
+    };
+    return Result;
+  };
+  this.MyStrToBool = function (inStr) {
+    var Result = false;
+    if (pas.SysUtils.UpperCase($mod.TrimWhiteSpace(inStr)) === "TRUE") {
+      Result = true}
+     else if (pas.SysUtils.UpperCase($mod.TrimWhiteSpace(inStr)) === "FALSE") {
+      Result = false}
+     else if (inStr === "") {
+      Result = false}
+     else $mod.ShowMessage("invalid boolean string " + inStr);
+    return Result;
+  };
+  this.TrimWhiteSpace = function (Instring) {
+    var Result = "";
+    Result = $mod.DelChars(Instring," ");
+    return Result;
+  };
+  this.stringsplit = function (str, separator) {
+    var Result = null;
+    var localStringList = null;
+    localStringList = $mod.StringToSubStringList(str,separator);
+    Result = localStringList;
+    return Result;
+  };
+  this.IsInStringList = function (myList, elem) {
+    var Result = false;
+    var i = 0;
+    var found = false;
+    found = false;
+    i = myList.IndexOf(elem);
+    if (i > -1) found = true;
+    Result = found;
+    return Result;
+  };
+  this.CommaListToStringArray = function (AValue) {
+    var Result = [];
+    var bits = null;
+    var i = 0;
+    var arr = [];
+    bits = pas.Classes.TStringList.$create("Create$1");
+    bits.FStrictDelimiter = true;
+    bits.SetLineBreak(",");
+    bits.SetTextStr(AValue);
+    arr = rtl.arraySetLength(arr,"",bits.GetCount());
+    for (var $l1 = 0, $end2 = bits.GetCount() - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      arr[i] = bits.Get(i);
+    };
+    Result = arr;
+    bits = rtl.freeLoc(bits);
+    return Result;
+  };
+  this.StringToSubStringList = function (InString, delimiter) {
+    var Result = null;
+    var items = null;
+    items = pas.Classes.TStringList.$create("Create$1");
+    items.FStrictDelimiter = true;
+    items.SetLineBreak(delimiter);
+    items.SetTextStr(InString);
+    Result = items;
+    return Result;
+  };
+  this.DelChars = function (Instring, FilterChar) {
+    var Result = "";
+    var i = 0;
+    var newstring = "";
+    var tempstr = "";
+    newstring = "";
+    for (var $l1 = 1, $end2 = Instring.length; $l1 <= $end2; $l1++) {
+      i = $l1;
+      tempstr = Instring.charAt(i - 1);
+      if (tempstr !== FilterChar) {
+        newstring = newstring + tempstr;
+      };
+    };
+    Result = newstring;
+    return Result;
+  };
+  this.stripLeadingStringIfPresent = function (instring, LeadingString) {
+    var Result = "";
+    var i = 0;
+    var OutString = "";
+    var done = false;
+    OutString = "";
+    done = false;
+    for (var $l1 = 1, $end2 = instring.length; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if ((i <= LeadingString.length) && (done === false)) {
+        if (instring.charAt(i - 1) !== LeadingString.charAt(i - 1)) {
+          done = true;
+          OutString = OutString + instring.charAt(i - 1);
+        };
+      } else OutString = OutString + instring.charAt(i - 1);
+    };
+    Result = OutString;
+    return Result;
+  };
+  this.confirm = function (Textmessage) {
+    var Result = false;
+    var conf = false;
+    conf=confirm(Textmessage);
+    
+        //Following event handler being called due to requirement for
+        //event logging.
+        // Not available for capture by user-written code.
+        if (conf!=null) {
+          pas.Events.handleEvent(null,'UserConfirm','UIRootNode','',conf.toString());
+        };
+    Result = conf;
+    return Result;
+  };
+  this.prompt = function (TextMessage, promptString) {
+    var Result = "";
+    var str = "";
+    var res=prompt(TextMessage,promptString);
+        if (res==null) {str=''} else {str=res}
+    
+          //Following event handler being called due to requirement for
+          //event logging.
+          // Not available for capture by user-written code.
+          if (res!=null) {
+            pas.Events.handleEvent(null,'UserInput','UIRootNode','',res);
+          };
+    Result = str;
+    return Result;
+  };
+  this.JSONStringToStringList = function (JSONString) {
+    var Result = null;
+    var items = null;
+    var TempString = "";
+    TempString = JSONString;
+    TempString = pas.SysUtils.StringReplace(TempString,"[","",rtl.createSet(pas.SysUtils.TStringReplaceFlag.rfReplaceAll));
+    TempString = pas.SysUtils.StringReplace(TempString,"]","",rtl.createSet(pas.SysUtils.TStringReplaceFlag.rfReplaceAll));
+    TempString = pas.SysUtils.StringReplace(TempString,'"',"",rtl.createSet(pas.SysUtils.TStringReplaceFlag.rfReplaceAll));
+    items = pas.Classes.TStringList.$create("Create$1");
+    items.FStrictDelimiter = true;
+    items.SetLineBreak(",");
+    items.SetTextStr(TempString);
+    Result = items;
+    return Result;
+  };
+  this.StringListToJSONString = function (StringList) {
+    var Result = "";
+    var TempString = "";
+    var i = 0;
+    TempString = "[";
+    for (var $l1 = 0, $end2 = StringList.GetCount() - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (i > 0) TempString = TempString + ",";
+      TempString = ((TempString + '"') + StringList.Get(i)) + '"';
+    };
+    TempString = TempString + "]";
+    Result = TempString;
+    return Result;
+  };
+  this.NumArrayToJSONString = function (NumArray) {
+    var Result = "";
+    var TempString = "";
+    var i = 0;
+    TempString = "[";
+    for (var $l1 = 0, $end2 = rtl.length(NumArray) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (i > 0) TempString = TempString + ",";
+      TempString = TempString + pas.SysUtils.FloatToStr(NumArray[i]);
+    };
+    TempString = TempString + "]";
+    Result = TempString;
+    return Result;
+  };
+  this.ImgArrayToJSONString = function (ImgArray) {
+    var Result = "";
+    var TempString = "";
+    var i = 0;
+    TempString = "[";
+    for (var $l1 = 0, $end2 = rtl.length(ImgArray) - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (i > 0) TempString = TempString + ",";
+      TempString = TempString + ImgArray[i];
+    };
+    TempString = TempString + "]";
+    Result = TempString;
+    return Result;
+  };
+  this.HexRGBToColor = function (RGBString, r, g, b, a) {
+    var bits = null;
+    var str = "";
+    var rs = "";
+    var gs = "";
+    var bs = "";
+    r.set(0);
+    g.set(0);
+    b.set(0);
+    a.set(255);
+    if (RGBString !== "") {
+      RGBString = $mod.myStringReplace(RGBString,"%23","#",1,-1);
+      bits = $mod.stringsplit(RGBString,"#");
+      if (bits.GetCount() > 1) {
+        str = bits.Get(1);
+        if (str.length === 6) {
+          rs = str.charAt(0) + str.charAt(1);
+          gs = str.charAt(2) + str.charAt(3);
+          bs = str.charAt(4) + str.charAt(5);
+          r.set(pas.SysUtils.StrToInt("$" + rs));
+          g.set(pas.SysUtils.StrToInt("$" + gs));
+          b.set(pas.SysUtils.StrToInt("$" + bs));
+        };
+        a.set(0);
+      };
+    };
+  };
+  this.ShowMessage = function (text) {
+    alert(text);
+  };
+  this.MainUnitName = "";
+  $mod.$init = function () {
+  };
+},[],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.CheckMatch = function (Instring, teststring, startpos) {
+    var Result = false;
+    var i = 0;
+    var match = false;
+    var temp1 = "";
+    var temp2 = "";
+    match = true;
+    for (var $l1 = 1, $end2 = teststring.length; $l1 <= $end2; $l1++) {
+      i = $l1;
+      if (((i + startpos) - 1) <= Instring.length) {
+        temp1 = Instring.charAt(((i + startpos) - 1) - 1);
+        temp2 = teststring.charAt(i - 1);
+        if (temp1 !== temp2) match = false;
+      } else match = false;
+    };
+    Result = match;
+    return Result;
+  };
+});
+rtl.module("XIFrame",["System","Classes","SysUtils","StringUtils","NodeUtils","WrapperPanel","HTMLUtils","XForm"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.CreateBasicIFrame = function (NameSpace, NodeName, MyObjectName) {
+    var Result = null;
+    var ob = null;
+    try {
+      function resized(ob){
+      // refresh the actual h/w attributes
+      var h=ob.ActualHeight;
+      var w=ob.ActualWidth;
+      }
+      ob=null;
+      var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'"></label>';
+      var FrameString = '<iframe  id='+MyObjectName+' name="'+MyObjectName+ '" '+
+                              'scrolling="no" '+
+                              'src="" '+
+                              'title="" '+
+                              'style="height:100%;width:100%;border: 1px solid #444444;" '+
+                              'onresize="resized(this);" '+
+                              '>'+
+                              '</iframe>';
+      var HTMLString = labelstring+FrameString;
+    
+    
+    
+      var wrapper=document.getElementById(NameSpace+NodeName);
+      wrapper.innerHTML= HTMLString;
+    
+      //............ Set an event for title change ...................
+    
+      var Iframe = document.getElementById(MyObjectName);
+    
+    //  // create an observer instance
+    //  var observer = new MutationObserver(function(mutationsList) {
+    //      for(var mutation of mutationsList) {
+    //        if ((mutation.type == "attributes")
+    //        && (mutation.attributeName == "title")) {
+    //           alert('title mutation detected');
+    //           pas.Events.handleEvent(null,'Click',NodeName, mutation.oldValue);
+    //         }
+    //      }
+    //   });
+    //
+    //   // pass in the target node, as well as the observer options
+    //  //!!!! observer target has to be the document>Title within the IFrame (not the Iframe's title attribute)....
+    //        // this one works on the iframe title correctly....
+    //      observer.observe(Iframe, {subtree: true, characterData: true,
+    //                                attributes: true //configure it to listen to attribute changes
+    //                               });
+    //  }
+    
+    // ... attempt to reset the default 8px margin that appears in the iframe document body ...(unsuccessful)
+    //  function restyle() {
+    //     var body = Iframe.contentDocument.body;
+    //     body.style.padding = 0;
+    //     body.style.margin = 0;
+    //  }
+    //
+    //  Iframe.onload = restyle;
+    //  restyle();
+    //
+    
+      ob = Iframe;
+      } catch(err){alert(err.message+'  in CreateBasicIFrame');};
+    Result = ob;
+    return Result;
+  };
+  this.DoCreateFrameWidget = function (MyNode, ParentNode, ScreenObjectName, position) {
+    var NodeType = "";
+    var NameSpace = "";
+    var ht = 0;
+    var wd = 0;
+    NodeType = MyNode.NodeType;
+    NameSpace = MyNode.NameSpace;
+    try{
+    
+          var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,NodeType,position);
+    
+          var Iframe = pas.XIFrame.CreateBasicIFrame(NameSpace,ScreenObjectName,NameSpace+ScreenObjectName+'Contents');
+    
+          }
+          catch(err) { alert(err.message+'  in XIFrame.DoCreateFrameWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    ht = MyNode.GetActualHeight();
+    wd = MyNode.GetActualWidth();
+  };
+  this.dummyvar = 0;
+  this.ResetHWAttributes = function (myNode) {
+    var h = 0;
+    var w = 0;
+    h = myNode.ScreenObject.GetActualHeight();
+    w = myNode.ScreenObject.GetActualWidth();
+  };
+  rtl.createClass($mod,"TXIFrame",pas.WrapperPanel.TWrapperPanel,function () {
+    this.$init = function () {
+      pas.WrapperPanel.TWrapperPanel.$init.call(this);
+      this.BrowserHandle = 0;
+      this.BrowserPage = null;
+    };
+    this.$final = function () {
+      this.BrowserPage = undefined;
+      pas.WrapperPanel.TWrapperPanel.$final.call(this);
+    };
+    this.GetHTMLSource = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("HTMLSource",true).AttribValue;
+      return Result;
+    };
+    this.GetFrameWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("FrameWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetFrameHeight = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("FrameHeight",true).AttribValue;
+      return Result;
+    };
+    this.GetActualWidth = function () {
+      var Result = 0;
+      var wd = 0;
+      wd = pas.HTMLUtils.GetCurrentWidth(this.NodeName);
+      this.myNode.SetAttributeValue("ActualWidth",pas.SysUtils.IntToStr(wd),"Integer",true);
+      Result = wd;
+      return Result;
+    };
+    this.GetActualHeight = function () {
+      var Result = 0;
+      var h = 0;
+      h = pas.HTMLUtils.GetCurrentHeight(this.NodeName);
+      this.myNode.SetAttributeValue("ActualHeight",pas.SysUtils.IntToStr(h),"Integer",true);
+      Result = h;
+      return Result;
+    };
+    this.GetSuspendRefresh = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("SuspendRefresh",true).AttribValue);
+      return Result;
+    };
+    this.SetHTMLSource = function (AValue) {
+      var IsChanged = false;
+      var oldval = "";
+      IsChanged = false;
+      oldval = this.myNode.GetAttribute("HTMLSource",true).AttribValue;
+      if (AValue !== this.myNode.GetAttribute("HTMLSource",true).AttribValue) IsChanged = true;
+      this.myNode.SetAttributeValue$2("HTMLSource",AValue);
+      if (this.GetSuspendRefresh()) return;
+      if (IsChanged) this.ApplyHTMLSource(AValue);
+    };
+    this.SetFrameWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("FrameWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.SetFrameHeight = function (AValue) {
+      this.myNode.SetAttributeValue$2("FrameHeight",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = "TXIFrame";
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.IFrameDefaultAttribs);
+    };
+    this.SetSuspendRefresh = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("SuspendRefresh",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+        if (AValue === false) this.RedisplayFrame();
+      };
+    };
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("IFrameExternalBrowserClosed");
+    };
+    this.LoadDataURL = function (DataString) {
+      if (DataString !== "") {
+        this.myNode.SetAttributeValue$2("HTMLSource",DataString);
+        this.RedisplayFrame();
+      };
+    };
+    this.RunJavaScript = function (JSString) {
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+      alert('!!!! need to write code to handle this in TXIFrame.RunJavaScript (send message into iframe???)');
+      };
+    };
+    this.RedisplayFrame = function () {
+      var sup = false;
+      var AbsoluteURI = false;
+      var SourceString = "";
+      if (this.GetSuspendRefresh()) return;
+      SourceString = this.myNode.GetAttribute("HTMLSource",false).AttribValue;
+      if ((((pas.StringUtils.FoundString(SourceString,":\/\/") > 0) && (pas.StringUtils.FoundString(SourceString,"http") === 1)) || (pas.StringUtils.FoundString(SourceString,"\/\/") === 1)) || (pas.StringUtils.FoundString(SourceString,"about:") === 1)) {
+        AbsoluteURI = true}
+       else AbsoluteURI = false;
+      sup = pas.NodeUtils.StartingUp;
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+          if (ob!=null) {
+             // SADLY.....Once instantiated, the frame will not refresh when the src attribute is changed.
+            // So, we will have to delete the frame object and re-create with its new src.
+            var myFrame = ob; // get frame
+            var originalId = myFrame.id; // retain the original id of the frame
+            var newFrameId = myFrame.id + new Date().getTime(); // create a new temporary id
+            var newIframe = pas.XIFrame.CreateBasicIFrame(this.NameSpace,this.NodeName,newFrameId);
+            newIframe.id = originalId; // change id back
+            ob = document.getElementById(originalId);
+            if (AbsoluteURI)
+            {
+              var uri=SourceString;
+            }
+            else
+            {
+              uri='data:text/html,   ' + encodeURIComponent(SourceString);
+            }
+            ob.src=uri;
+      
+          }
+          //else {if (sup==false) {alert('cannot find object '+this.NodeName+'Contents');}};
+      this.SetLabelText(this.GetLabelText());
+    };
+    this.LaunchHTML = function (URLType, myURL, title) {
+      var objid=this.NodeName;
+      //alert('open window with name '+objid);
+      var win=window.open("",objid,"");                  // third (blank) parameter makes a new window
+      win.document.write(myURL);
+      this.BrowserPage=win;
+      win.onunload = function(event) {win.opener.postMessage({"objid":win.name, "NameSpace":"", "mtype":"titleChange", "mdata":""},"*"); };
+    };
+    this.CloseBrowserWindow = function () {
+    };
+    this.ApplyHTMLSource = function (AValue) {
+      if ((((pas.StringUtils.FoundString(AValue,":\/\/") > 0) && (pas.StringUtils.FoundString(AValue,"http") === 1)) || (pas.StringUtils.FoundString(AValue,"\/\/") === 1)) || (pas.StringUtils.FoundString(AValue,"about:") === 1)) {
+        var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+        if (ob!=null) {
+          ob.src = AValue;
+        };
+      } else {
+        this.LoadDataURL(AValue);
+      };
+    };
+    var $r = this.$rtti;
+    $r.addProperty("HTMLSource",3,rtl.string,"GetHTMLSource","SetHTMLSource");
+    $r.addProperty("FrameHeight",3,rtl.string,"GetFrameHeight","SetFrameHeight");
+    $r.addProperty("FrameWidth",3,rtl.string,"GetFrameWidth","SetFrameWidth");
+    $r.addProperty("SuspendRefresh",3,rtl.boolean,"GetSuspendRefresh","SetSuspendRefresh");
+    $r.addProperty("ActualHeight",1,rtl.longint,"GetActualHeight","");
+    $r.addProperty("ActualWidth",1,rtl.longint,"GetActualWidth","");
+  });
+  $mod.$rtti.$DynArray("TIntArray",{eltype: rtl.longint});
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }},"SuspendRefresh","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }},"ActualHeight","Integer","","",true,false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }},"ActualWidth","Integer","","",true,false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }},"FrameWidth","String","300","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }},"FrameHeight","String","300","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }},"LabelPos","String","Top","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }},"LabelText","String","IFrame","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }},"BgColor","Color","#FFFFFF","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.IFrameDefaultAttribs;
+      }, set: function (v) {
+        this.p.IFrameDefaultAttribs = v;
+      }},"HTMLSource","String","","",false);
+    pas.NodeUtils.AddDefaultsToTable("TXIFrame",$impl.IFrameDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions("TXIFrame","Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions("TXIFrame","LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup("TXIFrame",$impl.CreateinterfaceObjIF,$impl.CreateIFWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXIFrame","ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty("TXIFrame","ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.IFrameDefaultAttribs = [];
+  $impl.CreateIFWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    $mod.DoCreateFrameWidget(MyNode,ParentNode,ScreenObjectName,position);
+    MyNode.SetHTMLSource(MyNode.GetHTMLSource());
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObjIF = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXIFrame.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XSVGContainer",["System","Classes","SysUtils","StringUtils","NodeUtils","WrapperPanel","Events","XIFrame","XForm"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.HandleMessage = function (msg) {
+    var ItemNode = null;
+    if (pas.StringUtils.FoundString(msg,"Target = >") > 0) {
+      ItemNode = $mod.SVGItemFromTitle(msg);
+      if (ItemNode !== null) {
+        pas.Events.handleEvent$2("Click",ItemNode.NodeName,ItemNode.NameSpace,msg);
+      };
+    };
+  };
+  this.SVGItemFromTitle = function (IFrameTitle) {
+    var Result = null;
+    var bits = null;
+    var items = null;
+    var ItemID = "";
+    var XStr = "";
+    var YStr = "";
+    bits = pas.Classes.TStringList.$create("Create$1");
+    bits.FStrictDelimiter = true;
+    bits.SetLineBreak(">");
+    bits.SetTextStr(IFrameTitle);
+    if (bits.GetCount() > 1) {
+      items = pas.Classes.TStringList.$create("Create$1");
+      items.FStrictDelimiter = true;
+      items.SetLineBreak(pas.NodeUtils.attributeListdelimiter);
+      items.SetTextStr(bits.Get(1));
+      if (items.GetCount() > 3) {
+        ItemID = items.Get(1);
+        XStr = items.Get(2);
+        YStr = items.Get(3);
+        if (ItemID !== "") {
+          Result = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,ItemID,"",false)}
+         else Result = null;
+      } else Result = null;
+    } else Result = null;
+    return Result;
+  };
+  rtl.createClass($mod,"TXSVGContainer",pas.XIFrame.TXIFrame,function () {
+    this.GetXMLString = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("XMLString",true).AttribValue;
+      return Result;
+    };
+    this.SetXMLString = function (AValue) {
+      var SVGString = "";
+      var FilteredSVGString = "";
+      SVGString = AValue;
+      FilteredSVGString = this.XMLWarnings(SVGString);
+      this.myNode.SetAttributeValue$2("XMLString",SVGString);
+      SVGString = this.FullXMLString();
+      this.myNode.SetAttributeValue$2("HTMLSource",SVGString);
+      this.RedisplayFrame();
+    };
+    this.SetSuspendRefresh = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("SuspendRefresh",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+        if (AValue === false) {
+          this.myNode.SetAttributeValue$2("HTMLSource",this.FullXMLString());
+          this.RedisplayFrame();
+        };
+      };
+    };
+    this.ConstructXMLString = function (myName, NameSpace) {
+      var JavascriptString = "";
+      var stylestring = "";
+      var SvgString = "";
+      JavascriptString = (((((((((((((((((((((((((((((("<script> " + '  document.title = "') + this.myNode.NodeName) + " ") + this.myNode.NodeType) + '"; ') + '  document.documentElement.addEventListener("click", function( event ) { event.stopPropagation();') + "    var x=event.clientX; ") + "    var y=event.clientY; ") + '    var ts= "";') + "    var t=event.target;") + '    var targetstring = "" ;') + "    if ((t!=null)&&(t.attributes.length>0)) ") + "    { ts = t.id; ") + '      targetstring = "') + this.myNode.NodeName) + " ") + this.myNode.NodeType) + " Target = >") + pas.NodeUtils.attributeListdelimiter) + '"+ts+"') + pas.NodeUtils.attributeListdelimiter) + '";  ') + '      document.title = targetstring +  x + "') + pas.NodeUtils.attributeListdelimiter) + '"+ y + "') + pas.NodeUtils.attributeListdelimiter) + '";') + '      parent.postMessage(document.title,"*");  ') + "}") + "   }, false); ") + "<\/script> ";
+      stylestring = ((((" <style>    " + " a:focus {              ") + "  stroke: black;         ") + "  stroke-width: 5;     ") + "}                     ") + "<\/style>              ";
+      SvgString = (((('<svg id="' + NameSpace) + myName) + '" top="0" left="0" ') + ' width="100%" height="92%" overflow:"hidden" position:"fixed">') + "<\/svg> ";
+      this.myNode.SetAttributeValue$2("XMLString",(JavascriptString + stylestring) + SvgString);
+    };
+    this.SpliceSVGChildStrings = function (parentstring, childstring) {
+      var Result = "";
+      var parentlength = 0;
+      var endTagPos = 0;
+      var i = 0;
+      var j = 0;
+      var found = false;
+      var startstring = "";
+      var endstring = "";
+      var returnstr = "";
+      parentlength = parentstring.length;
+      found = false;
+      endTagPos = 0;
+      startstring = "";
+      endstring = "";
+      returnstr = "";
+      for (var $l1 = parentlength; $l1 >= 1; $l1--) {
+        i = $l1;
+        if (found === false) if (parentstring.charAt(i - 1) === "<") {
+          for (var $l2 = i, $end3 = parentlength; $l2 <= $end3; $l2++) {
+            j = $l2;
+            endstring = endstring + parentstring.charAt(j - 1);
+          };
+          for (var $l4 = 1, $end5 = i - 1; $l4 <= $end5; $l4++) {
+            j = $l4;
+            startstring = startstring + parentstring.charAt(j - 1);
+          };
+          if ("<\/svg>" === pas.SysUtils.LowerCase(pas.StringUtils.TrimWhiteSpace(endstring))) {
+            endTagPos = i;
+            found = true;
+            returnstr = (((startstring + " ") + childstring) + " ") + endstring;
+          } else pas.StringUtils.ShowMessage("SVG string is not valid:  " + parentstring);
+        };
+      };
+      Result = returnstr;
+      return Result;
+    };
+    this.XMLWarnings = function (SVGString) {
+      var Result = "";
+      var FilteredSVGString = "";
+      this.WarnAboutTTypeBezierCurves(SVGString);
+      FilteredSVGString = pas.StringUtils.myStringReplace(SVGString,"transparent","none",-1,-1);
+      if (FilteredSVGString.length !== SVGString.length) {
+        pas.StringUtils.ShowMessage('Warning the fill type of "transparent" is not supported by this SVG component - it has been replaced with "none"');
+      };
+      SVGString = FilteredSVGString;
+      return Result;
+    };
+    this.WarnAboutTTypeBezierCurves = function (instring) {
+      var Result = "";
+      var startOfPathStatement = 0;
+      var startOfPathData = 0;
+      var i = 0;
+      var tempstr = "";
+      var endOfData = false;
+      startOfPathStatement = pas.StringUtils.FoundString(instring,"<path");
+      if (startOfPathStatement > 0) {
+        endOfData = false;
+        startOfPathData = pas.StringUtils.FoundString(instring,"d=");
+        if (startOfPathData > 0) {
+          for (var $l1 = startOfPathData + 2, $end2 = instring.length; $l1 <= $end2; $l1++) {
+            i = $l1;
+            if (endOfData === false) {
+              tempstr = instring.charAt(i - 1);
+              if (((tempstr === "t") || (tempstr === "T")) && (instring.charAt((i - 1) - 1) === " ")) pas.StringUtils.ShowMessage('Bezier curves of type "T" are not supported by this SVG component - please use an alternative form');
+              if ((tempstr === '"') || (tempstr === ">")) endOfData = true;
+            };
+          };
+        };
+      };
+      return Result;
+    };
+    this.FullXMLString = function () {
+      var Result = "";
+      var SVGString = "";
+      var childdata = "";
+      var i = 0;
+      var childNode = null;
+      childdata = "";
+      SVGString = this.myNode.GetAttribute("XMLString",true).AttribValue;
+      for (var $l1 = 0, $end2 = rtl.length(this.myNode.ChildNodes) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        childNode = this.myNode.ChildNodes[i];
+        childdata = childdata + childNode.GetAttribute("XMLString",true).AttribValue;
+      };
+      Result = this.SpliceSVGChildStrings(SVGString,childdata);
+      return Result;
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.XIFrame.TXIFrame.Create$3.call(this,MyForm,NodeName,NameSpace);
+      this.NodeType = "TXSVGContainer";
+      this.FIsContainer = true;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.SVGDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("XMLString",3,rtl.string,"GetXMLString","SetXMLString");
+  });
+  rtl.createClass($mod,"TXSVGWidget",pas.NodeUtils.TDataNode,function () {
+    this.$init = function () {
+      pas.NodeUtils.TDataNode.$init.call(this);
+      this.FIsSelected = false;
+      this.myNode = null;
+    };
+    this.$final = function () {
+      this.myNode = undefined;
+      pas.NodeUtils.TDataNode.$final.call(this);
+    };
+    this.getXMLString = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("XMLString",true).AttribValue;
+      return Result;
+    };
+    this.getXPos = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("XPos",true).AttribValue;
+      return Result;
+    };
+    this.getYPos = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("YPos",true).AttribValue;
+      return Result;
+    };
+    this.getHeight = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Height",true).AttribValue;
+      return Result;
+    };
+    this.getWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Width",true).AttribValue;
+      return Result;
+    };
+    this.getStrokeWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("StrokeWidth",true).AttribValue;
+      return Result;
+    };
+    this.getStrokeColor = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("StrokeColor",true).AttribValue;
+      return Result;
+    };
+    this.getFillColor = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("FillColor",true).AttribValue;
+      return Result;
+    };
+    this.getFillTransparent = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("FillTransparent",true).AttribValue);
+      return Result;
+    };
+    this.getRotate = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Rotate",true).AttribValue;
+      return Result;
+    };
+    this.GetHint = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Hint",true).AttribValue;
+      return Result;
+    };
+    this.setXMLString = function (AValue) {
+      var myParent = null;
+      var pn = null;
+      this.myNode.SetAttributeValue$2("XMLString",AValue);
+      pn = pas.NodeUtils.FindParentOfNode$1(pas.NodeUtils.SystemNodeTree,this.myNode);
+      if (pn !== null) {
+        myParent = pn;
+        myParent.SetXMLString(myParent.GetXMLString());
+      };
+    };
+    this.setXPos = function (AValue) {
+      this.myNode.SetAttributeValue$2("XPos",AValue);
+      this.ConstructXMLString();
+    };
+    this.setYPos = function (AValue) {
+      this.myNode.SetAttributeValue$2("YPos",AValue);
+      this.ConstructXMLString();
+    };
+    this.setWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("Width",AValue);
+      this.ConstructXMLString();
+    };
+    this.setHeight = function (AValue) {
+      this.myNode.SetAttributeValue$2("Height",AValue);
+      this.ConstructXMLString();
+    };
+    this.setStrokeWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("StrokeWidth",AValue);
+      this.ConstructXMLString();
+    };
+    this.setStrokeColor = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("StrokeColor",AValue,"Color");
+        this.ConstructXMLString();
+      };
+    };
+    this.setFillColor = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("FillColor",AValue,"Color");
+        this.ConstructXMLString();
+      };
+    };
+    this.setFillTransparent = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("FillTransparent",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+        this.ConstructXMLString();
+      };
+    };
+    this.setRotate = function (AValue) {
+      this.myNode.SetAttributeValue$2("Rotate",AValue);
+      this.ConstructXMLString();
+    };
+    this.SetHint = function (AValue) {
+      this.myNode.SetAttributeValue$2("Hint",AValue);
+      this.ConstructXMLString();
+    };
+    this.SetupWidget = function (ParentNode, position) {
+      var Result = null;
+      var NewNode = null;
+      NewNode = this.myNode;
+      pas.NodeUtils.AddChildToParentNode({get: function () {
+          return ParentNode;
+        }, set: function (v) {
+          ParentNode = v;
+        }},{get: function () {
+          return NewNode;
+        }, set: function (v) {
+          NewNode = v;
+        }},position);
+      NewNode.myEventHandlers = rtl.arraySetLength(NewNode.myEventHandlers,pas.NodeUtils.TEventHandlerRec,NewNode.myEventTypes.GetCount());
+      pas.NodeUtils.RefreshComponentProps(this.myNode);
+      Result = NewNode;
+      return Result;
+    };
+    this.FinishSVGInObCreate = function () {
+      this.myNode = this;
+      this.SetMyEventTypes();
+      this.SetDefaultAttribs();
+    };
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.ConstructXMLString = function () {
+    };
+    this.SetDefaultAttribs = function () {
+    };
+    var $r = this.$rtti;
+    $r.addProperty("IsSelected",0,rtl.boolean,"FIsSelected","FIsSelected");
+    $r.addProperty("XMLString",3,rtl.string,"getXMLString","setXMLString");
+    $r.addProperty("XPos",3,rtl.string,"getXPos","setXPos");
+    $r.addProperty("YPos",3,rtl.string,"getYPos","setYPos");
+    $r.addProperty("Width",3,rtl.string,"getWidth","setWidth");
+    $r.addProperty("Height",3,rtl.string,"getHeight","setHeight");
+    $r.addProperty("StrokeWidth",3,rtl.string,"getStrokeWidth","setStrokeWidth");
+    $r.addProperty("StrokeColor",3,rtl.string,"getStrokeColor","setStrokeColor");
+    $r.addProperty("FillColor",3,rtl.string,"getFillColor","setFillColor");
+    $r.addProperty("FillTransparent",3,rtl.boolean,"getFillTransparent","setFillTransparent");
+    $r.addProperty("Rotate",3,rtl.string,"getRotate","setRotate");
+    $r.addProperty("Hint",3,rtl.string,"GetHint","SetHint");
+  });
+  rtl.createClass($mod,"TXSVGText",$mod.TXSVGWidget,function () {
+    this.getTextString = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("TextString",true).AttribValue;
+      return Result;
+    };
+    this.getFontFamily = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("FontFamily",true).AttribValue;
+      return Result;
+    };
+    this.getFontWeight = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("FontWeight",true).AttribValue;
+      return Result;
+    };
+    this.getFontStyle = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("FontStyle",true).AttribValue;
+      return Result;
+    };
+    this.setTextString = function (AValue) {
+      this.myNode.SetAttributeValue$2("TextString",AValue);
+      this.ConstructXMLString();
+    };
+    this.setFontFamily = function (AValue) {
+      this.myNode.SetAttributeValue$2("FontFamily",AValue);
+      this.ConstructXMLString();
+    };
+    this.setFontWeight = function (AValue) {
+      this.myNode.SetAttributeValue$2("FontWeight",AValue);
+      this.ConstructXMLString();
+    };
+    this.setFontStyle = function (AValue) {
+      this.myNode.SetAttributeValue$2("FontStyle",AValue);
+      this.ConstructXMLString();
+    };
+    this.ConstructXMLString = function () {
+      this.setXMLString(((((((((((((((((((((((((((' <text id="' + this.NameSpace) + this.NodeName) + '" x="') + this.getXPos()) + '" y="') + this.getYPos()) + '" transform="rotate(') + this.getRotate()) + ",") + this.getXPos()) + ",") + this.getYPos()) + ')"') + ' style="font-family: ') + this.getFontFamily()) + "; font-weight:") + this.getFontWeight()) + ";font-size:") + this.getHeight()) + "; font-style: ") + this.getFontStyle()) + '" >') + this.getTextString()) + "<title>") + this.GetHint()) + "<\/title>") + " <\/text>");
+    };
+    this.SetDefaultAttribs = function () {
+      this.myNode.SetAttributeValue$2("XPos","50");
+      this.myNode.SetAttributeValue$2("YPos","50");
+      this.myNode.SetAttributeValue$2("TextString","SVG Text Example");
+      this.myNode.SetAttributeValue$2("Height","20");
+      this.myNode.SetAttributeValue$2("FontFamily"," impact, georgia, times, serif;");
+      this.myNode.SetAttributeValue$2("FontWeight"," normal");
+      this.myNode.SetAttributeValue$2("FontStyle"," normal");
+      this.myNode.SetAttributeValue$2("Rotate","0");
+      this.ConstructXMLString();
+    };
+    var $r = this.$rtti;
+    $r.addProperty("TextString",3,rtl.string,"getTextString","setTextString");
+    $r.addProperty("FontFamily",3,rtl.string,"getFontFamily","setFontFamily");
+    $r.addProperty("FontWeight",3,rtl.string,"getFontWeight","setFontWeight");
+    $r.addProperty("FontStyle",3,rtl.string,"getFontStyle","setFontStyle");
+  });
+  rtl.createClass($mod,"TXSVGRect",$mod.TXSVGWidget,function () {
+    this.ConstructXMLString = function () {
+      this.setXMLString((((((((((((((((((((((((((('<rect id="' + this.NameSpace) + this.NodeName) + '" x="') + this.getXPos()) + '" y="') + this.getYPos()) + '" transform="rotate(') + this.getRotate()) + ",") + this.getXPos()) + ",") + this.getYPos()) + ')" width="') + this.getWidth()) + '" height="') + this.getHeight()) + '" stroke="') + $impl.ColorToStr(this.getStrokeColor())) + '" fill="') + $impl.FillColorToStr(this.getFillColor(),this.getFillTransparent())) + '" stroke-width="') + this.getStrokeWidth()) + '" >') + "<title>") + this.GetHint()) + "<\/title>") + " <\/rect>");
+    };
+    this.SetDefaultAttribs = function () {
+      this.myNode.SetAttributeValue$2("XPos","50");
+      this.myNode.SetAttributeValue$2("YPos","50");
+      this.myNode.SetAttributeValue$2("Width","50");
+      this.myNode.SetAttributeValue$2("Height","50");
+      this.myNode.SetAttributeValue$2("StrokeWidth","3");
+      this.myNode.SetAttributeValue$1("StrokeColor","#BBBBBB","Color");
+      this.myNode.SetAttributeValue$1("FillColor","#FF0000","Color");
+      this.myNode.SetAttributeValue$1("FillTransparent","False","Boolean");
+      this.myNode.SetAttributeValue$2("Rotate","0");
+      this.ConstructXMLString();
+    };
+  });
+  rtl.createClass($mod,"TXSVGRoundedRect",$mod.TXSVGWidget,function () {
+    this.getrx = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Rx",true).AttribValue;
+      return Result;
+    };
+    this.getry = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Ry",true).AttribValue;
+      return Result;
+    };
+    this.setrx = function (AValue) {
+      this.myNode.SetAttributeValue$2("Rx",AValue);
+      this.ConstructXMLString();
+    };
+    this.setry = function (AValue) {
+      this.myNode.SetAttributeValue$2("Ry",AValue);
+      this.ConstructXMLString();
+    };
+    this.ConstructXMLString = function () {
+      this.setXMLString((((((((((((((((((((((((((((((((('<rect id="' + this.NameSpace) + this.NodeName) + '" x="') + this.getXPos()) + '" y="') + this.getYPos()) + '" rx="') + this.getrx()) + '" ry="') + this.getry()) + '" title="') + this.GetHint()) + '" transform="rotate(') + this.getRotate()) + ",") + this.getXPos()) + ",") + this.getYPos()) + ')" width="') + this.getWidth()) + '" height="') + this.getHeight()) + '" stroke="') + $impl.ColorToStr(this.getStrokeColor())) + '" fill="') + $impl.FillColorToStr(this.getFillColor(),this.getFillTransparent())) + '" stroke-width="') + this.getStrokeWidth()) + '" >') + "<title>") + this.GetHint()) + "<\/title>") + " <\/rect>");
+    };
+    this.SetDefaultAttribs = function () {
+      this.myNode.SetAttributeValue$2("XPos","50");
+      this.myNode.SetAttributeValue$2("YPos","50");
+      this.myNode.SetAttributeValue$2("Rx","10");
+      this.myNode.SetAttributeValue$2("Ry","10");
+      this.myNode.SetAttributeValue$2("Width","50");
+      this.myNode.SetAttributeValue$2("Height","50");
+      this.myNode.SetAttributeValue$2("StrokeWidth","3");
+      this.myNode.SetAttributeValue$1("StrokeColor","#BBBBBB","Color");
+      this.myNode.SetAttributeValue$1("FillColor","#FF0000","Color");
+      this.myNode.SetAttributeValue$1("FillTransparent","False","Boolean");
+      this.myNode.SetAttributeValue$2("Rotate","0");
+      this.ConstructXMLString();
+    };
+    var $r = this.$rtti;
+    $r.addProperty("rx",3,rtl.string,"getrx","setrx");
+    $r.addProperty("ry",3,rtl.string,"getry","setry");
+  });
+  rtl.createClass($mod,"TXSVGCircle",$mod.TXSVGWidget,function () {
+    this.getRadius = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Radius",true).AttribValue;
+      return Result;
+    };
+    this.setRadius = function (AValue) {
+      this.myNode.SetAttributeValue$2("Radius",AValue);
+      this.ConstructXMLString();
+    };
+    this.ConstructXMLString = function () {
+      this.setXMLString((((((((((((((((((((((((('<circle id="' + this.NameSpace) + this.NodeName) + '" cx="') + this.getXPos()) + '" cy="') + this.getYPos()) + '" transform="rotate(') + this.getRotate()) + ",") + this.getXPos()) + ",") + this.getYPos()) + ')" r="') + this.getRadius()) + '" stroke="') + $impl.ColorToStr(this.getStrokeColor())) + '" fill="') + $impl.FillColorToStr(this.getFillColor(),this.getFillTransparent())) + '" stroke-width="') + this.getStrokeWidth()) + ' "> ') + "<title>") + this.GetHint()) + "<\/title>") + "<\/circle>");
+    };
+    this.SetDefaultAttribs = function () {
+      this.myNode.SetAttributeValue$2("YPos","75");
+      this.myNode.SetAttributeValue$2("XPos","25");
+      this.myNode.SetAttributeValue$2("Radius","20");
+      this.myNode.SetAttributeValue$2("StrokeWidth","5");
+      this.myNode.SetAttributeValue$1("StrokeColor","#00FF00","Color");
+      this.myNode.SetAttributeValue$1("FillColor","#FFFF00","Color");
+      this.myNode.SetAttributeValue$1("FillTransparent","False","Boolean");
+      this.myNode.SetAttributeValue$2("Rotate","0");
+      this.ConstructXMLString();
+    };
+    var $r = this.$rtti;
+    $r.addProperty("Radius",3,rtl.string,"getRadius","setRadius");
+  });
+  rtl.createClass($mod,"TXSVGEllipse",$mod.TXSVGWidget,function () {
+    this.getrx = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Rx",true).AttribValue;
+      return Result;
+    };
+    this.getry = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Ry",true).AttribValue;
+      return Result;
+    };
+    this.setrx = function (AValue) {
+      this.myNode.SetAttributeValue$2("Rx",AValue);
+      this.ConstructXMLString();
+    };
+    this.setry = function (AValue) {
+      this.myNode.SetAttributeValue$2("Ry",AValue);
+      this.ConstructXMLString();
+    };
+    this.ConstructXMLString = function () {
+      this.setXMLString((((((((((((((((((((((((((((('<ellipse id="' + this.NameSpace) + this.NodeName) + '" cx="') + this.getXPos()) + '"  cy="') + this.getYPos()) + '"  rx="') + this.getrx()) + '" ry="') + this.getry()) + '"') + ' transform="rotate(') + this.getRotate()) + ",") + this.getXPos()) + ",") + this.getYPos()) + ')"') + ' stroke="') + $impl.ColorToStr(this.getStrokeColor())) + '" fill="') + $impl.FillColorToStr(this.getFillColor(),this.getFillTransparent())) + '" stroke-width="') + this.getStrokeWidth()) + '" > ') + "<title>") + this.GetHint()) + "<\/title>") + " <\/ellipse>");
+    };
+    this.SetDefaultAttribs = function () {
+      this.myNode.SetAttributeValue$2("YPos","75");
+      this.myNode.SetAttributeValue$2("XPos","100");
+      this.myNode.SetAttributeValue$2("Rx","20");
+      this.myNode.SetAttributeValue$2("Ry","50");
+      this.myNode.SetAttributeValue$2("StrokeWidth","5");
+      this.myNode.SetAttributeValue$1("StrokeColor","#66FF66","Color");
+      this.myNode.SetAttributeValue$1("FillColor","#AABBCC","Color");
+      this.myNode.SetAttributeValue$1("FillTransparent","False","Boolean");
+      this.myNode.SetAttributeValue$2("Rotate","0");
+      this.ConstructXMLString();
+    };
+    var $r = this.$rtti;
+    $r.addProperty("rx",3,rtl.string,"getrx","setrx");
+    $r.addProperty("ry",3,rtl.string,"getry","setry");
+  });
+  rtl.createClass($mod,"TXSVGLine",$mod.TXSVGWidget,function () {
+    this.getX1 = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("X1",true).AttribValue;
+      return Result;
+    };
+    this.getX2 = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("X2",true).AttribValue;
+      return Result;
+    };
+    this.getY1 = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Y1",true).AttribValue;
+      return Result;
+    };
+    this.getY2 = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Y2",true).AttribValue;
+      return Result;
+    };
+    this.setX1 = function (AValue) {
+      this.myNode.SetAttributeValue$2("X1",AValue);
+      this.ConstructXMLString();
+    };
+    this.setX2 = function (AValue) {
+      this.myNode.SetAttributeValue$2("X2",AValue);
+      this.ConstructXMLString();
+    };
+    this.setY1 = function (AValue) {
+      this.myNode.SetAttributeValue$2("Y1",AValue);
+      this.ConstructXMLString();
+    };
+    this.setY2 = function (AValue) {
+      this.myNode.SetAttributeValue$2("Y2",AValue);
+      this.ConstructXMLString();
+    };
+    this.ConstructXMLString = function () {
+      this.setXMLString((((((((((((((((((((((((((('<line id="' + this.NameSpace) + this.NodeName) + '" x1="') + this.getX1()) + '" x2="') + this.getX2()) + '" y1="') + this.getY1()) + '" y2="') + this.getY2()) + '"') + ' transform="rotate(') + this.getRotate()) + ",") + this.getX1()) + ",") + this.getY1()) + ')"') + ' stroke="') + $impl.ColorToStr(this.getStrokeColor())) + '" stroke-width="') + this.getStrokeWidth()) + '" > ') + "<title>") + this.GetHint()) + "<\/title>") + " <\/line>");
+    };
+    this.SetDefaultAttribs = function () {
+      this.myNode.SetAttributeValue$2("X1","19");
+      this.myNode.SetAttributeValue$2("Y1","110");
+      this.myNode.SetAttributeValue$2("X2","50");
+      this.myNode.SetAttributeValue$2("Y2","150");
+      this.myNode.SetAttributeValue$2("StrokeWidth","5");
+      this.myNode.SetAttributeValue$1("StrokeColor","#66FF66","Color");
+      this.myNode.SetAttributeValue$2("Rotate","0");
+      this.ConstructXMLString();
+    };
+    var $r = this.$rtti;
+    $r.addProperty("X1",3,rtl.string,"getX1","setX1");
+    $r.addProperty("Y1",3,rtl.string,"getY1","setY1");
+    $r.addProperty("X2",3,rtl.string,"getX2","setX2");
+    $r.addProperty("Y2",3,rtl.string,"getY2","setY2");
+  });
+  rtl.createClass($mod,"TXSVGPolyLine",$mod.TXSVGWidget,function () {
+    this.getXCoords = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("XCoords",true).AttribValue;
+      return Result;
+    };
+    this.getYCoords = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("YCoords",true).AttribValue;
+      return Result;
+    };
+    this.setXCoords = function (AValue) {
+      this.myNode.SetAttributeValue$2("XCoords",AValue);
+      this.ConstructXMLString();
+    };
+    this.setYCoords = function (AValue) {
+      this.myNode.SetAttributeValue$2("YCoords",AValue);
+      this.ConstructXMLString();
+    };
+    this.ConstructXMLString = function () {
+      var str = "";
+      var XArray = [];
+      var YArray = [];
+      var i = 0;
+      var numpoints = 0;
+      XArray = $impl.GetArrayFromString(this.getXCoords());
+      YArray = $impl.GetArrayFromString(this.getYCoords());
+      str = (('<polyline id="' + this.NameSpace) + this.NodeName) + '" points="';
+      numpoints = rtl.length(XArray);
+      for (var $l1 = 0, $end2 = numpoints - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        str = (((str + pas.SysUtils.IntToStr(XArray[i])) + " ") + pas.SysUtils.IntToStr(YArray[i])) + " ";
+      };
+      this.setXMLString((((((((((((((((((str + '" transform="rotate(') + this.getRotate()) + ",") + pas.SysUtils.IntToStr(XArray[0])) + ",") + pas.SysUtils.IntToStr(YArray[0])) + ')"') + ' stroke="') + $impl.ColorToStr(this.getStrokeColor())) + '" fill="') + $impl.FillColorToStr(this.getFillColor(),this.getFillTransparent())) + '" stroke-width="') + this.getStrokeWidth()) + '" > ') + "<title>") + this.GetHint()) + "<\/title>") + " <\/polyline>");
+    };
+    this.SetDefaultAttribs = function () {
+      this.myNode.SetAttributeValue$2("XCoords","60 , 65 , 70 , 75  , 80 , 85 , 90,  95 , 100 ");
+      this.myNode.SetAttributeValue$2("YCoords","110, 120, 115 ,130 ,125 ,140, 135 ,150 , 145");
+      this.myNode.SetAttributeValue$2("StrokeWidth","2");
+      this.myNode.SetAttributeValue$1("FillColor","#FFFFFF","Color");
+      this.myNode.SetAttributeValue$1("FillTransparent","False","Boolean");
+      this.myNode.SetAttributeValue$1("StrokeColor","#000000","Color");
+      this.myNode.SetAttributeValue$2("Rotate","0");
+      this.ConstructXMLString();
+    };
+    var $r = this.$rtti;
+    $r.addProperty("XCoords",3,rtl.string,"getXCoords","setXCoords");
+    $r.addProperty("YCoords",3,rtl.string,"getYCoords","setYCoords");
+  });
+  rtl.createClass($mod,"TXSVGPolyGon",$mod.TXSVGPolyLine,function () {
+    this.ConstructXMLString = function () {
+      var str = "";
+      var XArray = [];
+      var YArray = [];
+      var i = 0;
+      var numpoints = 0;
+      XArray = $impl.GetArrayFromString(this.getXCoords());
+      YArray = $impl.GetArrayFromString(this.getYCoords());
+      str = (('<polygon id="' + this.NameSpace) + this.NodeName) + '" points="';
+      numpoints = rtl.length(XArray);
+      for (var $l1 = 0, $end2 = numpoints - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        str = (((str + pas.SysUtils.IntToStr(XArray[i])) + " ") + pas.SysUtils.IntToStr(YArray[i])) + " ";
+      };
+      this.setXMLString(((((((((((((((((((str + '" transform="rotate(') + this.getRotate()) + ",") + pas.SysUtils.IntToStr(XArray[0])) + ",") + pas.SysUtils.IntToStr(YArray[0])) + ')"') + ' stroke="') + $impl.ColorToStr(this.getStrokeColor())) + '" fill="') + $impl.FillColorToStr(this.getFillColor(),this.getFillTransparent())) + '"') + ' stroke-width="') + this.getStrokeWidth()) + '" >') + "<title>") + this.GetHint()) + "<\/title>") + "<\/polygon>");
+    };
+    this.SetDefaultAttribs = function () {
+      this.myNode.SetAttributeValue$2("XCoords","50 ,  55 ,   70 , 60 ,  65 ,  50 ,  35  , 40 ,  30 ,  45 ");
+      this.myNode.SetAttributeValue$2("YCoords","160 , 180 , 180 , 190 , 205 , 195 , 205 , 190 , 180,  180");
+      this.myNode.SetAttributeValue$2("StrokeWidth","2");
+      this.myNode.SetAttributeValue$1("StrokeColor","#FF0000","Color");
+      this.myNode.SetAttributeValue$1("FillColor","#AAAAAA","Color");
+      this.myNode.SetAttributeValue$1("FillTransparent","False","Boolean");
+      this.myNode.SetAttributeValue$2("Rotate","0");
+      this.ConstructXMLString();
+    };
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }},"SuspendRefresh","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }},"ActualHeight","Integer","","",true,false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }},"ActualWidth","Integer","","",true,false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }},"FrameWidth","String","300","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }},"FrameHeight","String","300","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }},"LabelPos","String","Top","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }},"LabelText","String","SVG Frame","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }},"BgColor","Color","#FFFFFF","",false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.SVGDefaultAttribs;
+      }, set: function (v) {
+        this.p.SVGDefaultAttribs = v;
+      }},"HTMLSource","String","","",false,false);
+    pas.NodeUtils.AddDefaultsToTable("TXSVGContainer",$impl.SVGDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions("TXSVGContainer","Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions("TXSVGContainer","LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup("TXSVGContainer",$impl.CreateinterfaceObjSVG,$impl.CreateSVGContainerWidget);
+    pas.NodeUtils.AddNodeFuncLookup("TXSVGText",$impl.CreateInObSVGText,$impl.CreateWidgetSVGText);
+    pas.NodeUtils.AddNodeFuncLookup("TXSVGRect",$impl.CreateInObSVGRect,$impl.CreateWidgetSVGRect);
+    pas.NodeUtils.AddNodeFuncLookup("TXSVGRoundedRect",$impl.CreateInObSVGRoundedRect,$impl.CreateWidgetSVGRoundedRect);
+    pas.NodeUtils.AddNodeFuncLookup("TXSVGCircle",$impl.CreateInObSVGCircle,$impl.CreateWidgetSVGCircle);
+    pas.NodeUtils.AddNodeFuncLookup("TXSVGEllipse",$impl.CreateInObSVGEllipse,$impl.CreateWidgetSVGEllipse);
+    pas.NodeUtils.AddNodeFuncLookup("TXSVGLine",$impl.CreateInObSVGLine,$impl.CreateWidgetSVGLine);
+    pas.NodeUtils.AddNodeFuncLookup("TXSVGPolyLine",$impl.CreateInObSVGPolyLine,$impl.CreateWidgetSVGPolyLine);
+    pas.NodeUtils.AddNodeFuncLookup("TXSVGPolyGon",$impl.CreateInObSVGPolyGon,$impl.CreateWidgetSVGPolyGon);
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGContainer","ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGContainer","ContainerWidth");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGContainer","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGText","Width");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGCircle","Width");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGCircle","Height");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGEllipse","Width");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGEllipse","Height");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGLine","XPos");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGLine","YPos");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGLine","Width");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGLine","Height");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGLine","FillColor");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGPolyLine","XPos");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGPolyLine","YPos");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGPolyLine","Width");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGPolyLine","Height");
+    pas.WrapperPanel.SuppressDesignerProperty("TXSVGPolyLine","FillColor");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.SVGDefaultAttribs = [];
+  $impl.CreateSVGContainerWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    pas.XIFrame.DoCreateFrameWidget(MyNode,ParentNode,ScreenObjectName,position);
+    MyNode.ConstructXMLString(ScreenObjectName,NameSpace);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObjSVG = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXSVGContainer.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+  $impl.CreateInObSVGText = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    var NewObj = null;
+    NewObj = $mod.TXSVGText.$create("Create$1",["SVG",NodeName,NameSpace,"TXSVGText",true]);
+    NewObj.FinishSVGInObCreate();
+    Result = NewObj;
+    return Result;
+  };
+  $impl.CreateWidgetSVGText = function (myNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var NewWidget = null;
+    NewWidget = myNode;
+    NewWidget.setXPos(NewWidget.getXPos());
+    NewWidget.setYPos(NewWidget.getYPos());
+    NewWidget.setTextString(NewWidget.getTextString());
+    NewWidget.setHeight(NewWidget.getHeight());
+    NewWidget.setFontFamily(NewWidget.getFontFamily());
+    NewWidget.setFontWeight(NewWidget.getFontWeight());
+    NewWidget.setFontStyle(NewWidget.getFontStyle());
+    NewWidget.setRotate(NewWidget.getRotate());
+    Result = NewWidget.SetupWidget(ParentNode,position);
+    return Result;
+  };
+  $impl.ColorToStr = function (Clr) {
+    var Result = "";
+    Result = Clr;
+    return Result;
+  };
+  $impl.FillColorToStr = function (Clr, Transparent) {
+    var Result = "";
+    if (Transparent) {
+      Result = "none"}
+     else Result = $impl.ColorToStr(Clr);
+    return Result;
+  };
+  $impl.CreateInObSVGRect = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    var NewObj = null;
+    NewObj = $mod.TXSVGRect.$create("Create$1",["SVG",NodeName,NameSpace,"TXSVGRect",true]);
+    NewObj.FinishSVGInObCreate();
+    Result = NewObj;
+    return Result;
+  };
+  $impl.CreateWidgetSVGRect = function (myNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var NewWidget = null;
+    NewWidget = myNode;
+    NewWidget.setXPos(NewWidget.getXPos());
+    NewWidget.setYPos(NewWidget.getYPos());
+    NewWidget.setWidth(NewWidget.getWidth());
+    NewWidget.setHeight(NewWidget.getHeight());
+    NewWidget.setStrokeWidth(NewWidget.getStrokeWidth());
+    NewWidget.setStrokeColor(NewWidget.getStrokeColor());
+    NewWidget.setFillColor(NewWidget.getFillColor());
+    NewWidget.setFillTransparent(NewWidget.getFillTransparent());
+    NewWidget.setRotate(NewWidget.getRotate());
+    Result = NewWidget.SetupWidget(ParentNode,position);
+    return Result;
+  };
+  $impl.CreateInObSVGRoundedRect = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    var NewObj = null;
+    NewObj = $mod.TXSVGRoundedRect.$create("Create$1",["SVG",NodeName,NameSpace,"TXSVGRoundedRect",true]);
+    NewObj.FinishSVGInObCreate();
+    Result = NewObj;
+    return Result;
+  };
+  $impl.CreateWidgetSVGRoundedRect = function (myNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var NewWidget = null;
+    NewWidget = myNode;
+    NewWidget.setXPos(NewWidget.getXPos());
+    NewWidget.setYPos(NewWidget.getYPos());
+    NewWidget.setrx(NewWidget.getrx());
+    NewWidget.setry(NewWidget.getry());
+    NewWidget.setWidth(NewWidget.getWidth());
+    NewWidget.setHeight(NewWidget.getHeight());
+    NewWidget.setStrokeWidth(NewWidget.getStrokeWidth());
+    NewWidget.setStrokeColor(NewWidget.getStrokeColor());
+    NewWidget.setFillColor(NewWidget.getFillColor());
+    NewWidget.setFillTransparent(NewWidget.getFillTransparent());
+    NewWidget.setRotate(NewWidget.getRotate());
+    Result = NewWidget.SetupWidget(ParentNode,position);
+    return Result;
+  };
+  $impl.CreateInObSVGCircle = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    var NewObj = null;
+    NewObj = $mod.TXSVGCircle.$create("Create$1",["SVG",NodeName,NameSpace,"TXSVGCircle",true]);
+    NewObj.FinishSVGInObCreate();
+    Result = NewObj;
+    return Result;
+  };
+  $impl.CreateWidgetSVGCircle = function (myNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var NewWidget = null;
+    NewWidget = myNode;
+    NewWidget.setXPos(NewWidget.getXPos());
+    NewWidget.setYPos(NewWidget.getYPos());
+    NewWidget.setRadius(NewWidget.getRadius());
+    NewWidget.setStrokeWidth(NewWidget.getStrokeWidth());
+    NewWidget.setStrokeColor(NewWidget.getStrokeColor());
+    NewWidget.setFillColor(NewWidget.getFillColor());
+    NewWidget.setFillTransparent(NewWidget.getFillTransparent());
+    NewWidget.setRotate(NewWidget.getRotate());
+    Result = NewWidget.SetupWidget(ParentNode,position);
+    return Result;
+  };
+  $impl.CreateInObSVGEllipse = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    var NewObj = null;
+    NewObj = $mod.TXSVGEllipse.$create("Create$1",["SVG",NodeName,NameSpace,"TXSVGEllipse",true]);
+    NewObj.FinishSVGInObCreate();
+    Result = NewObj;
+    return Result;
+  };
+  $impl.CreateWidgetSVGEllipse = function (myNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var NewWidget = null;
+    NewWidget = myNode;
+    NewWidget.setXPos(NewWidget.getXPos());
+    NewWidget.setYPos(NewWidget.getYPos());
+    NewWidget.setrx(NewWidget.getrx());
+    NewWidget.setry(NewWidget.getry());
+    NewWidget.setStrokeWidth(NewWidget.getStrokeWidth());
+    NewWidget.setStrokeColor(NewWidget.getStrokeColor());
+    NewWidget.setFillColor(NewWidget.getFillColor());
+    NewWidget.setFillTransparent(NewWidget.getFillTransparent());
+    NewWidget.setRotate(NewWidget.getRotate());
+    Result = NewWidget.SetupWidget(ParentNode,position);
+    return Result;
+  };
+  $impl.CreateInObSVGLine = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    var NewObj = null;
+    NewObj = $mod.TXSVGLine.$create("Create$1",["SVG",NodeName,NameSpace,"TXSVGLine",true]);
+    NewObj.FinishSVGInObCreate();
+    Result = NewObj;
+    return Result;
+  };
+  $impl.CreateWidgetSVGLine = function (myNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var NewWidget = null;
+    NewWidget = myNode;
+    NewWidget.setX1(NewWidget.getX1());
+    NewWidget.setY1(NewWidget.getY1());
+    NewWidget.setX2(NewWidget.getX2());
+    NewWidget.setY2(NewWidget.getY2());
+    NewWidget.setStrokeWidth(NewWidget.getStrokeWidth());
+    NewWidget.setStrokeColor(NewWidget.getStrokeColor());
+    NewWidget.setRotate(NewWidget.getRotate());
+    Result = NewWidget.SetupWidget(ParentNode,position);
+    return Result;
+  };
+  $impl.GetArrayFromString = function (instring) {
+    var Result = [];
+    var stringlist = null;
+    var numpoints = 0;
+    var i = 0;
+    var resultArray = [];
+    stringlist = pas.StringUtils.stringsplit(instring,",");
+    numpoints = stringlist.GetCount();
+    resultArray = rtl.arraySetLength(resultArray,0,numpoints);
+    for (var $l1 = 0, $end2 = numpoints - 1; $l1 <= $end2; $l1++) {
+      i = $l1;
+      resultArray[i] = pas.SysUtils.StrToInt(pas.StringUtils.TrimWhiteSpace(stringlist.Get(i)));
+    };
+    Result = resultArray;
+    return Result;
+  };
+  $impl.CreateInObSVGPolyLine = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    var NewObj = null;
+    NewObj = $mod.TXSVGPolyLine.$create("Create$1",["SVG",NodeName,NameSpace,"TXSVGPolyLine",true]);
+    NewObj.FinishSVGInObCreate();
+    Result = NewObj;
+    return Result;
+  };
+  $impl.CreateWidgetSVGPolyLine = function (myNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var NewWidget = null;
+    NewWidget = myNode;
+    NewWidget.setXCoords(NewWidget.getXCoords());
+    NewWidget.setYCoords(NewWidget.getYCoords());
+    NewWidget.setStrokeWidth(NewWidget.getStrokeWidth());
+    NewWidget.setStrokeColor(NewWidget.getStrokeColor());
+    NewWidget.setFillColor(NewWidget.getFillColor());
+    NewWidget.setFillTransparent(NewWidget.getFillTransparent());
+    NewWidget.setRotate(NewWidget.getRotate());
+    Result = NewWidget.SetupWidget(ParentNode,position);
+    return Result;
+  };
+  $impl.CreateInObSVGPolyGon = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    var NewObj = null;
+    NewObj = $mod.TXSVGPolyGon.$create("Create$1",["SVG",NodeName,NameSpace,"TXSVGPolyGon",true]);
+    NewObj.FinishSVGInObCreate();
+    Result = NewObj;
+    return Result;
+  };
+  $impl.CreateWidgetSVGPolyGon = function (myNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var NewWidget = null;
+    NewWidget = myNode;
+    NewWidget.setXCoords(NewWidget.getXCoords());
+    NewWidget.setYCoords(NewWidget.getYCoords());
+    NewWidget.setStrokeWidth(NewWidget.getStrokeWidth());
+    NewWidget.setStrokeColor(NewWidget.getStrokeColor());
+    NewWidget.setFillColor(NewWidget.getFillColor());
+    NewWidget.setFillTransparent(NewWidget.getFillTransparent());
+    NewWidget.setRotate(NewWidget.getRotate());
+    Result = NewWidget.SetupWidget(ParentNode,position);
+    return Result;
+  };
+});
+rtl.module("HTMLUtils",["System","Classes","SysUtils","StringUtils","NodeUtils"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.removeClassName = function (el, ClassName) {
+    {
+    
+      var i, curList, newList;
+    
+      if (el.className == null)
+        return;
+    
+      // Remove the given class name from the element's className property.
+    
+      newList = new Array();
+      curList = el.className.split(" ");
+      for (i = 0; i < curList.length; i++)
+        if (curList[i] != ClassName)
+          newList.push(curList[i]);
+      el.className = newList.join(" ");
+    };
+  };
+  this.StopBubbling = function (event) {
+    if (pas.HTMLUtils.browser.isIE)
+      window.event.cancelBubble = true;
+    else
+      event.stopPropagation();
+  };
+  this.addHandVBoxStyles = function () {
+    var Result = "";
+    var dummy = 0;
+    dummy = 0;
+    // ----------------------------------------check if the style has already been set
+        var x = document.getElementsByTagName("STYLE");
+        var StyleIsSet = false;
+        if (x.length>0){
+          for (var i=0; i<x.length; i++){
+            var y= x[i].innerHTML;
+            if (y.indexOf(".hbox") !=-1) { StyleIsSet =true}
+          }
+        }
+       
+        if (StyleIsSet == false){
+            var HandVBoxStyleString = '<style>'
+       //     +'div.outline: none !important; '
+            +'.hbox { '
+                +' display: -webkit-flex;'
+                +' display: -ms-flexbox;'
+                +' display: -flex;'
+                +' -webkit-flex-direction: row;'
+                +' -ms-flex-direction: row;'
+                +' flex-direction: row;'
+                +' -webkit-align-content: stretch;'
+                +' -ms-flex-line-pack: stretch;'
+                +' align-items: stretch;'
+                +' }'
+           +'.hboxNoStretch { '
+                +' display: -webkit-flex;'
+               +' display: -ms-flexbox;'
+               +' display: -flex;'
+               +' -webkit-flex-direction: row;'
+               +' -ms-flex-direction: row;'
+               +' flex-direction: row;'
+               +' -webkit-align-content: flex-start;'
+               +' -ms-flex-line-pack: start;'
+               +' align-items: flex-start;'
+               +' }'
+    
+          +'.vbox { '
+                 +' display: -webkit-flex;'
+                 +' display: -ms-flexbox;'
+                 +' display: flex;'
+                  +' -webkit-flex-direction: column;'
+                  +' -ms-flex-direction: column;'
+                  +' flex-direction: column;'
+                  +' -webkit-align-content: stretch;'
+                  +' -ms-flex-line-pack: stretch;'
+                  +' align-items: stretch;'
+                  +' }'
+                +'.vboxNoStretch { '
+                  +' display: -webkit-flex;'
+                  +' display: -ms-flexbox;'
+                  +' display: flex;'
+                   +' -webkit-flex-direction: column;'
+                   +' -ms-flex-direction: column;'
+                   +' flex-direction: column;'
+                   +' -webkit-align-content: flex-start;'
+                   +' -ms-flex-line-pack: start;'
+                   +' align-items: flex-start;'
+                   +' }'
+               +'.vboxNoFlex { '
+                   +' display: inline-block;'
+                   +' -webkit-flex-direction: column;'
+                   +' -ms-flex-direction: column;'
+                   +' flex-direction: column;'
+                   +' -webkit-align-content: flex-start;'
+                   +' -ms-flex-line-pack: start;'
+                   +' align-items: flex-start;'
+                   +' }'
+    
+    
+            +'.AlignmentCentre {display: flex;'
+               +'align-items: center;'
+               +'align-self: center;'
+               +'flex-shrink: 0; '
+               +'justify-content: start;}'             //center?
+            +'.AlignmentRight {display:flex;'
+             +'align-items: flex-e'+'nd;'
+              +'align-self: flex-e'+'nd;'
+              +'flex-shrink: 0; '
+              +'justify-content: flex-e'+'nd;'
+              +'float:right;'
+              +'}'
+            +'.AlignmentLeft {display:flex;'
+              +'align-items: flex-start;'
+              +'align-self: flex-start;'
+              +'flex-shrink: 0; '
+              +'justify-content: flex-start;}'
+            +'.AlignmentLeftContainer {display:flex;'
+              +'align-items: flex-start;'
+              +'align-self: stretch;'
+              +'flex-shrink: 0; '
+                +'justify-content: flex-start;}'
+            +'.AlignmentTop {display:flex;'
+            +'align-items: flex-start;'
+            +'align-self: flex-start;'
+              +'justify-content: flex-start;}'
+            +'.AlignmentBottom {display:flex;'
+              +'align-items: flex-e'+'nd;'
+              +'align-self: flex-e'+'nd;'
+              +'justify-content: flex-e'+'nd;}'
+    
+            +'  input {'
+                    +' line-height: 20px;'
+                 +'}'
+    
+    
+               +' </style>';
+    
+          //----------------------------- now append the style declarations to the head of the HTML page
+          document.head.innerHTML = document.head.innerHTML+HandVBoxStyleString;
+         };
+    return Result;
+  };
+  this.addWidgetInnerStyles = function () {
+    var dummy = 0;
+    dummy = 0;
+    // ----------------------------------------check if the style has already been set
+        var x = document.getElementsByTagName("STYLE");
+        var StyleIsSet = false;
+        if (x.length>0){
+          for (var i=0; i<x.length; i++){
+            var y= x[i].innerHTML;
+            if (y.indexOf(".widgetinner") !=-1) { StyleIsSet =true}
+          }
+        }
+    
+        if (StyleIsSet == false){
+            var StyleString = '<style>'
+            +'.widgetinner { '
+                +' font-size: inherit;'
+                +' color: inherit;'
+                +' font-style: inherit;'
+                +' font-family: inherit;'
+                +' }'
+             +' </style>';
+    
+          //----------------------------- now append the style declarations to the head of the HTML page
+          document.head.innerHTML = document.head.innerHTML+StyleString;
+         };
+  };
+  this.getAncestorWithTagAndClass = function (node, tagName, className) {
+    var Result = null;
+    {
+    
+      // Starting with the given node, find the nearest containing element
+      // with the specified tag name and style class.
+    
+      while (node != null) {
+        if (node.tagName != null && node.tagName == tagName &&
+            pas.HTMLUtils.hasClassName(node, className))
+          return node;
+        node = node.parentNode;
+      }
+    
+      return node;
+    };
+    return Result;
+  };
+  this.getPageOffsetLeft = function (el) {
+    var Result = 0;
+    var x = 0;
+    {
+    function getOffset(el) {
+      const rect = el.getBoundingClientRect();
+      return {
+        left: rect.left + window.scrollX,
+        top: rect.top + window.scrollY
+      };
+    }
+      // Return the x coordinate of an element relative to the page.
+    
+    //  x = el.offsetLeft;
+    //  if (el.offsetParent != null) {
+    //    x += pas.HTMLUtils.getPageOffsetLeft(el.offsetParent);
+    //    }
+    x=getOffset(el).left;
+    };
+    Result = x;
+    return Result;
+  };
+  this.getPageOffsetTop = function (el) {
+    var Result = 0;
+    var y = 0;
+    {
+      // Return the y coordinate of an element relative to the page.
+    
+      y = el.offsetTop;
+      if (el.offsetParent != null)
+        y += pas.HTMLUtils.getPageOffsetTop(el.offsetParent);
+    };
+    Result = y;
+    return Result;
+  };
+  this.hasClassName = function (el, name) {
+    var Result = false;
+    {
+    
+      var i, list;
+    
+      // Return true if the given element currently has the given class
+      // name.
+    
+      list = el.className.split(" ");
+      for (i = 0; i < list.length; i++)
+        if (list[i] == name)
+          return true;
+    
+      return false;
+    };
+    return Result;
+  };
+  this.SetHeightWidthHTML = function (MyNode, ob, HW, AttrValue) {
+    var hwStr = "";
+    var pct = false;
+    hwStr = AttrValue;
+    pct = $impl.PrepareHeightWidthHTML({get: function () {
+        return HW;
+      }, set: function (v) {
+        HW = v;
+      }},{get: function () {
+        return hwStr;
+      }, set: function (v) {
+        hwStr = v;
+      }});
+    if (ob!=null) {
+      if (HW=='H') {
+        ob.style.height=hwStr;
+        if (pct==false) {
+          ob.style.minHeight=hwStr;
+          ob.style.maxHeight=hwStr;
+        }
+        else
+        {
+        ob.style.minHeight='';
+        ob.style.maxHeight='';
+        }
+      }
+      else {
+        ob.style.width=hwStr;
+        if (pct==false) {
+          ob.style.minWidth=hwStr;
+          ob.style.maxWidth=hwStr;
+        }
+        else
+        {
+          ob.style.minWidth='';
+          ob.style.maxWidth='';
+       }
+      }
+    };
+  };
+  this.DeleteScreenObject = function (MyNode) {
+    var Result = "";
+    var ObjName = "";
+    ObjName = MyNode.NameSpace + MyNode.NodeName;
+    try{
+    var ThisObject = document.getElementById(ObjName);
+    if (ThisObject!=null) {
+       ThisObject.parentNode.removeChild(ThisObject);
+      }
+    }catch(err) { alert(err.message+' in HTMLUtils.DeleteScreenObject');};
+    pas.NodeUtils.NilScreenObject(MyNode);
+    return Result;
+  };
+  this.CreateWrapperHtml = function (NewNode, ParentNode, ScreenObjectName, NameSpace, ScreenObjectType) {
+    var Result = "";
+    var ClassString = "";
+    ClassString = (' class="' + NameSpace) + ScreenObjectName;
+    ClassString = ClassString + " no-border ";
+    ClassString = ClassString + '" ';
+    try{
+    
+        var ComponentHTML='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var NameSpaceString = "'"+NameSpace+"'";
+        var componentClick="'Click'";
+    
+        var WrapperStyle = ' background-color:inherit; white-space:nowrap; ';
+    
+        // note tabindex=0 allows a div to be focused.  Only the focused element will listen to keyboard events.
+    
+        var FullHTMLString='<div '+ClassString+' style="'+WrapperStyle+'" tabindex="0" id='+NameSpace+ScreenObjectName+
+                    ' onclick="event.stopPropagation(); pas.Events.handleEvent(null,'+componentClick+','+NodeIDString+','+NameSpaceString+', this.value);" '+
+                       ' </div> ';
+    
+      }catch(err) { alert(err.message+'  in HTMLUtils.CreateWrapperHtml');}
+    
+      return FullHTMLString;
+    return Result;
+  };
+  this.CreateWrapperDiv = function (MyNode, ParentNode, NodeClass, ScreenObjectName, NameSpace, ScreenObjectType, position) {
+    var Result = null;
+    var bdr = "";
+    var ShowBorder = false;
+    bdr = MyNode.GetAttribute("Border",true).AttribValue;
+    if (bdr !== "") {
+      ShowBorder = pas.StringUtils.MyStrToBool(bdr)}
+     else ShowBorder = false;
+    try {
+           var wrappername = NameSpace+ScreenObjectName;
+           var MyParent = pas.HTMLUtils.ScreenObjectInnerComponent(ParentNode);
+           //alert('adding '+wrappername+' to '+MyParent.id);
+           var HTMLImplementation = pas.HTMLUtils.CreateWrapperHtml(MyNode,ParentNode,ScreenObjectName,NameSpace,ScreenObjectType);
+           pas.HTMLUtils.AddObjectToParentObject(ParentNode,MyParent.id,wrappername,position,HTMLImplementation);
+           var wrapper=document.getElementById(wrappername);
+           if (wrapper==null) {alert('wrapper '+wrappername+' not found');}
+           if ((wrapper.style.overflow!='scroll') && (ScreenObjectType!='TXMainMenu')  && (ScreenObjectType!='TXMenuItem'))
+           {
+              wrapper.style.overflow = 'hidden';
+           }
+           if (ShowBorder==true) {
+              wrapper.classList.add("normal-border");
+           }
+    
+           wrapper.style.padding = '0px';
+    
+           return wrapper;
+    
+       } catch(err) { alert(err.message+'  in HTMLUtils.CreateWrapperDiv');};
+    return Result;
+  };
+  this.AddObjectToParentObject = function (ParentNode, ParentId, myId, position, HTMLString) {
+    var pos = 0;
+    var mysib = null;
+    pos = position;
+    if (pos > 0) {
+      if (rtl.length(ParentNode.ChildNodes) > (pos + 1)) {
+        mysib = ParentNode.ChildNodes[pos + 1];
+        if (mysib.ScreenObject === null) {
+          pos = -1;
+        };
+      } else {
+        if (pos > (rtl.length(ParentNode.ChildNodes) - 1)) pas.StringUtils.ShowMessage(((("cannot insert under " + ParentNode.NodeName) + " at position ") + pas.SysUtils.IntToStr(pos)) + ". reverted to end");
+        pos = -1;
+      };
+    };
+    try {
+     var myParent=document.getElementById(ParentId);
+       // Insert the new container under the given parent, at the correct sibling position
+       if (pos==-1)  {
+       myParent.insertAdjacentHTML('beforeend', HTMLString);
+       }
+       else if ( pos==0) {
+       myParent.insertAdjacentHTML('afterbegin', HTMLString);
+       }
+       else {
+         var mySibling=document.getElementById(mysib.NameSpace+mysib.NodeName);
+         if (mySibling!=null) {
+           mySibling.insertAdjacentHTML('beforebegin', HTMLString);
+         }
+         else {
+           // insert msg here.... (1)
+           var str=sibname;
+           alert(str);
+           myParent.insertAdjacentHTML('beforeend', HTMLString);
+         }
+         }
+    } catch(err) { alert(err.message+'  in HTMLUtils.AddObjectToParentObject');};
+  };
+  this.ScreenObjectInnerComponent = function (SystemNode) {
+    var Result = null;
+    var wrappername = "";
+    var innername = "";
+    wrappername = SystemNode.NameSpace + SystemNode.NodeName;
+    innername = wrappername + "Contents";
+    Result=document.getElementById(innername);
+    if (Result === null) Result=document.getElementById(wrappername);
+    if (Result === null) pas.StringUtils.ShowMessage(("object " + wrappername) + " not found in HTMLUtils.ScreenObjectInnerComponent");
+    return Result;
+  };
+  this.UnHighlight = function (ObjID, HadBorder) {
+    try{
+         // alert('unhighlight '+ObjID);
+          var ob=document.getElementById(ObjID)
+          if (ob!=null) {
+            ob.classList.remove("highlight-border");
+    
+            if (HadBorder==true) {
+               ob.classList.add("normal-border");
+               }
+          }
+          }catch(err) { alert(ObjID+': '+err.message+'  in HTMLUtils.UnHighlight'); };
+  };
+  this.Highlight = function (ObjID) {
+    try{
+    //alert('Highlight '+ObjID);
+    var ob=document.getElementById(ObjID);
+    if (ob!=null) {
+      ob.classList.remove("normal-border");
+      ob.classList.remove("no-border");
+      ob.classList.add("highlight-border");
+    }
+    }catch(err) { alert(err.message+'  in HTMLUtils.Highlight'); };
+  };
+  this.ShowHideSelectedBorder = function (myNode, showborder) {
+    var HadBorder = false;
+    pas.StringUtils.ShowMessage((("ShowHideSelectedBorder " + myNode.NodeType) + "  ") + pas.StringUtils.MyBoolToStr(showborder));
+    if (myNode.GetAttribute("Border",true).AttribValue !== "") {
+      HadBorder = pas.StringUtils.MyStrToBool(myNode.GetAttribute("Border",true).AttribValue)}
+     else HadBorder = false;
+    var ob = document.getElementById(this.NameSpace+this.NodeName);
+    if (ob!=null) {
+    if (showborder==true) {
+       pas.HTMLUtils.Highlight(ob.id);
+    }
+    else {
+    alert('call UnHighlight for '+ob.id+' HadBorder='+HadBorder);
+       pas.HTMLUtils.UnHighlight(ob.id, HadBorder);
+    }      };
+    if (myNode.NodeType === "TXSVGContainer") {
+      myNode.SetXMLString(myNode.GetXMLString());
+    };
+  };
+  this.GetDataNodeFromTreeNode = function (nodeID, NameSpace) {
+    var Result = null;
+    var bits = null;
+    if (NameSpace !== "") {
+      if (pas.StringUtils.FoundString(nodeID,NameSpace) === 1) nodeID = pas.StringUtils.myStringReplace(nodeID,NameSpace,"",1,-1);
+    };
+    bits = pas.StringUtils.stringsplit(nodeID,"Node");
+    Result = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,bits.Get(0),NameSpace,true);
+    return Result;
+  };
+  this.getParentByTagName = function (topname, node, tagname) {
+    var Result = null;
+    var foundOb = null;
+    {
+          foundOb=null;
+          var parent;
+          if (node == null || tagname == '') {foundOb=null}
+          else
+          {
+            parent  = node.parentNode;
+            tagname = tagname.toUpperCase();
+            //alert('looking for tagname '+tagname);
+    
+            while ((parent.id != topname+'Contents')&&(foundOb==null)) {
+              //alert('parent.id='+parent.id + 'tagname='+parent.tagName);
+          if (parent.tagName == tagname) {
+              foundOb = parent;
+          }
+              else {
+            parent = parent.parentNode;
+              }
+            }
+    
+            foundOb = parent;
+          }
+      };
+    Result = foundOb;
+    return Result;
+  };
+  this.ContainsChildWithTag = function (node, tagname) {
+    var Result = false;
+    var found = false;
+    found = false;
+    if (node == null || tagname == '') {found=false}
+      else
+      {
+        tagname = tagname.toUpperCase();
+    
+        for (var i=0; i<node.children.length; i++) {
+          if (node.children[i].tagName==tagname) {found=true;}
+        }
+      };
+    Result = found;
+    return Result;
+  };
+  this.WriteToLocalStore = function (KeyName, TheData) {
+    if (KeyName !== "") {
+      try{
+      localStorage.setItem(KeyName,TheData);
+      }catch(err) { alert(err.message+'  in HTMLUtils.WriteToLocalStore'); };
+    };
+  };
+  this.ReadFromLocalStore = function (KeyName) {
+    var Result = "";
+    var TheData = "";
+    TheData = "";
+    if (KeyName !== "") {
+      try{
+      TheData=localStorage.getItem(KeyName);
+      if (TheData==null) {TheData='';}
+      }catch(err) { alert(err.message+'  in HTMLUtils.ReadFromLocalStore'); };
+    };
+    Result = TheData;
+    return Result;
+  };
+  this.ClearLocalStore = function (KeyName) {
+    if (KeyName !== "") {
+      try{
+      localStorage.removeItem(KeyName);
+      }catch(err) { alert(err.message+'  in HTMLUtils.ClearLocalStore'); };
+    };
+  };
+  this.GetCurrentHeight = function (ObjectName) {
+    var Result = 0;
+    var h = 0;
+    h = 0;
+    var ob = document.getElementById(ObjectName);
+      if (ob!=null) {
+        var style = window.getComputedStyle(ob);
+        var hh = style.height;
+        h = parseInt(hh, 10);
+    //     alert('calculated height='+h);
+        };
+    Result = h;
+    return Result;
+  };
+  this.GetCurrentWidth = function (ObjectName) {
+    var Result = 0;
+    var w = 0;
+    w = 0;
+    var ob = document.getElementById(ObjectName);
+      if (ob!=null) {
+        var style = window.getComputedStyle(ob);
+        var ww = style.width;
+        w = parseInt(ww, 10);
+    //      alert('calculated Width='+w);
+        };
+    Result = w;
+    return Result;
+  };
+  this.ShowGreyOverlay = function (ParentName, WindowId) {
+    try{
+    //alert('ShowGreyOverlay '+WindowId);
+      pas.XForm.InitialiseXFormStyles();
+      var HTMLString = ''
+      +'<div id='+WindowId+' class="modal-background" style="display:block; cursor:progress;" '
+      +'>Please wait...</div>';
+    
+      var ParentItem=document.getElementById(ParentName);
+      ParentItem.insertAdjacentHTML('beforeend', HTMLString);
+    
+    }catch(err) {alert('Error in HTMLUtils.ShowGreyOverlay '+ err.message);};
+  };
+  this.DeleteGreyOverlay = function (DivId) {
+    var ob = document.getElementById(DivId);
+    if (ob!=null) {
+      ob.parentNode.removeChild(ob);
+      };
+  };
+  this.ApplyClasses = function (ob, AValue, myNode) {
+    try{
+        //!! must also preserve any additional dynamic classes that have been set, such as border styles etc !!
+        // First, delete all prior classes except for the built-in ones
+        for(var i=ob.classList.length-1; i>=0; i--)  {
+          if ((ob.classList[i]!='modal-background')
+            &&(ob.classList[i]!='modal-content')
+            &&(ob.classList[i]!='widgetinner')
+            &&(ob.classList[i]!='vbox')
+            &&(ob.classList[i]!='vboxNoStretch')
+            &&(ob.classList[i]!='vboxNoFlex')
+            &&(ob.classList[i]!='hbox')
+            &&(ob.classList[i]!='hboxNoStretch')
+            &&(ob.classList[i]!='AlignmentCentre')
+            &&(ob.classList[i]!='AlignmentRight')
+            &&(ob.classList[i]!='AlignmentLeft')
+            &&(ob.classList[i]!='AlignmentLeftContainer')
+            &&(ob.classList[i]!='AlignmentTop')
+            &&(ob.classList[i]!='AlignmentBottom')
+            &&(ob.classList[i]!='menu')
+            &&(ob.classList[i]!='menuItem')
+            &&(ob.classList[i]!='menuBar')
+            &&(ob.classList[i]!='highlight-border')
+            &&(ob.classList[i]!='normal-border')
+            &&(ob.classList[i]!='no-border')
+            &&(ob.classList[i]!='textAreaBorder')
+            &&(ob.classList[i]!='TabPage')
+            &&(ob.classList[i]!='TabButton')
+            &&(ob.classList[i]!='TabButtonDiv')
+            &&(ob.classList[i]!='hasChildren')
+            &&(ob.classList[i]!='noChildren'))
+          {
+            ob.classList.remove(ob.classList[i]);
+          }
+        }
+    
+        var newList = AValue.split(" ");
+        for (i=0; i<newList.length; i++) {
+          if (newList[i]!="") {
+          ob.classList.add(newList[i]);
+          }
+        }
+    
+        if (myNode.NameSpace+myNode.NodeName==ob.id) {
+          // Classes list should always include 'UI', '(widget type)', '(node name)'
+          if (!(ob.classList.contains(myNode.NodeName))) {
+            ob.className = myNode.NodeName + " " + ob.className;
+          }
+          if (!(ob.classList.contains(myNode.NodeType))) {
+            ob.className = myNode.NodeType + " " + ob.className;
+          }
+          if (!(ob.classList.contains("UI"))) {
+            ob.className = "UI " + ob.className;
+          }
+          }
+        }
+      catch(err) {alert('Error in HTMLUtils.ApplyClasses '+ err.message);};
+  };
+  this.SyncTimeout = function (msec) {
+    mysleep(msec);
+  };
+  this.FixHeightToLineHeight = function (obName) {
+    // fix the height to one line-height...
+    var ob=document.getElementById(obName);
+    if (ob!=null) {
+      var obStyle = window.getComputedStyle(ob);
+      ob.style.maxHeight = obStyle.getPropertyValue('line-height');
+      //alert('maxHeight='+ob.style.maxHeight);
+    };
+  };
+  this.glbBorderWidth = 3;
+  this.glbLabelSpacing = 3;
+  this.glbMarginSpacing = "3px";
+  this.browser = null;
+  $mod.$init = function () {
+    $impl.IdentifyBrowser();
+  };
+},["XSVGContainer"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.IdentifyBrowser = function () {
+    function Browser()
+    {
+    
+      var ua, s, i;
+    
+      this.isIE    = false;  // Internet Explorer
+      this.isOP    = false;  // Opera
+      this.isNS    = false;  // Netscape
+      this.version = null;
+    
+      ua = navigator.userAgent;
+    
+      s = "Opera";
+      if ((i = ua.indexOf(s)) >= 0) {
+        this.isOP = true;
+        this.version = parseFloat(ua.substr(i + s.length));
+        return;
+      }
+    
+      s = "Netscape6/";
+      if ((i = ua.indexOf(s)) >= 0) {
+        this.isNS = true;
+        this.version = parseFloat(ua.substr(i + s.length));
+        return;
+      }
+    
+      // Treat any other "Gecko" browser as Netscape 6.1.
+    
+      s = "Gecko";
+      if ((i = ua.indexOf(s)) >= 0) {
+        this.isNS = true;
+        this.version = 6.1;
+        return;
+      }
+    
+      s = "MSIE";
+      if ((i = ua.indexOf(s))) {
+        this.isIE = true;
+        this.version = parseFloat(ua.substr(i + s.length));
+        return;
+      }
+    }
+    //alert('IdentifyBrowser');
+    pas.HTMLUtils.browser = new Browser();
+    //alert('IdentifyBrowser done.  isIE='+pas.HTMLUtils.browser.isIE);
+  };
+  $impl.PrepareHeightWidthHTML = function (HW, StrVal) {
+    var Result = false;
+    var hw1 = "";
+    var pct = false;
+    pct = false;
+    if (pas.StringUtils.FoundString(StrVal.get(),"%") > 0) pct = true;
+    if ((pas.StringUtils.FoundString(StrVal.get(),"px") > 0) || (pct === true)) {
+      hw1 = StrVal.get()}
+     else if (StrVal.get() !== "") {
+      hw1 = StrVal.get() + "px"}
+     else hw1 = "";
+    StrVal.set(hw1);
+    Result = pct;
+    return Result;
+  };
+});
+rtl.module("XCode",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.TTextContext = function (s) {
+    if (s) {
+      this.IsInMultiLineCommentString = s.IsInMultiLineCommentString;
+      this.IsInAltMultiLineCommentString = s.IsInAltMultiLineCommentString;
+      this.IsInASMMultiLineCommentString = s.IsInASMMultiLineCommentString;
+      this.MultiLineCommentChangedStatus = s.MultiLineCommentChangedStatus;
+    } else {
+      this.IsInMultiLineCommentString = false;
+      this.IsInAltMultiLineCommentString = false;
+      this.IsInASMMultiLineCommentString = false;
+      this.MultiLineCommentChangedStatus = false;
+    };
+    this.$equal = function (b) {
+      return (this.IsInMultiLineCommentString === b.IsInMultiLineCommentString) && ((this.IsInAltMultiLineCommentString === b.IsInAltMultiLineCommentString) && ((this.IsInASMMultiLineCommentString === b.IsInASMMultiLineCommentString) && (this.MultiLineCommentChangedStatus === b.MultiLineCommentChangedStatus)));
+    };
+  };
+  $mod.$rtti.$Record("TTextContext",{}).addFields("IsInMultiLineCommentString",rtl.boolean,"IsInAltMultiLineCommentString",rtl.boolean,"IsInASMMultiLineCommentString",rtl.boolean,"MultiLineCommentChangedStatus",rtl.boolean);
+  rtl.createClass($mod,"TXCode",pas.WrapperPanel.TWrapperPanel,function () {
+    this.$init = function () {
+      pas.WrapperPanel.TWrapperPanel.$init.call(this);
+      this.context = new $mod.TTextContext();
+      this.blackoutline = [];
+      this.boldoutline = [];
+      this.redoutline = [];
+      this.greenoutline = [];
+      this.blueoutline = [];
+      this.IsInitalised = false;
+      this.LengthOfRangeSelected = 0;
+      this.SavedLineContextArray = [];
+      this.topSave = 0;
+    };
+    this.$final = function () {
+      this.context = undefined;
+      this.blackoutline = undefined;
+      this.boldoutline = undefined;
+      this.redoutline = undefined;
+      this.greenoutline = undefined;
+      this.blueoutline = undefined;
+      this.SavedLineContextArray = undefined;
+      pas.WrapperPanel.TWrapperPanel.$final.call(this);
+    };
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("Change");
+      this.myEventTypes.Add("ClickMessage");
+    };
+    this.GetItemValue = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ItemValue",true).AttribValue;
+      return Result;
+    };
+    this.GetReadOnly = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("ReadOnly",true).AttribValue);
+      return Result;
+    };
+    this.GetMessagesHeight = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("MessagesHeight",true).AttribValue;
+      return Result;
+    };
+    this.GetMessageLines = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("MessageLines",true).AttribValue;
+      return Result;
+    };
+    this.SetItemValue = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$2("ItemValue",AValue);
+        var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsReal');
+        if (ob!=null) {
+           //alert('set item value for '+ this.NodeName+'ContentsReal to '+AValue);
+           ob.value=AValue;
+           pas.XCode.DoKeyUp(this.NodeName+'Contents',this.NodeName,this.NameSpace,null); };
+      };
+    };
+    this.SetReadOnly = function (AValue) {
+      this.myNode.SetAttributeValue$1("ReadOnly",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsReal');
+      if (ob!=null) {
+        ob.readOnly = AValue  };
+    };
+    this.SetMessagesHeight = function (AValue) {
+      this.myNode.SetAttributeValue$2("MessagesHeight",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsMessages');
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
+    };
+    this.SetMessageLines = function (AValue) {
+      var lines = null;
+      this.myNode.SetAttributeValue$2("MessageLines",AValue);
+      lines = pas.Classes.TStringList.$create("Create$1");
+      lines.FStrictDelimiter = true;
+      lines.SetLineBreak(pas.System.LineEnding);
+      lines.SetTextStr(AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsMessages');
+      if (ob!=null) {
+         ob.value=AValue;  };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      this.topSave = 0;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    this.GoToCharPos = function (CharPos) {
+      var LineNum = 0;
+      LineNum = 0;
+      try {
+             //alert(' CharPos='+CharPos+' looking for '+this.NodeName+'ContentsReal');
+             var elem = document.getElementById(this.NameSpace+this.NodeName+'ContentsReal');
+      
+             if(elem != null) {
+               elem.focus();
+      
+               // Highlight the character at this position
+               if(elem.createTextRange) {
+                     var range = elem.createTextRange();
+                     range.move('character', CharPos);
+                     range.select();
+                 }
+                 else {
+                     if(elem.selectionStart) {
+                       elem.setSelectionRange(CharPos, (CharPos+1));
+                     }
+                  }
+      
+                  //.....scroll to the selection position (minus 1 line) .............
+                  var lh=pas.XCode.GetTextLineHeight(elem);
+                  LineNum=0;
+                  var LinesArray = elem.value.split("\n");
+                  //alert('total lines='+LinesArray.length);
+                  var xpos=null;
+                  var localnum=null;
+                  var st=this.CharPosToYPixel(elem,LinesArray,CharPos,
+                           {get: function () {return xpos;}, set: function (v) {xpos = v;}},
+                           {get: function () {return localnum;}, set: function (v) {localnum = v;}});
+                  //alert('xpos='+xpos+' LineNum='+localnum+' st='+st);
+                  if (st>=2*lh) {st=st-(2*lh);} else {st=0;}
+      
+      
+                  // scroll (scrollTop is in y-pixels) !!
+                  elem.scrollTop = st;
+      
+                  //may also need to scroll horizontally....
+                  var xpos=CharPos - xpos;
+                  //var xpos=CharPos - (charcount - LinesArray[LineNum].length);
+                  //alert('xpos='+xpos);
+      
+                  var txt=LinesArray[LineNum].substring(0,xpos+1);
+                  //var canvas = document.createElement('canvas');
+                  //var ctx = canvas.getContext("2d");
+                  //ctx.fontFamily = "monospace";   //elem.fontFamily;
+                  //ctx.fontSize = "14px";   //elem.fontSize;
+                  //var w = ctx.measureText(txt).width;
+                  var w=txt.length*7;                        //!! the fontsize is fixed, so ok to hard-code 7px here for char-width.
+                  //alert('w='+txt.length+'*7 = '+w);
+      
+                  // scroll !!
+                  if (w>elem.clientWidth) {
+                    elem.scrollLeft = Math.max(0,Math.trunc(w-20));  }
+                  else
+                    {elem.scrollLeft = 0;  }
+      
+                  elem.blur();
+                  elem.focus();
+             }
+           } catch(err) { alert(err.message+'  in XCode.GoToCharPos'); };
+    };
+    this.LineNumToYPixel = function (elem, LineNum) {
+      var Result = 0;
+      var ypx = 0;
+      try {
+      // we need to know a row's height, in pixels
+      var lh=pas.XCode.GetTextLineHeight(elem);
+      ypx=(LineNum*lh);
+      } catch(err) { alert(err.message+'  in XCode.LineNumToYPixel'); };
+      Result = ypx;
+      return Result;
+    };
+    this.CharPosToYPixel = function (elem, LinesArray, CharPos, xpos, lNum) {
+      var Result = 0;
+      var ypx = 0;
+      var LineNum = 0;
+      LineNum = 0;
+      ypx = 0;
+      try {
+          //var LinesArray = elem.value.split("\n");
+          //alert('total lines='+LinesArray.length);
+          var charcount=0;
+          LineNum=0;
+          var i=0;
+      
+          do
+          {
+              charcount=charcount+LinesArray[i].length+1;
+              i++;
+          }
+          while ((charcount<CharPos)&&(i<LinesArray.length));
+      
+          if (i>0) {LineNum=i-1;}
+          //alert('charcount '+charcount+' found at line '+i+' LineNum='+LineNum);
+          xpos.set(CharPos - (charcount - LinesArray[LineNum].length));
+          //alert('CharPosToYPixel:  xpos '+xpos.get()+' LineNum='+LineNum);
+          lNum.set(LineNum);
+      
+          ypx=this.LineNumToYPixel(elem,LineNum);
+          } catch(err) { alert(err.message+'  in XCode.CharPosToYPixel'); };
+      Result = ypx;
+      return Result;
+    };
+    this.ResetScrollPos = function (obj, topSave) {
+      var xpos=0;
+      var ln=0;
+      var LinesArray = obj.value.split("\n");
+      var cp=this.CharPosToYPixel(obj,LinesArray,obj.selectionEnd,
+             {get: function () {return xpos;}, set: function (v) {xpos = v;}},
+             {get: function () {return ln;}, set: function (v) {ln = v;}});
+      console.log('scrollTop='+obj.scrollTop+' selectionEnd='+obj.selectionEnd + ' cp='+cp);
+      if ((cp-obj.scrollTop)<5) {
+        obj.scrollTop=topSave;
+        };
+    };
+    this.GetFileNameLineNumAndCharPos = function (MessageFound, SelectedLine, delim, FileName, LineNum, CharNum) {
+      var List1 = null;
+      var List2 = null;
+      var tempstr = "";
+      var i = 0;
+      CharNum.set("0");
+      MessageFound.set(false);
+      List1 = pas.Classes.TStringList.$create("Create$1");
+      List2 = pas.Classes.TStringList.$create("Create$1");
+      try {
+        List1.SetLineBreak(delim);
+        List1.SetTextStr(SelectedLine);
+        if (List1.GetCount() > 1) {
+          FileName.set(List1.Get(0));
+          tempstr = List1.Get(1);
+          List2.SetLineBreak("tempinc\\");
+          List2.SetTextStr(FileName.get());
+          if (List2.GetCount() > 1) FileName.set(List2.Get(1));
+          i = 1;
+          while (((tempstr.charAt(i - 1) !== ",") && (tempstr.charAt(i - 1) !== ")")) && (i < tempstr.length)) {
+            LineNum.set(LineNum.get() + tempstr.charAt(i - 1));
+            i = i + 1;
+          };
+          if (tempstr.charAt(i - 1) !== ")") {
+            i = i + 1;
+            while ((tempstr.charAt(i - 1) !== ")") && (i < tempstr.length)) {
+              CharNum.set(CharNum.get() + tempstr.charAt(i - 1));
+              i = i + 1;
+            };
+          };
+          if ((LineNum.get() !== "") && (CharNum.get() !== "")) MessageFound.set(true);
+        };
+      } finally {
+        List1 = rtl.freeLoc(List1);
+        List2 = rtl.freeLoc(List2);
+      };
+    };
+    this.GoToLineCharPos = function (LineNum, CharPos) {
+      // CharPos here is offset index from start of line (not whole textarea)
+      //     alert('LineNum='+LineNum+' CharPos='+CharPos+' looking for '+this.NodeName+'ContentsReal');
+             var elem = document.getElementById(this.NameSpace+this.NodeName+'ContentsReal');
+      
+             if(elem != null) {
+               elem.focus();
+                 var LinesArray = elem.value.split("\n");
+                 var charcount=0;
+                 if (LineNum<LinesArray.length) {
+                   for (var i=0; i<LineNum-1; i++ ) {
+                     charcount=charcount+LinesArray[i].length+1;
+                   }
+                 }
+                 charcount=charcount+CharPos-1;
+      
+                 // Highlight the character at this position
+                 if(elem.createTextRange) {
+                     var range = elem.createTextRange();
+                     range.move('character', charcount);
+                     range.select();
+                 }
+                 else {
+                     if(elem.selectionStart) {
+                       elem.setSelectionRange(charcount, (charcount+1));
+                     }
+                  }
+      
+                  //.....scroll to the selection position .............
+                  // we need to scroll to this row but scrolls are in pixels,
+                  // so we need to know a row's height, in pixels
+                  if (LineNum>1) {LineNum=LineNum-2;} else {LineNum=0;}
+                  var st=this.LineNumToYPixel(elem,LineNum);
+                  // Y scroll !!
+                  elem.scrollTop = st;
+      
+                  //may also need to scroll horizontally....
+                  var w=CharPos;
+      
+                  // X scroll !!
+                  if (w>elem.clientWidth) {
+                    elem.scrollLeft = Math.max(0,Math.trunc(w-20));  }
+                  else
+                    {elem.scrollLeft = 0;  }
+      
+      
+                  elem.blur();
+                  elem.focus();
+      };
+    };
+    this.AddMessage = function (txt) {
+      var allLines = "";
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsMessages');
+      if (ob!=null) {
+         ob.value=ob.value+'\n'+txt;
+         allLines=ob.value;
+         };
+      this.SetMessageLines(allLines);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("ItemValue",3,rtl.string,"GetItemValue","SetItemValue");
+    $r.addProperty("ReadOnly",3,rtl.boolean,"GetReadOnly","SetReadOnly");
+    $r.addProperty("MessagesHeight",3,rtl.string,"GetMessagesHeight","SetMessagesHeight");
+    $r.addProperty("MessageLines",3,rtl.string,"GetMessageLines","SetMessageLines");
+  });
+  this.AddCodeEditorStyles = function () {
+    var StyleHTML = "";
+    var StandardOverlayStyle = "";
+    StandardOverlayStyle = (((((((((((("        margin: 0;" + pas.System.LineEnding) + "        padding: 0;") + pas.System.LineEnding) + "        background: transparent;") + pas.System.LineEnding) + "        position: absolute;") + pas.System.LineEnding) + "        left: 45px;") + pas.System.LineEnding) + "        width:calc(100% - 50px);") + pas.System.LineEnding) + "        white-space: pre;") + pas.System.LineEnding;
+    StyleHTML = ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((("<style>" + pas.System.LineEnding) + "    .noscrollbar::-webkit-scrollbar {") + pas.System.LineEnding) + "        display: none;") + pas.System.LineEnding) + "    }") + pas.System.LineEnding) + "    .textarea {") + pas.System.LineEnding) + "        font-family: monospace; font-size: 14px;") + pas.System.LineEnding) + "        border: 0;") + pas.System.LineEnding) + "        line-height: ") + $mod.glbLineHeight) + ";") + pas.System.LineEnding) + "        height: 100%;") + pas.System.LineEnding) + "    }") + pas.System.LineEnding) + "    .textAreaBorder {") + pas.System.LineEnding) + "        border: groove 1px #ccc;") + pas.System.LineEnding) + "        padding: 0px 0px 0px 0px") + pas.System.LineEnding) + "    }") + pas.System.LineEnding) + "    .messagesarea {") + pas.System.LineEnding) + "        font-family: monospace; font-size: 12px;") + pas.System.LineEnding) + "        border: 0;") + pas.System.LineEnding) + "        height: 20%;") + pas.System.LineEnding) + "    }") + pas.System.LineEnding) + "    .LineNumberTextArea {") + pas.System.LineEnding) + "        margin: 0;") + pas.System.LineEnding) + "        background: #DDDDDD;") + pas.System.LineEnding) + "        position: absolute;") + pas.System.LineEnding) + "        z-index: 998;") + pas.System.LineEnding) + "        width: 43px;") + pas.System.LineEnding) + "        left: 0px;") + pas.System.LineEnding) + "        white-space: pre;") + pas.System.LineEnding) + "    }") + pas.System.LineEnding) + "    .WhiteTextArea {") + pas.System.LineEnding) + "        color: transparent;") + pas.System.LineEnding) + "        caret-color: black;") + pas.System.LineEnding) + "        z-index: 999;") + pas.System.LineEnding) + StandardOverlayStyle) + "    }") + pas.System.LineEnding) + "    .BlackTextArea {") + pas.System.LineEnding) + "        z-index: 998;") + pas.System.LineEnding) + StandardOverlayStyle) + "    }") + pas.System.LineEnding) + "    .BoldTextArea {") + pas.System.LineEnding) + "        z-index: 997;") + pas.System.LineEnding) + "        font-weight: bold;") + pas.System.LineEnding) + StandardOverlayStyle) + "    }") + pas.System.LineEnding) + "    .BlueTextArea {") + pas.System.LineEnding) + "        color: blue;") + pas.System.LineEnding) + "        z-index: 996;") + pas.System.LineEnding) + StandardOverlayStyle) + "    }") + pas.System.LineEnding) + "    .RedTextArea {") + pas.System.LineEnding) + "        color: red;") + pas.System.LineEnding) + "        z-index: 995;") + pas.System.LineEnding) + "        text-decoration: underline;") + pas.System.LineEnding) + StandardOverlayStyle) + "    }") + pas.System.LineEnding) + "    .GreenTextArea {") + pas.System.LineEnding) + "        color: green;") + pas.System.LineEnding) + "        font-style: italic;") + pas.System.LineEnding) + "        z-index: 994;") + pas.System.LineEnding) + StandardOverlayStyle) + "    }") + pas.System.LineEnding) + "<\/style>";
+    try{
+         // ----------------------------------------check if the style has already been set
+         var x = document.getElementsByTagName("STYLE");
+         var StyleIsSet = false;
+         // check all the existing style blocks...
+         if (x.length>0){
+           for (var i=0; i<x.length; i++){
+             var y= x[i].innerHTML;
+             if (y.indexOf(".GreenTextArea") !=-1) { StyleIsSet =true}
+           }
+         }
+         if (StyleIsSet == false){
+            //----------------------------- now append the style declarations to the head of the HTML page
+            document.head.innerHTML = document.head.innerHTML+StyleHTML;
+         }
+    }catch(err) {alert('Error in XCode.addCodeEditorStyles '+ err.message);};
+  };
+  this.DoKeyUp = function (myId, NodeId, NameSpace, event) {
+    var myNode = null;
+    myNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,NodeId,NameSpace,false);
+    if (myNode !== null) {
+      //alert('DoKeyUp.  Id='+myId);
+        var ReservedWords = [];
+        // assume all reserved words start and end with a space
+        ReservedWords[1] = ["absolute", "abstract", "alias", "and", "array", "as", "asm", "assembler"];
+        ReservedWords[2] = ["begin", "break"];
+        ReservedWords[3] = ["case", "cdecl", "class", "const", "constructor", "continue", "cppdecl"];
+        ReservedWords[4] = ["default", "destructor", "dispose", "div", "do", "downto"];
+        ReservedWords[5] = ["else", "end", "except", "exit", "export", "exports", "external"];
+        ReservedWords[6] = ["false", "file", "for", "forward", "function"];
+        ReservedWords[7] = ["generic", "goto"];
+        ReservedWords[8] = [""];
+        ReservedWords[9] = ["if", "implementation", "in", "index", "inherited", "initialization", "inline", "interface", "is"];
+        ReservedWords[10] = [""];
+        ReservedWords[11] = [""];
+        ReservedWords[12] = ["label", "library", "local"];
+        ReservedWords[13] = ["mod"];
+        ReservedWords[14] = ["name", "new", "nil", "nostackframe", "not"];
+        ReservedWords[15] = ["object", "of", "oldfpccall", "on", "operator", "or", "out", "override"];
+        ReservedWords[16] = ["packed", "private", "procedure", "program", "property", "protected", "published"];
+        ReservedWords[17] = [""];
+        ReservedWords[18] = ["raise", "read", "record", "register", "repeat"];
+        ReservedWords[19] = ["safecall", "self", "set", "shl", "shr", "softfloat", "specialize", "stdcall", "string"];
+        ReservedWords[20] = ["then", "threadvar", "to", "true", "try", "type"];
+        ReservedWords[21] = ["unit", "until", "uses"];
+        ReservedWords[22] = ["var", "virtual"];
+        ReservedWords[23] = ["while", "with", "write"];
+        ReservedWords[24] = ["xor"];
+        ReservedWords[25] = [""];
+        ReservedWords[26] = [""];
+      
+        var StringDelimiter = "'";
+        var StartOfSingleLineCommentdelimiter = "/";
+        var StartOfMultiLineComment = "{";
+        var EndOfMultiLineComment = "}";
+        var EndOfLine = "\n";
+      
+        function isDelimiter(inChar)
+        {
+            var isadelimiter = false;
+            if ((inChar == " ") || (inChar == ";") || (inChar == "=") || (inChar == "(") || (inChar == "-") || (inChar == "/") || (inChar == "*") ||
+                (inChar == ")") || (inChar == "}") || (inChar == "]") || (inChar == "+") || (inChar == "{") || (inChar == "[") ||
+                (inChar == "&") || (inChar == "|") || (inChar == "!") ) {
+                isadelimiter = true;        }
+            return isadelimiter;
+        }
+      
+        function matchReservedWord(lineString, firstcharpos, charindex) {
+            var ReservedWordlength = 0;
+            var foundstring = "";
+            try {
+                // for all reserved words starting with the first letter
+                for (var k = 0; k < ReservedWords[charindex].length; k++) {
+                    var testWord = ReservedWords[charindex][k];
+                    var followingChar = firstcharpos + testWord.length;
+                    if (isDelimiter(lineString[followingChar])){
+                        var match = true;
+                        for (var m = 0; m < testWord.length; m++) {
+                            if (lineString[firstcharpos + m] != testWord[m]) { match = false; };
+                        }
+                        if (match == true) { ReservedWordlength = testWord.length; foundstring = testWord};
+                    }
+                }
+            }
+            catch (err) { alert("Error -- " + err.message); };
+            return ReservedWordlength;
+        };
+      
+        //-------------------------------------------------------------------------------------------------------------------------
+        //                  core line parser called by both ParseThisLine(....) and ParseWholeDocumaent();
+        //-------------------------------------------------------------------------------------------------------------------------
+      
+        function ParseLine(j,line,localcontext,SyntaxText)
+        {
+                    var IsInSingleLineCommentString = false;
+                    var IsInStringLiteral = false;
+                    var ReservedWordCharCount = 0;
+                    var SavedIsInMultiLineCommentString=localcontext.IsInMultiLineCommentString;
+      
+                    for (var i =0; i < line.length; i++)
+                    {
+                        //---------------------------------------------------------
+                        //          Find start and end of comments and asm blocks
+                        //---------------------------------------------------------
+      
+                        if (IsInStringLiteral==false)
+                        {
+                              // find multi line comment markers
+                              if (IsInSingleLineCommentString == false)
+                              {
+                                  // Note there are two types of multi line marker and they need to be matched up
+                                  if ((localcontext.IsInAltMultiLineCommentString == false)&&(localcontext.IsInASMMultiLineCommentString == false))
+                                  {
+                                      if(line[i] == EndOfMultiLineComment)
+                                      { localcontext.IsInMultiLineCommentString = false; }
+                                      if (line[i] == StartOfMultiLineComment)
+                                      { localcontext.IsInMultiLineCommentString = true;}
+                                  };
+                                  if (localcontext.IsInAltMultiLineCommentString == true)
+                                  {
+                                      if((line[i] == "*")&&(line[i+1] == ")"))
+                                      { localcontext.IsInMultiLineCommentString = false;
+                                        localcontext.IsInAltMultiLineCommentString = false;
+                                      }
+                                  };
+      
+                                  if (localcontext.IsInASMMultiLineCommentString == true)
+                                  {
+                                      if((line[i] == "e")&&(line[i+1] == "n")&&(line[i+2] == "d")&&(line[i+3] == ";") )
+                                      { localcontext.IsInMultiLineCommentString = false;
+                                        localcontext.IsInASMMultiLineCommentString = false;
+                                      }
+                                  };
+      
+                                  if (localcontext.IsInMultiLineCommentString == false)
+                                  {
+                                      if((line[i] == "(")&&(line[i+1] == "*"))
+                                      { localcontext.IsInMultiLineCommentString = true;
+                                        localcontext.IsInAltMultiLineCommentString = true;
+                                      }
+      
+                                      if((line[i-4] == " ")&&(line[i-3] == "a")&&(line[i-2] == "s")&&(line[i-1] == "m")&&(line[i] == " ") )
+                                      { localcontext.IsInMultiLineCommentString = true;
+                                        localcontext.IsInASMMultiLineCommentString = true;
+                                      }
+                                  }
+                              }
+      
+                              if (localcontext.IsInMultiLineCommentString == false)
+                              {
+                                    // find single line comment marker pair "//"
+                                    if((line[i] == StartOfSingleLineCommentdelimiter)&&(line[i + 1] == StartOfSingleLineCommentdelimiter))
+                                      { IsInSingleLineCommentString = true };
+                              }
+                        }
+      
+                        //---------------------------------------------------------
+                        // mark the chars with the appropriate colour highlighting
+                        //---------------------------------------------------------
+      
+                        if ((localcontext.IsInMultiLineCommentString == true)||(IsInSingleLineCommentString == true))
+                            { SyntaxText.newgreenline = SyntaxText.newgreenline + line[i] }
+                            else { SyntaxText.newgreenline = SyntaxText.newgreenline + " " };
+      
+                        if ((localcontext.IsInMultiLineCommentString == false) && (IsInSingleLineCommentString == false)&& (IsInStringLiteral == false)&&(ReservedWordCharCount<1))
+                            { SyntaxText.newblackline = SyntaxText.newblackline + line[i] }
+                            else { SyntaxText.newblackline = SyntaxText.newblackline + " " };
+      
+                        if ((localcontext.IsInMultiLineCommentString == false) && (IsInSingleLineCommentString == false) && (IsInStringLiteral == false)&&(ReservedWordCharCount>0))
+                            { SyntaxText.newboldline = SyntaxText.newboldline + line[i]}
+                            else { SyntaxText.newboldline = SyntaxText.newboldline + " " };
+      
+                        if (IsInStringLiteral == true)
+                            { SyntaxText.newblueline = SyntaxText.newblueline + line[i] }
+                            else {  SyntaxText.newblueline = SyntaxText.newblueline + " " } ;
+      
+                        //---------------------------------------------------------
+                        //          Find strings and reserved words
+                        //---------------------------------------------------------
+      
+                        if ((localcontext.IsInMultiLineCommentString == false) && (IsInSingleLineCommentString == false))
+                        {
+                           // find start and end of string
+                           if(line[i] == StringDelimiter)
+                           {
+                             if (IsInStringLiteral == false)
+                             {
+                               IsInStringLiteral = true;
+                             }
+                             else { IsInStringLiteral = false };
+                           }
+      
+                           // find reserved words
+                           if (ReservedWordCharCount > 0) { ReservedWordCharCount = ReservedWordCharCount - 1; };
+                           var lowercaseline = line.toLowerCase() + " ";
+                           if ((IsInStringLiteral == false)&& isDelimiter(line[i])
+                               && (lowercaseline.charCodeAt(i + 1) > 96) && (lowercaseline.charCodeAt(i + 1) < 123)) // space follwed by a lower case letter
+                           {
+                               var charindex = lowercaseline.charCodeAt(i + 1) - 96;
+                               ReservedWordCharCount = matchReservedWord(lowercaseline, i + 1, charindex);
+                           }
+                        }
+                    }
+                    var MultilineChanges = true;
+                    if (SavedIsInMultiLineCommentString == localcontext.IsInMultiLineCommentString){MultilineChanges = false};
+                    localcontext.MultiLineCommentChangedStatus=MultilineChanges;
+             return  MultilineChanges; // true if any of the changes on this line have consequences for the next line(s)
+        }
+      
+        function ParseThisLine(startAtLine,mycontext,
+             blackoutline,boldoutline,redoutline,greenoutline, blueoutline)  // the string arrays for each colour
+        // function to parse the document if the number of lines change has not changed so we can limit our changes to a subset of the lines in the document
+        {
+            try {
+                 var mylocalContext= JSON.parse(JSON.stringify(mycontext));
+                var blackstring = "";
+                var boldstring = "";
+                var redstring = "";
+                var greenstring = "";
+                var bluestring = "";
+                var linenumoutline = [""];
+      
+                var stringArray = document.getElementById(myId+"Real").value.split("\n");
+                for (var j = startAtLine; j < stringArray.length; j++)
+                {
+                    var MultiLineCommentChangedStatus = mylocalContext.MultiLineCommentChangedStatus;
+                    var line =" "+ stringArray[j]; // add a leading space so all reserved words always have a space in front of them
+                    var SyntaxText ={ newblackline : "", newboldline : "",newredline : "", newgreenline : "", newblueline : ""};
+      
+                    // parse the line
+                    MultiLineCommentChangedStatus=ParseLine(j,line,mylocalContext,SyntaxText );
+                    mylocalContext.MultiLineCommentChangedStatus = MultiLineCommentChangedStatus;
+                    // save the new context and savee its old value to see if we need to do the next lines or not
+                    if (myNode.SavedLineContextArray[j+1] != undefined)
+                    {var oldcontext = JSON.parse(JSON.stringify(myNode.SavedLineContextArray[j+1]));}
+                    else {var oldcontext = JSON.parse(JSON.stringify(myNode.SavedLineContextArray[j]));}; // this is just to keep the compiler happy
+                    myNode.SavedLineContextArray[j+1]= JSON.parse(JSON.stringify(mylocalContext));
+      
+                    // take away the leading char padding each line (which is there to make sure reserved words have a space preceeding them)
+                    blackoutline[j] = SyntaxText.newblackline.slice(1);
+                    boldoutline[j] = SyntaxText.newboldline.slice(1);
+                    redoutline[j] = SyntaxText.newredline.slice(1);
+                    greenoutline[j] = SyntaxText.newgreenline.slice(1);
+                    blueoutline[j] = SyntaxText.newblueline.slice(1);
+               //     myNode.SavedLineContextArray[j]
+                   if (mylocalContext.IsInMultiLineCommentString == oldcontext.IsInMultiLineCommentString)
+                      {  break; }
+                }
+                // avoid repainting between updating the different layers
+                document.getElementById(myId+"Real").style.visibility="hidden";
+      
+                document.getElementById(myId+"Black").value =blackoutline.join("\n");
+                document.getElementById(myId+"Bold").value = boldoutline.join("\n");
+                document.getElementById(myId+"Red").value = redoutline.join("\n");
+                document.getElementById(myId+"Green").value = greenoutline.join("\n");
+                document.getElementById(myId+"Blue").value = blueoutline.join("\n");
+      
+                // restore having avoided repainting between updating the different layers
+                document.getElementById(myId+"Real").style.visibility="visible";
+      
+            }
+            catch(err) {  alert("Error in ParseThisLine syntax highlighting -- "+ err.message); };
+        }
+      
+      
+        // code to apply syntax highlighting .... myTextArea (the bottom one) holds the full text...the overlays only have the non standard chars
+        // Remember to synchronize the scroll position for all the edit boxes
+      
+        function ParseWholeDocument()
+        // function to parse the document if the number of lines change (or this is the first pass)
+        {
+            try {
+                var blackstring = "";
+                var boldstring = "";
+                var redstring = "";
+                var greenstring = "";
+                var bluestring = "";
+      
+                myNode.blackoutline = [];
+                myNode.boldoutline =  [];
+                myNode.redoutline = [];
+                myNode.greenoutline =  [];
+                myNode.blueoutline =  [];
+      
+                var linenumoutline = [""];
+      
+                myNode.context.IsInMultiLineCommentString=false;
+                myNode.context.IsInAltMultiLineCommentString=false;
+                myNode.context.IsInASMMultiLineCommentString=false;
+      
+                var stringArray = document.getElementById(myId+"Real").value.split("\n");
+                for (var j = 0; j < stringArray.length; j++)
+                {
+                    var line =" "+ stringArray[j]+" "; // add a leading and trailing space so all reserved words always have a space in front of them (and after them if they are at the end of a line)
+                    var SyntaxText ={ newblackline : "", newboldline : "",newredline : "", newgreenline : "", newblueline : ""};
+                    myNode.SavedLineContextArray[j] = JSON.parse(JSON.stringify(myNode.context));
+      
+                    ParseLine(j,line,myNode.context,SyntaxText );
+      
+                    // take away the leading char padding each line (which is there to make sure reserved words have a space preceeding them)
+                    myNode.blackoutline[j] = SyntaxText.newblackline.slice(1);
+                    myNode.boldoutline[j] = SyntaxText.newboldline.slice(1);
+                    myNode.redoutline[j] = SyntaxText.newredline.slice(1);
+                    myNode.greenoutline[j] = SyntaxText.newgreenline.slice(1);
+                    myNode.blueoutline[j] = SyntaxText.newblueline.slice(1);
+                }
+                // avoid repainting between updating the different layers
+                document.getElementById(myId+"Real").style.visibility="hidden";
+      
+                document.getElementById(myId+"Black").value =myNode.blackoutline.join("\n");
+                document.getElementById(myId+"Bold").value = myNode.boldoutline.join("\n");
+                document.getElementById(myId+"Red").value = myNode.redoutline.join("\n");
+                document.getElementById(myId+"Green").value = myNode.greenoutline.join("\n");
+                document.getElementById(myId+"Blue").value = myNode.blueoutline.join("\n");
+      
+                // restore having avoided repainting between updating the different layers
+                document.getElementById(myId+"Real").style.visibility="visible";
+      
+                // now add line numbers
+                for (var j = 0; j < stringArray.length; j++)
+                {
+                    linenumoutline[j] = (j+1).toString();
+                    var strLen = 4 - linenumoutline[j].length;
+                    for (var k = 0; k < strLen; k++) { linenumoutline[j] = " "+ linenumoutline[j]; };
+                }
+                document.getElementById(myId+"LineNumbers").value = linenumoutline.join("\n");
+            }
+            catch(err) {  alert("Error in ParseWholeDocument syntax highlighting --- "+ err.message); };
+        }
+      
+        function CurrentLine()
+        {
+           var CursorPosition = document.getElementById(myId+"Real").selectionStart;
+           var stringarray = document.getElementById(myId+"Real").value.substring(0,CursorPosition).split("\n");
+           return stringarray.length -1;
+        }
+      
+        function chooseParser(event)
+        {
+        //alert('chooseParser');
+           if (event!=null)
+             {var x = event.which || event.keyCode; }// firefox does not support event.which but it does suppoert event.keyCode;
+           else
+             {x = 0; myNode.IsInitalised = false;}
+      
+           //detect backspace,CursorUp,CursorDown,delete,return and cntrl V keys or non zero range - then redo the whole document as it could have changed the number of lines
+           if ((myNode.IsInitalised == false) ||(x==8)||(x==38)||(x==40) ||(x==46) ||(x==13) ||(x==86)||(myNode.LengthOfRangeSelected !=0))
+           {
+           //alert('parse whole document');
+               myNode.IsInitalised = true;
+               ParseWholeDocument();
+           }
+           else
+           {
+           //alert('parse one line');
+               var Selectedline = CurrentLine();
+               //alert('Selectedline='+Selectedline);
+               ParseThisLine(Selectedline,
+                               myNode.SavedLineContextArray[Selectedline],
+                               myNode.blackoutline,  // the string arrays for each colour
+                           myNode.boldoutline,
+                           myNode.redoutline,
+                           myNode.greenoutline,
+                               myNode.blueoutline);
+           };
+           myNode.LengthOfRangeSelected = 0;
+           //alert('SyncScroll');
+           pas.XCode.SyncScroll(myId);
+        }
+        chooseParser(event);
+    };
+  };
+  this.DoKeyDown = function (myId, NodeId, NameSpace, event) {
+    var myNode = null;
+    myNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,NodeId,NameSpace,false);
+    if (myNode !== null) {
+      //alert('DoKeyDown');
+      //  function CursorGotoXY(x,y)
+      //  {  var charcount = 0;
+      //     const mydoc = document.getElementById(myId+"Real");
+      //     var stringArray = mydoc.value.split("\n");
+      //     for (var j = 0; j < stringArray.length; j++)
+      //     {
+      //       if (j< y){ charcount = charcount + stringArray[j].length +1;};
+      //     }
+      //     charcount = charcount + x;
+      //     mydoc.focus();
+      //     mydoc.setSelectionRange(charcount,(charcount + 1));
+      //  }
+      
+        function SuppressTabKey(event)
+        // code to suppress the tab key default behavior on KeyDown
+        {
+           var myElement = document.getElementById(myId+"Real")
+               myNode.LengthOfRangeSelected = Math.abs(myElement.selectionStart - myElement.selectionEnd);
+           var x = event.which || event.keyCode; // firefox does not support event.which but it does suppoert event.keyCode;
+           //detect 'tab' key
+           if(x == 9)
+           {
+             //prevent focusing on next element
+             event.preventDefault();
+           }
+        }
+        SuppressTabKey(event);
+    };
+  };
+  this.SyncScroll = function (myId) {
+    {
+              var myscrollTop = document.getElementById(myId+"Real").scrollTop;
+              var myscrollLeft =  document.getElementById(myId+"Real").scrollLeft;
+    
+              document.getElementById(myId+"Black").scrollTop = myscrollTop;
+              document.getElementById(myId+"Bold").scrollTop = myscrollTop;
+              document.getElementById(myId+"Red").scrollTop = myscrollTop;
+              document.getElementById(myId+"Green").scrollTop = myscrollTop;
+              document.getElementById(myId+"Blue").scrollTop = myscrollTop;
+              document.getElementById(myId+"LineNumbers").scrollTop = myscrollTop;
+    
+              document.getElementById(myId+"Black").scrollLeft = myscrollLeft;
+              document.getElementById(myId+"Bold").scrollLeft = myscrollLeft;
+              document.getElementById(myId+"Red").scrollLeft = myscrollLeft;
+              document.getElementById(myId+"Green").scrollLeft = myscrollLeft;
+              document.getElementById(myId+"Blue").scrollLeft = myscrollLeft;
+              document.getElementById(myId+"LineNumbers").scrollLeft = myscrollLeft;
+              };
+  };
+  this.suppressScrolling = function (e) {
+    var Result = 0;
+    var top = 0;
+    top = 0;
+            var key = (e.keyCode ? e.keyCode : e.which);
+            //console.log('key='+key);
+            if(key == 13) {
+                //e.preventDefault();
+    
+                top = e.target.scrollTop;
+                        }
+            //console.log('top='+top);
+    Result = top;
+    return Result;
+  };
+  this.GetTextLineHeight = function (element) {
+    var Result = 0;
+    var lHeight = 0;
+    var r=element.rows;
+    var obStyle = window.getComputedStyle(element, null);
+    var fs = obStyle.getPropertyValue('font-size');
+    var lh = obStyle.getPropertyValue('line-height');
+    var fontSize = parseFloat(fs);
+    if (isNaN(lh))  {lh=1.5;}
+    lHeight = Math.floor(fontSize * lh);
+    //alert('fontSize='+fontSize+' fs='+fs+' lh='+lh+' lineHeight='+lHeight);
+    Result = lHeight;
+    return Result;
+  };
+  this.glbLineHeight = "1.5";
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerWidth","String","400","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerHeight","String","300","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Code Editor","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Top","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ItemValue","String","...text...","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"MessagesHeight","String","1","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXCode","BgColor");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXCode";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var LabelText = "";
+    var ReadOnly = false;
+    var OnChangeString = "";
+    var OnClickString = "";
+    var OnKeyUpString = "";
+    var OnScrollString = "";
+    var MsgClickString = "";
+    var OnKeyDownString = "";
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    ReadOnly = pas.SysUtils.StrToBool(MyNode.GetAttribute("ReadOnly",true).AttribValue);
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', \'\');" ';
+    OnChangeString = (((((((('onchange="pas.NodeUtils.SetInterfaceProperty(\'' + ScreenObjectName) + "','") + NameSpace) + "','ItemValue',event.target.value); ") + "pas.Events.handleEvent(null,'Change','") + ScreenObjectName) + "','") + NameSpace) + '\', event.target.value, \'ItemValue\');" ';
+    OnScrollString = 'onscroll="var p = event.target.parentNode.parentNode;pas.XCode.SyncScroll(p.id);"';
+    OnKeyUpString = (((((((((('onkeyup="var p = event.target.parentNode.parentNode;' + "pas.XCode.DoKeyUp(p.id,'") + ScreenObjectName) + "','") + NameSpace) + "',event); ") + "if (p.parentNode.topSave>0) { ") + "  var sysnode=pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,p.parentNode.id,'") + NameSpace) + "',true); ") + "  sysnode.ResetScrollPos(event.target,p.parentNode.topSave); } ") + '"';
+    OnKeyDownString = ((((((('onkeydown=" ' + "var p = event.target.parentNode.parentNode; ") + "p.parentNode.topSave=pas.XCode.suppressScrolling(event); ") + "pas.XCode.DoKeyDown(p.id,'") + ScreenObjectName) + "','") + NameSpace) + "',event);") + '"';
+    MsgClickString = (((((('onmouseup="event.stopPropagation(); ' + "var lnum=this.value.substr(0, event.target.selectionStart).split('\\n').length; ") + "var slnum=lnum.toString(); ") + "pas.Events.handleEvent(null,'ClickMessage','") + ScreenObjectName) + "','") + NameSpace) + '\', slnum);" ';
+    $mod.AddCodeEditorStyles();
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+        wrapper.classList.add("textAreaBorder");
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid =  NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var ReadOnlyString = ' ';
+        if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
+    
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+    
+        var editorString =
+        '<div id='+MyObjectName+' style=" background-color:#FFFFFF; height:100%; width:100%; z-index: 1;" class="vbox" '+
+        //        OnClickString +
+            '>'+
+            '<div id='+MyObjectName+'Panel style="display:inline-block; height:100%; width:100%;  position:relative; z-index: 1;" >' +
+            '<textarea id='+MyObjectName+'LineNumbers readonly '+
+                'class="textarea noscrollbar LineNumberTextArea"; '+
+                'onwheel = "return false;"; '+
+                'spellcheck="false"; contenteditable="false" >' +
+                '</textarea> <!––  Line Numbers   -->' +
+            '<textarea id='+MyObjectName+'Real  '+
+               OnChangeString +
+               OnKeyUpString +
+               OnKeyDownString +
+               OnScrollString +
+               ReadOnlyString +
+               ' class="textarea WhiteTextArea " ; spellcheck="false" ; contenteditable="true" >' +
+            '</textarea> ' +
+    
+            // Place transparent editboxes on top of each other so that the colour can be changed by selecting which layer to place the chars
+            //    ....only the bottom one is editable directly
+            '<textarea id="'+MyObjectName+'Bold" class="textarea BoldTextArea BlackTextArea" ;spellcheck="false" ; contenteditable="false" ></textarea>  <!––  keywords       -->' +
+            '<textarea id="'+MyObjectName+'Red" class="textarea RedTextArea" ; spellcheck="false" ;contenteditable="false" ></textarea>                  <!––  Errors         -->' +
+            '<textarea id="'+MyObjectName+'Green" class="textarea GreenTextArea" ; spellcheck="false" ;contenteditable="false" ></textarea>              <!––  Comments       -->' +
+            '<textarea id="'+MyObjectName+'Blue" class="textarea BlueTextArea" ; spellcheck="false" ;contenteditable="false" ></textarea>                <!––  Strings        -->' +
+            '<textarea id="'+MyObjectName+'Black" class="textarea BlackTextArea" ; spellcheck="false" ;contenteditable="false" ></textarea>             <!––  Normal Code    -->' +
+          '</div>' +
+          '<textarea id='+MyObjectName+'Messages readonly class="messagesarea" '+
+            MsgClickString +
+          '></textarea>'+
+          '</div>' ;
+         HTMLString = labelstring+editorString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+      }
+      catch(err) { alert(err.message+'  in XCode.CreateXCode');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    MyNode.context.IsInMultiLineCommentString = false;
+    MyNode.context.IsInAltMultiLineCommentString = false;
+    MyNode.context.IsInASMMultiLineCommentString = false;
+    MyNode.context.MultiLineCommentChangedStatus = false;
+    MyNode.blackoutline = rtl.arraySetLength(MyNode.blackoutline,"",0);
+    MyNode.boldoutline = rtl.arraySetLength(MyNode.boldoutline,"",0);
+    MyNode.redoutline = rtl.arraySetLength(MyNode.redoutline,"",0);
+    MyNode.greenoutline = rtl.arraySetLength(MyNode.greenoutline,"",0);
+    MyNode.blueoutline = rtl.arraySetLength(MyNode.blueoutline,"",0);
+    MyNode.IsInitalised = false;
+    MyNode.LengthOfRangeSelected = 0;
+    MyNode.SavedLineContextArray = rtl.arraySetLength(MyNode.SavedLineContextArray,"",0);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXCode.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("UtilsJSCompile",["System","Classes","SysUtils","XCode"],function () {
+  "use strict";
+  var $mod = this;
+  this.RequiredFolders = null;
+  this.AdditionalScript = "";
+  $mod.$init = function () {
+    $mod.RequiredFolders = pas.Classes.TStringList.$create("Create$1");
+  };
+});
+rtl.module("XMenu",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.addMenuBarStyles = function () {
+    // ----------------------------------------check if the styles have already been set
+    var x = document.getElementsByTagName("STYLE");
+    var StyleIsSet = false;
+    if (x.length>0){
+      for (var i=0; i<x.length; i++){
+        var y= x[i].innerHTML;
+        if (y.indexOf("menuBar") !=-1) { StyleIsSet =true}
+      }
+    }
+    
+    if (StyleIsSet==false) {
+    //First, the bar. A DIV tag is used with a style class defined to set the appearance.
+    
+    var StyleText='<style>';
+    
+    StyleText=StyleText + 'div.menuBar {';
+    StyleText=StyleText + 'font-family: "MS Sans Serif", Arial, sans-serif;';
+    StyleText=StyleText + 'font-size: 8pt;';
+    StyleText=StyleText + 'font-style: normal;';
+    StyleText=StyleText + 'font-weight: normal;';
+    StyleText=StyleText + 'color: #000000;';
+    StyleText=StyleText + '}';
+    
+    StyleText=StyleText + 'div.menuBar {';
+    StyleText=StyleText + '  background-color: #d0d0d0;';
+    StyleText=StyleText + '  border: 2px solid;';
+    StyleText=StyleText + '  border-color: #f0f0f0 #909090 #909090 #f0f0f0;';
+    StyleText=StyleText + '  padding: 4px 2px 4px 2px;';
+    StyleText=StyleText + '  text-align: left;';
+    StyleText=StyleText + '}';
+    
+    
+    //For the buttons, normal hypertext links (A tags) are used. This way, both a style class and a hover: pseudo-class can be defined to
+    //set the default and mouseover appearance. The style sheet is updated as follows.
+    
+    StyleText=StyleText + 'div.menuBar,';
+    StyleText=StyleText + 'div.menuBar a.menuButton {';
+    StyleText=StyleText + '  font-family: "MS Sans Serif", Arial, sans-serif;';
+    StyleText=StyleText + '  font-size: 8pt;';
+    StyleText=StyleText + '  font-style: normal;';
+    StyleText=StyleText + '  font-weight: normal;';
+    StyleText=StyleText + '  color: #000000;';
+    StyleText=StyleText + '}';
+    
+    StyleText=StyleText + 'div.menuBar {';
+    StyleText=StyleText + '  background-color: #d0d0d0;';
+    StyleText=StyleText + '  border: 2px solid;';
+    StyleText=StyleText + '  border-color: #f0f0f0 #909090 #909090 #f0f0f0;';
+    StyleText=StyleText + '  padding: 4px 2px 4px 2px;';
+    StyleText=StyleText + '  text-align: left;';
+    StyleText=StyleText + '}';
+    
+    StyleText=StyleText + 'div.menuBar a.menuButton {';
+    StyleText=StyleText + '  background-color: transparent; ';
+    StyleText=StyleText + '  border: 1px solid #d0d0d0;';
+    StyleText=StyleText + '  color: #000000;';
+    StyleText=StyleText + '  cursor: default;';
+    StyleText=StyleText + '  left: 0px;';
+    StyleText=StyleText + '  margin: 1px;';
+    StyleText=StyleText + '  padding: 2px 6px 2px 6px;';
+    StyleText=StyleText + '  position: relative;';
+    StyleText=StyleText + '  text-decoration: none;';
+    StyleText=StyleText + '  top: 0px;';
+    StyleText=StyleText + '  z-index: 100;';
+    StyleText=StyleText + '}';
+    
+    StyleText=StyleText + 'div.menuBar a.menuButton:hover {';
+    StyleText=StyleText + '  background-color: transparent;';
+    StyleText=StyleText + '  border-color: #f0f0f0 #909090 #909090 #f0f0f0;';
+    StyleText=StyleText + '  color: #000000;';
+    StyleText=StyleText + '}';
+    //First, note that the button's border color on the normal class matches that of the bar background, so it will
+    //remain invisible until moused over. Also, the cursor:default setting to used prevent the normal link cursor from
+    //displaying when the buttons are moused over. This makes it look more like a menu bar found on a typical application window.
+    //The reason for using relative positioning will be seen later.
+    //
+    
+    
+    //When a button is clicked on, we want to change its appearance, making it look depressed. This is done by defining another style class.
+    
+    StyleText=StyleText + 'div.menuBar a.menuButtonActive,';
+    StyleText=StyleText + 'div.menuBar a.menuButtonActive:hover {';
+    StyleText=StyleText + '  background-color: #a0a0a0;';
+    StyleText=StyleText + '  border-color: #909090 #f0f0f0 #f0f0f0 #909090;';
+    StyleText=StyleText + '  color: #ffffff;';
+    StyleText=StyleText + '  left: 1px;';
+    StyleText=StyleText + '  top: 1px;';
+    StyleText=StyleText + '}';
+    
+    
+    //A similar approach is used for the drop down menus. Each menu will consist of a DIV tag which acts as a
+    //container for several item links and possibly some separator bars. As before, style classes as set up for each component of the menu.
+    
+    
+    StyleText=StyleText + 'div.menuBar,';
+    StyleText=StyleText + 'div.menuBar a.menuButton,';
+    StyleText=StyleText + 'div.menu,';
+    StyleText=StyleText + 'div.menu a.menuItem {';
+    StyleText=StyleText + '  font-family: "MS Sans Serif", Arial, sans-serif;';
+    StyleText=StyleText + '  font-size: 8pt;';
+    StyleText=StyleText + '  font-style: normal;';
+    StyleText=StyleText + '  font-weight: normal;';
+    StyleText=StyleText + '  color: #000000;';
+    StyleText=StyleText + '}';
+    
+    
+    StyleText=StyleText + 'div.menu {';
+    StyleText=StyleText + '  background-color: #d0d0d0;';
+    StyleText=StyleText + '  border: 2px solid;';
+    StyleText=StyleText + '  border-color: #f0f0f0 #909090 #909090 #f0f0f0;';
+    StyleText=StyleText + '  left: 0px;';
+    StyleText=StyleText + '  padding: 0px 1px 1px 0px;';
+    StyleText=StyleText + '  position: absolute;';
+    StyleText=StyleText + '  top: 0px;';
+    StyleText=StyleText + '  visibility: hidden;';
+    StyleText=StyleText + '  z-index: 101;';
+    StyleText=StyleText + '}';
+    
+    StyleText=StyleText + 'div.menu a.menuItem {';
+    StyleText=StyleText + '  color: #000000;';
+    StyleText=StyleText + '  cursor: default;';
+    StyleText=StyleText + '  display: block;';
+    StyleText=StyleText + '  padding: 3px 1em;';
+    StyleText=StyleText + '  text-decoration: none;';
+    StyleText=StyleText + '  white-space: nowrap;';
+    StyleText=StyleText + '}';
+    
+    StyleText=StyleText + 'div.menu a.menuItem:hover, div.menu a.menuItemHighlight {';
+    StyleText=StyleText + '  background-color: #000080;';
+    StyleText=StyleText + '  color: #ffffff;';
+    StyleText=StyleText + '}';
+    
+    StyleText=StyleText + 'div.menu div.menuItemSep {';
+    StyleText=StyleText + '  border-top: 1px solid #909090;';
+    StyleText=StyleText + '  border-bottom: 1px solid #f0f0f0;';
+    StyleText=StyleText + '  margin: 4px 2px;';
+    StyleText=StyleText + '}';
+    
+    StyleText=StyleText + 'div.menu a.menuItem span.menuItemText {}';
+    
+    StyleText=StyleText + 'div.menu a.menuItem span.menuItemArrow {';
+    StyleText=StyleText + '  margin-right: -.75em;';
+    StyleText=StyleText + '}';
+    
+    
+    StyleText=StyleText + '.menuItemDisabled {';
+    StyleText=StyleText + '  color: #aaaaaa !important;';
+    StyleText=StyleText + '}';
+    
+    StyleText=StyleText + '</style>';
+    
+    //alert(StyleText);
+    document.head.innerHTML = document.head.innerHTML+StyleText;
+    
+    }
+    //else {alert('style found already');};
+  };
+  this.menuBoxInit = function (menu) {
+    {
+    
+      var itemList, spanList;
+      var textEl, arrowEl;
+      var itemWidth;
+      var w, dw;
+      var i, j;
+    
+    
+      // For IE, replace arrow characters.
+    
+      if (pas.HTMLUtils.browser.isIE) {
+        menu.style.lineHeight = "2.5ex";
+        spanList = menu.getElementsByTagName("SPAN");
+        for (i = 0; i < spanList.length; i++)
+          if (pas.HTMLUtils.hasClassName(spanList[i], "menuItemArrow")) {
+            spanList[i].style.fontFamily = "Webdings";
+            spanList[i].firstChild.nodeValue = "4";
+          }
+      }
+      // Find the width of a menu item.
+    
+      itemList = menu.getElementsByTagName("A");
+      if (itemList.length > 0)
+        itemWidth = itemList[0].offsetWidth;
+      else
+        return;
+    
+          // For items with arrows, add padding to item text to make the
+    // arrows flush right.
+    
+    for (i = 0; i < itemList.length; i++) {
+      spanList = itemList[i].getElementsByTagName("SPAN");
+      textEl  = null;
+      arrowEl = null;
+      for (j = 0; j < spanList.length; j++) {
+        if (pas.HTMLUtils.hasClassName(spanList[j], "menuItemText"))
+          textEl = spanList[j];
+        if (pas.HTMLUtils.hasClassName(spanList[j], "menuItemArrow"))
+          arrowEl = spanList[j];
+      }
+      if (textEl != null && arrowEl != null) {
+        textEl.style.paddingRight = (itemWidth
+          - (textEl.offsetWidth + arrowEl.offsetWidth)) + "px";
+        // For Opera, remove the negative right margin to fix a display bug.
+        if (pas.HTMLUtils.browser.isOP)
+          arrowEl.style.marginRight = "0px";
+      }
+    }
+    
+      // Fix IE hover problem by setting an explicit width on first item of
+    // the menu.
+    
+    if (pas.HTMLUtils.browser.isIE) {
+      w = itemList[0].offsetWidth;
+      itemList[0].style.width = w + "px";
+      dw = itemList[0].offsetWidth - w;
+      w -= dw;
+      itemList[0].style.width = w + "px";
+    }
+    
+    };
+  };
+  this.resetButton = function (button) {
+    if (button!=null) {
+        //alert('resetButton '+button.id);
+    
+        // Restore the button's style class.
+    
+        pas.HTMLUtils.removeClassName(button, "menuButtonActive");
+    
+        // Hide the button's menu, first closing any sub menus.
+    
+        if (button.menu != null) {
+          //alert('closing button menu '+ button.menu.id);
+          pas.XMenu.closeSubMenu(button.menu.id);
+          //alert('set hidden '+ button.menu.id);
+          button.menu.style.visibility = "hidden";
+        }
+      };
+  };
+  this.closeSubMenu = function (menuName) {
+    try{
+      var menu=document.getElementById(menuName);
+      if ((menu == null) || (menu==undefined) || (menu.activeItem == null)) {
+        return;
+        }
+      //alert('closeSubMenu '+menuName);
+    
+      // Recursively close any sub menus.
+    
+      if (menu.activeItem.subMenu != null) {
+        //alert('menu.activeItem.subMenu is '+menu.activeItem.subMenu.id);
+        pas.XMenu.closeSubMenu(menu.activeItem.subMenu.id);
+     //   alert('hiding submenu '+menu.activeItem.subMenu.id);
+        menu.activeItem.subMenu.style.visibility = "hidden";
+        menu.activeItem.subMenu = null;
+      }
+     // alert(menuName+' removeClassName menuItemHighlight');
+      pas.HTMLUtils.removeClassName(menu.activeItem, "menuItemHighlight");
+      //alert('menu '+menu.id+' clear activeitem ');
+      menu.activeItem = null;
+    
+      //alert(menuName+' closeSubMenu done');
+      } catch(err) { alert(err.message+'  in XMenu.closeSubMenu'); };
+  };
+  this.CloseAnyDropdown = function (menuName) {
+    var mainmenunode = null;
+    var mainmenu = null;
+    mainmenunode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,menuName,"",true);
+    mainmenu = mainmenunode.ScreenObject;
+    {
+      // Close any active sub menu.
+    
+      if (mainmenu.ActiveButton != null) {
+          pas.XMenu.resetButton(mainmenu.ActiveButton);
+          }
+    };
+  };
+  this.menuButtonClick = function (buttonName) {
+    var mainmenu = null;
+    var ButtonNode = null;
+    var parentNode = null;
+    var submenuname = "";
+    mainmenu = $impl.IdentifyMainMenu(buttonName);
+    $mod.CloseAnyDropdown(mainmenu.NodeName);
+    ButtonNode = pas.NodeUtils.FindDataNodeById(mainmenu,buttonName,"",true);
+    parentNode = pas.NodeUtils.FindParentOfNode$1(mainmenu,ButtonNode);
+    submenuname = buttonName + "Box";
+    {
+       function depressButton(button) {
+    
+      var x, y;
+    
+      // Update the button's style class to make it look like it's
+      // depressed.
+    
+      //alert('setting menuButtonActive on '+button.id);
+      button.className += " menuButtonActive";
+    
+      // Position the associated drop down menu under the button and
+      // show it.
+      if (button.menu!=null) {
+        x = pas.HTMLUtils.getPageOffsetLeft(button);
+        y = pas.HTMLUtils.getPageOffsetTop(button) + button.offsetHeight;
+    
+       // alert('depressButton  x='+x+' y='+y+' menu is '+button.menu.id);
+    
+       //alert('showing button menu '+button.menu.id);
+        button.menu.style.left = x + "px";
+        button.menu.style.top  = y + "px";
+        button.menu.style.visibility = "visible";
+      }
+    }
+    
+    
+    
+    
+    // Get the target button element.
+     // alert('menuButtonClick '+buttonName+' submenuname='+submenuname);
+    
+      var button = document.getElementById(buttonName);
+    
+      // Blur focus from the link to remove that annoying outline.
+    
+      button.blur();
+    
+      // Associate the named sub-menu to this button if not already done.
+      // Additionally, initialize menu display.
+    
+      if (button.menu == null) {
+        button.menu = document.getElementById(submenuname);
+        if (button.menu!=null)
+        {
+        if ((!(button.menu.hasAttribute("isInitialized")))
+         ||(button.menu.isInitialized == null))  {
+          pas.XMenu.menuBoxInit(button.menu);
+          button.menu.isInitialized = true;
+          }
+         }
+      }
+    
+      // Activate this button, unless it was the currently active one.
+    
+      if (button != mainmenu.ActiveButton) {
+        depressButton(button);
+        mainmenu.ActiveButton = button;
+      }
+      else {
+        mainmenu.ActiveButton = null;
+        }
+    };
+  };
+  this.buttonMouseover = function (buttonName) {
+    var mainmenu = null;
+    mainmenu = $impl.IdentifyMainMenu(buttonName);
+    {
+    
+         var button = document.getElementById(buttonName);
+    
+        // If any other button menu is active, make this one active instead.
+    
+        if (mainmenu.ActiveButton != null && mainmenu.ActiveButton != button)
+        {
+          pas.XMenu.menuButtonClick(buttonName);
+          }
+      };
+  };
+  this.menuItemMouseover = function (itemName) {
+    var parentmenu = null;
+    var localName = "";
+    var parentName = "";
+    parentmenu = $impl.IdentifyParentMenu(itemName);
+    parentName = parentmenu.NodeName + "Box";
+    localName = itemName;
+    {
+      var   x, y;
+      // Find the target item element and its parent menu element.
+      var menu = document.getElementById(parentName);    // the box we are in
+      var item = document.getElementById(localName);     // the item under the mouse
+    
+      // Close any active sub menu and mark this one as active.
+      //alert('menu '+menu.id+' set activeitem '+item.id);
+      if (menu.activeItem != null) {
+        //alert('menuItemMouseover close submenu '+menu.id);
+        pas.XMenu.closeSubMenu(menu.id);
+        }
+      menu.activeItem = item;
+    
+      // Highlight the item element.
+      item.className += " menuItemHighlight";
+    
+      // Initialize the item's submenu, if not already done.
+      if (item.subMenu == null) {
+        item.subMenu = document.getElementById(localName+'Box');          //????
+        //item.subMenu = document.getElementById(localName);          //????
+        if (item.subMenu!=null)
+        {
+        if ((!(item.subMenu.hasAttribute("isInitialized")))
+         ||(item.subMenu.isInitialized == null))  {
+          //alert('initialising submenu '+localName);
+          pas.XMenu.menuBoxInit(item.subMenu);
+          item.subMenu.isInitialized = true;
+         }
+         }
+      }
+    
+      if (item.subMenu!=null)
+      {
+      // Get position for submenu based on the menu item.
+      x = pas.HTMLUtils.getPageOffsetLeft(item);
+      //+ item.offsetWidth;                           //!!!! still not right.... tbd
+      y = pas.HTMLUtils.getPageOffsetTop(item);
+    
+      //alert('initial x='+x+' y='+y);
+    
+      // Adjust position to fit in view.
+      var maxX, maxY;
+    
+      if (pas.HTMLUtils.browser.isIE) {
+        maxX =
+          (document.documentElement.scrollLeft   != 0 ?
+             document.documentElement.scrollLeft
+           : document.body.scrollLeft)
+        + (document.documentElement.clientWidth  != 0 ?
+           document.documentElement.clientWidth
+           : document.body.clientWidth);
+        maxY =
+          (document.documentElement.scrollTop    != 0 ?
+           document.documentElement.scrollTop
+           : document.body.scrollTop)
+        + (document.documentElement.clientHeight != 0 ?
+           document.documentElement.clientHeight
+           : document.body.clientHeight);
+      }
+      if (pas.HTMLUtils.browser.isOP) {
+        maxX = document.documentElement.scrollLeft + window.innerWidth;
+        maxY = document.documentElement.scrollTop  + window.innerHeight;
+      }
+      if (pas.HTMLUtils.browser.isNS) {
+        maxX = window.scrollX + window.innerWidth;
+        maxY = window.scrollY + window.innerHeight;
+      }
+      maxX -= item.subMenu.offsetWidth;
+      maxY -= item.subMenu.offsetHeight;
+    
+      if (x > maxX)
+        x = Math.max(0, x - item.offsetWidth - item.subMenu.offsetWidth
+          + (menu.offsetWidth - item.offsetWidth));
+      y = Math.max(0, Math.min(y, maxY));
+    
+      //alert('final x='+x+' y='+y);
+    
+      // Position and show it.
+      //alert('showing submenu '+item.subMenu.id);
+      item.subMenu.style.left = x + "px";
+      item.subMenu.style.top  = y + "px";
+      item.subMenu.style.visibility = "visible";
+      }
+    };
+  };
+  rtl.createClass($mod,"TXMainMenu",pas.WrapperPanel.TWrapperPanel,function () {
+    this.$init = function () {
+      pas.WrapperPanel.TWrapperPanel.$init.call(this);
+      this.fActiveButton = null;
+    };
+    this.$final = function () {
+      this.fActiveButton = undefined;
+      pas.WrapperPanel.TWrapperPanel.$final.call(this);
+    };
+    this.SetMyEventTypes = function () {
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = true;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.MenuDefaultAttribs);
+    };
+  });
+  rtl.createClass($mod,"TXMenuItem",pas.WrapperPanel.TWrapperPanel,function () {
+    this.GetCaption = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Caption",true).AttribValue;
+      return Result;
+    };
+    this.GetIsEnabled = function () {
+      var Result = false;
+      var tmp = "";
+      if (this.myNode !== null) {
+        tmp = this.myNode.GetAttribute("IsEnabled",true).AttribValue;
+        if (tmp === "") tmp = "True";
+        Result = pas.StringUtils.MyStrToBool(tmp);
+      } else Result = true;
+      return Result;
+    };
+    this.SetCaption = function (AValue) {
+      this.myNode.SetAttributeValue$2("Caption",AValue);
+      var ob=document.getElementById(this.myNode.NodeName);
+      if (ob!=null) {
+        ob.innerHTML=AValue;
+      };
+    };
+    this.SetIsEnabled = function (AValue) {
+      if (this.myNode !== null) this.myNode.SetAttributeValue$1("IsEnabled",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob=document.getElementById(this.myNode.NodeName);
+      if (ob!=null) {
+        if (AValue==true) {
+        ob.classList.remove("menuItemDisabled"); }
+        else {
+        ob.classList.add("menuItemDisabled"); }
+      };
+    };
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = "TXMenuItem";
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = true;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.ItemDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("Caption",3,rtl.string,"GetCaption","SetCaption");
+    $r.addProperty("IsEnabled",3,rtl.boolean,"GetIsEnabled","SetIsEnabled");
+  });
+  $mod.$init = function () {
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.MenuDefaultAttribs;
+      }, set: function (v) {
+        this.p.MenuDefaultAttribs = v;
+      }},"IsVisible","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultsToTable("TXMainMenu",$impl.MenuDefaultAttribs);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.ItemDefaultAttribs;
+      }, set: function (v) {
+        this.p.ItemDefaultAttribs = v;
+      }},"Caption","String","New Item","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.ItemDefaultAttribs;
+      }, set: function (v) {
+        this.p.ItemDefaultAttribs = v;
+      }},"Hint","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.ItemDefaultAttribs;
+      }, set: function (v) {
+        this.p.ItemDefaultAttribs = v;
+      }},"IsVisible","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.ItemDefaultAttribs;
+      }, set: function (v) {
+        this.p.ItemDefaultAttribs = v;
+      }},"IsEnabled","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultsToTable("TXMenuItem",$impl.ItemDefaultAttribs);
+    pas.NodeUtils.AddNodeFuncLookup("TXMainMenu",$impl.CreateMainMenuInterfaceObj,$impl.CreateMainMenu);
+    pas.NodeUtils.AddNodeFuncLookup("TXMenuItem",$impl.CreateMenuItemInterfaceObj,$impl.CreateMenuItem);
+    pas.WrapperPanel.SuppressDesignerProperty("TXMainMenu","LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty("TXMainMenu","LabelText");
+    pas.WrapperPanel.SuppressDesignerProperty("TXMenuItem","LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty("TXMenuItem","LabelText");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXMainMenu";
+  $impl.MenuDefaultAttribs = [];
+  $impl.ItemDefaultAttribs = [];
+  $impl.CreateMainMenu = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    try{
+        pas.XMenu.addMenuBarStyles();
+    
+        //alert('add main menu to parent '+ParentNode.NodeName);
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,0);
+        wrapper.position="";
+    
+    
+        //localcontainer is an inner div.  Its id is  ScreenObjectName+'Contents'
+        // It is a child of the outer container div (wrapper)
+        //
+         var localcontainer = document.createElement("div");
+         localcontainer.id = ScreenObjectName+'Contents';
+         localcontainer.classList.add('menuBar');
+    
+         //localcontainer.onmouseover = function(){pas.XMenu.menuMouseover(ScreenObjectName);pas.HTMLUtils.StopBubbling(event);}
+         wrapper.onclick = function(){pas.XMenu.CloseAnyDropdown(ScreenObjectName);pas.HTMLUtils.StopBubbling(event);}
+    
+         wrapper.appendChild(localcontainer);
+    
+    
+        }
+        catch(err) { alert(err.message+'  in XMenu.CreateMainMenu');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.IdentifyMainMenu = function (menuName) {
+    var Result = null;
+    var StartNode = null;
+    var found = false;
+    var ParentName = "";
+    StartNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,menuName,"",true);
+    found = false;
+    while ((found === false) && (StartNode !== null)) {
+      if (StartNode.NodeType === "TXMainMenu") {
+        found = true}
+       else {
+        ParentName = StartNode.GetAttribute("ParentName",false).AttribValue;
+        StartNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,ParentName,"",true);
+      };
+    };
+    Result = StartNode.ScreenObject;
+    return Result;
+  };
+  $impl.IdentifyParentMenu = function (itemName) {
+    var Result = null;
+    var StartNode = null;
+    var ParentName = "";
+    StartNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,itemName,"",true);
+    if (StartNode !== null) {
+      ParentName = StartNode.GetAttribute("ParentName",false).AttribValue;
+      StartNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,ParentName,"",true);
+      Result = StartNode.ScreenObject;
+    } else Result = null;
+    return Result;
+  };
+  $impl.CreateMenuItem = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var OnClickString = "";
+    var OnMouseOverString1 = "";
+    var OnMouseOverString2 = "";
+    var BgColor = "";
+    var Caption = "";
+    var ParentName = "";
+    var IsMainItem = false;
+    if (ParentNode.NodeType === "TXMainMenu") {
+      IsMainItem = true}
+     else IsMainItem = false;
+    ParentName = ParentNode.NodeName;
+    Caption = MyNode.GetAttribute("Caption",true).AttribValue;
+    BgColor = "#FFFFFF";
+    OnClickString = (((((((('onclick="event.stopPropagation();' + "if (!(event.target.classList.contains('menuItemDisabled'))) {") + "pas.XMenu.menuButtonClick('") + ScreenObjectName) + "'); ") + "pas.Events.handleEvent(null,'Click','") + ScreenObjectName) + "','',''); ") + "}") + '" ';
+    OnMouseOverString1 = ('onmouseover="pas.XMenu.buttonMouseover(\'' + ScreenObjectName) + '\');pas.HTMLUtils.StopBubbling(event);" ';
+    OnMouseOverString2 = ('onmouseover="pas.XMenu.menuItemMouseover(\'' + ScreenObjectName) + '\');pas.HTMLUtils.StopBubbling(event);" ';
+    try{
+    
+    
+      // -----------------------------Define the HTML to be used to create Menu control
+    
+      // if this is a main menu item, use button tag
+      if (IsMainItem) {
+    
+          var MyParent = pas.HTMLUtils.ScreenObjectInnerComponent(ParentNode);
+    
+          var MenuItemHTML =
+                         '<a href="#" class="menuButton" id="'+ScreenObjectName+'"' +
+                         OnClickString +
+                         OnMouseOverString1 +
+                         '>'+Caption+
+                         '</a>'+
+                         '<div id="'+ScreenObjectName+'Box'+'" class="menu" visibility = "hidden" '+
+     //                    MouseOutString +
+                         '></div>';
+    
+           pas.HTMLUtils.AddObjectToParentObject(ParentNode,MyParent.id,ScreenObjectName,position,MenuItemHTML);
+           }
+      else {
+          MyParent =  document.getElementById(ParentName);
+          //alert('Adding item '+ScreenObjectName+' parent: '+ParentName);
+    
+          if ((IsMainItem==false) && (pas.HTMLUtils.hasClassName(MyParent,'menuItem'))) {
+            // adjust the parent item's html definition so that the expansion arrow is visible
+            // eg...
+            //<a class="menuItem" href="...">
+            //  <span class="menuItemText">Menu 3 Item 4</span>
+            //  <span class="menuItemArrow">&#9654;</span></a>
+    
+            // ParentName should give us the <a> item relating to the menu item that is the parent of this sub item.
+            // so, insert the arrow for that parent, if not already there
+            var ob = document.getElementById(ParentName+'Span');
+            if (ob==null) {
+              var newSpan = document.createElement("SPAN");
+              newSpan.id = ParentName+'Span';
+              newSpan.className = 'menuItemArrow';
+              newSpan.innerHTML = '&#9654;';
+              MyParent.appendChild(newSpan);
+            }
+          }
+    
+          MenuItemHTML='<a href="#" class="menuItem" id="'+ScreenObjectName+'" '+
+                        OnClickString +
+                        OnMouseOverString2+
+                        ' >' +
+                        '<span class="menuItemText">'+Caption+'</span>' +
+                        '</a>' +
+                        '<div id="'+ScreenObjectName+'Box'+'" class="menu" '+
+      //                  MouseOutString +
+                        '></div>';
+    
+          pas.HTMLUtils.AddObjectToParentObject(ParentNode,MyParent.id,ScreenObjectName,position,MenuItemHTML);
+    
+          var wrapper=document.getElementById(ScreenObjectName);
+    
+          //alert('attaching '+wrapper.id+' to parent '+ParentName+'Box');
+          var menubox = document.getElementById(ParentName+"Box");
+          menubox.appendChild(wrapper);
+          }
+      }
+      catch(err) { alert(err.message+'  in XMenu.CreateMenuItem');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    MyNode.SetAttributeValue$2("ParentName",ParentName);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateMainMenuInterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXMainMenu.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+  $impl.CreateMenuItemInterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXMenuItem.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XHBox",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXHBox",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.GetInheritColor = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("InheritColor",true).AttribValue);
+      return Result;
+    };
+    this.SetInheritColor = function (AValue) {
+      var clr = "";
+      var parentNode = null;
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("InheritColor",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+        parentNode = pas.NodeUtils.FindParentOfNode$1(pas.NodeUtils.SystemNodeTree,this.myNode);
+        if (parentNode !== null) {
+          if (AValue === true) {
+            clr = parentNode.GetAttribute("BgColor",true).AttribValue;
+            this.myNode.SetAttributeValue$1("BgColor",clr,"Color");
+            var ob = document.getElementById(this.NameSpace+this.NodeName);
+            if (ob!=null) {
+              if (AValue==true ) {
+                 ob.style.backgroundColor='inherit';
+            } };
+          } else {
+            clr = this.myNode.GetAttribute("BgColor",true).AttribValue;
+            var ob = document.getElementById(this.NameSpace+this.NodeName);
+            if (ob!=null) {
+              if (AValue==true ) {
+                 ob.style.backgroundColor=clr;
+            } };
+          };
+        };
+      };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FAlignChildrenVertical = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("InheritColor",3,rtl.boolean,"GetInheritColor","SetInheritColor");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerWidth","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerHeight","String","300","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BgColor","Color","#FFFFFF","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"InheritColor","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelText");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXHBox";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ShowBorder = false;
+    var Bdr = "";
+    var OnClickString = "";
+    Bdr = MyNode.GetAttribute("Border",true).AttribValue;
+    if (Bdr !== "") {
+      ShowBorder = pas.StringUtils.MyStrToBool(Bdr)}
+     else ShowBorder = false;
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', \'\');" ';
+    try{
+    
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid =  NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        HTMLString = '<div  id="'+MyObjectName+'" class="hbox '+NameSpace+ScreenObjectName+'" '+
+                           'style="height:100%;width:100%; "'+
+                           OnClickString +
+                            '></div>  ';
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+        }catch(err) { alert(err.message+'  in XHBox.CreateHBox');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXHBox.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XEditBox",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXEditBox",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("Change");
+      this.myEventTypes.Add("EditBoxPaste");
+    };
+    this.GetItemValue = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ItemValue",true).AttribValue;
+      return Result;
+    };
+    this.GetReadOnly = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("ReadOnly",true).AttribValue);
+      return Result;
+    };
+    this.GetBoxWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("BoxWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetPasswordBox = function () {
+      var Result = false;
+      var tmp = "";
+      if (this.myNode !== null) {
+        tmp = this.myNode.GetAttribute("PasswordBox",true).AttribValue;
+        if (tmp === "") tmp = "True";
+        Result = pas.StringUtils.MyStrToBool(tmp);
+      } else Result = true;
+      return Result;
+    };
+    this.SetItemValue = function (AValue) {
+      this.myNode.SetAttributeValue$2("ItemValue",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.value=AValue;  };
+    };
+    this.SetReadOnly = function (AValue) {
+      this.myNode.SetAttributeValue$1("ReadOnly",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        ob.readOnly = AValue  };
+    };
+    this.SetBoxWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("BoxWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      //  if (ob==null) {alert(this.NodeName+'Contents'+'  not found');}
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.SetPasswordBox = function (AValue) {
+      this.myNode.SetAttributeValue$1("PasswordBox",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        if (AValue) {
+           ob.type = 'password'  }
+        else {
+             ob.type = 'text'}
+        };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("ItemValue",3,rtl.string,"GetItemValue","SetItemValue");
+    $r.addProperty("ReadOnly",3,rtl.boolean,"GetReadOnly","SetReadOnly");
+    $r.addProperty("BoxWidth",3,rtl.string,"GetBoxWidth","SetBoxWidth");
+    $r.addProperty("PasswordBox",3,rtl.boolean,"GetPasswordBox","SetPasswordBox");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BoxWidth","String","200","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Right","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Edit Box","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"PasswordBox","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ItemValue","String","","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXEditBox","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXEditBox";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ItemValue = "";
+    var LabelText = "";
+    var ReadOnly = false;
+    var PasswordBox = false;
+    var OnChangeString = "";
+    var OnClickString = "";
+    var OnPasteString = "";
+    ItemValue = MyNode.GetAttribute("ItemValue",true).AttribValue;
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    ReadOnly = pas.SysUtils.StrToBool(MyNode.GetAttribute("ReadOnly",true).AttribValue);
+    PasswordBox = pas.SysUtils.StrToBool(MyNode.GetAttribute("PasswordBox",true).AttribValue);
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value);" ';
+    OnChangeString = (((((((('onchange="pas.NodeUtils.SetInterfaceProperty(\'' + ScreenObjectName) + "','") + NameSpace) + "','ItemValue',this.value); ") + "pas.Events.handleEvent(null,'Change','") + ScreenObjectName) + "','") + NameSpace) + '\', this.value, \'ItemValue\');" ';
+    OnPasteString = ((('onpaste="pas.Events.handleEvent(null,\'EditBoxPaste\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value);" ';
+    try{
+    
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid =  NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var ReadOnlyString = '';
+        if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
+    
+        var TypeString = 'text';
+        if (PasswordBox) { TypeString = 'password';}
+    
+        var inputtext= ItemValue;
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+        var EBoxString = '<input type="'+TypeString+'"  id='+MyObjectName+' ' +
+                         ' class="widgetinner '+wrapperid+'" ' +
+                              OnPasteString +
+                              OnClickString +
+                              OnChangeString +
+                     ' style="display: inline-block; padding:0px;'+
+                     '" value="'+inputtext+'"'+ReadOnlyString+'>' ;
+    
+        HTMLString = labelstring+EBoxString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+        // fix the height for an edit box to one line-height...
+        pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
+      }
+      catch(err) { alert(err.message+'  in XEditBox.CreateXEditBox');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXEditBox.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XCheckBox",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXCheckBox",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.GetChecked = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("Checked",true).AttribValue);
+      return Result;
+    };
+    this.GetReadOnly = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("ReadOnly",true).AttribValue);
+      return Result;
+    };
+    this.SetChecked = function (AValue) {
+      this.myNode.SetAttributeValue$1("Checked",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.checked=AValue;  };
+    };
+    this.SetReadOnly = function (AValue) {
+      this.myNode.SetAttributeValue$1("ReadOnly",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+      if (AValue==true) {ob.disabled = true}
+      else {ob.disabled = false }  };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("Checked",3,rtl.boolean,"GetChecked","SetChecked");
+    $r.addProperty("ReadOnly",3,rtl.boolean,"GetReadOnly","SetReadOnly");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerWidth","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Right","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Checkbox","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Checked","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXCheckBox";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var Checked = "";
+    var ReadOnly = "";
+    var LabelText = "";
+    var OnClickString = "";
+    Checked = MyNode.GetAttribute("Checked",true).AttribValue;
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    ReadOnly = MyNode.GetAttribute("ReadOnly",true).AttribValue;
+    OnClickString = (((((((((('onclick="if (this.checked!=undefined) {' + "pas.NodeUtils.SetInterfaceProperty('") + ScreenObjectName) + "','") + NameSpace) + "','Checked',this.checked.toString());") + "event.stopPropagation(); ") + "pas.Events.handleEvent(null,'Click','") + ScreenObjectName) + "','") + NameSpace) + '\', this.checked.toString());}"';
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+        wrapper.style.display = 'flex';
+        var goright =  'flex-e'+'nd';
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid =  NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var ReadOnlyString = '';
+        if (ReadOnly=='True') { ReadOnlyString = ' readonly ';}
+    
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+    
+        var Checkstring = '';
+        if (Checked == 'true'){Checkstring = 'checked'};
+    
+        var CheckBoxString = '<input  type="checkbox" id='+MyObjectName+ ' '+
+                           ' class="widgetinner '+wrapperid+'" '+
+                           OnClickString +
+                           Checkstring +
+                           ' style="display:inline-block;" '+ReadOnlyString+' >' ;
+    
+        HTMLString = labelstring+CheckBoxString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+        pas.HTMLUtils.FixHeightToLineHeight(ScreenObjectName);
+      }
+      catch(err) { alert(err.message+'  in XCheckBox.CreateXCheckBox');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXCheckBox.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XHyperLink",["System","Classes","SysUtils","NodeUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXHyperLink",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.GetLabelCaption = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("LabelCaption",true).AttribValue;
+      return Result;
+    };
+    this.GetURL = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("URL",true).AttribValue;
+      return Result;
+    };
+    this.SetLabelCaption = function (AValue) {
+      this.myNode.SetAttributeValue$2("LabelCaption",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.innerHTML=AValue;   };
+    };
+    this.SetURL = function (AValue) {
+      this.myNode.SetAttributeValue$2("URL",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.href=AValue;   };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("LabelCaption",3,rtl.string,"GetLabelCaption","SetLabelCaption");
+    $r.addProperty("URL",3,rtl.string,"GetURL","SetURL");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Right","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelCaption","String","Lazarus IDE","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"URL","String","https:\/\/www.lazarus-ide.org\/","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXHyperLink","BgColor");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXHyperlink";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var LabelCaption = "";
+    var URL = "";
+    var OnClickString = "";
+    LabelCaption = MyNode.GetAttribute("LabelCaption",true).AttribValue;
+    URL = MyNode.GetAttribute("URL",true).AttribValue;
+    OnClickString = ((((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + "','") + URL) + '\'); " ';
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var wrapperid =  NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        HTMLString = '<a id='+MyObjectName+' href="'+URL+'" target="_blank" '+
+                             OnClickString +
+                             ' style="display: inline-block;"  >'+LabelCaption+'</a> ';
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+      }
+      catch(err) { alert(err.message+'  in XHyperLink.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXHyperLink.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XRadioBtns",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.CreateButtonsList = function (myNode, OptionList) {
+    var Result = "";
+    var OnChangeString = "";
+    var ItemValue = "";
+    var ReadOnly = "";
+    var myName = "";
+    var NameSpace = "";
+    var quot = "";
+    ReadOnly = myNode.GetAttribute("ReadOnly",true).AttribValue;
+    ItemValue = myNode.GetAttribute("ItemValue",true).AttribValue;
+    NameSpace = myNode.NameSpace;
+    myName = myNode.NodeName;
+    OnChangeString = (((((((('onchange="if (this.checked) {pas.NodeUtils.SetInterfaceProperty(\'' + myName) + "','") + NameSpace) + "','ItemValue',this.value);") + "pas.Events.handleEvent(null,'Change','") + myName) + "','") + NameSpace) + "','";
+    quot = "'";
+    try{
+        var ReadOnlyString = '';
+        if (ReadOnly=='true') { ReadOnlyString = ' readonly ';}
+    
+        var HTMLString='';
+        var wrapperid = NameSpace+myName;
+        var optionlistarray=JSON.parse(OptionList);
+        for (var i=0; i<optionlistarray.length; i++){
+           var currentitemstring = optionlistarray[i];
+           var selectedflag ='';
+           if (currentitemstring==ItemValue ){selectedflag = 'checked'}
+           HTMLString = HTMLString +'<input type="radio"  '+selectedflag + ReadOnlyString
+                                   +' id="'+wrapperid+currentitemstring+'" '
+                                   +' name='+wrapperid+' '
+                                   //+ OnChangeString+i+quot+');}" '
+                                   + OnChangeString+currentitemstring+quot+');}" '
+                                   +' value="'+currentitemstring+'" '
+                                   +'>'+currentitemstring+'<Br>';
+         }
+         return HTMLString;
+      }
+      catch(err) { alert(err.message+'  in XRadioBtns.CreateButtonsList');};
+    return Result;
+  };
+  rtl.createClass($mod,"TXRadioBtns",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("Change");
+    };
+    this.GetReadOnly = function () {
+      var Result = false;
+      var tmp = "";
+      tmp = this.myNode.GetAttribute("ReadOnly",true).AttribValue;
+      if (tmp === "") tmp = "False";
+      Result = pas.StringUtils.MyStrToBool(tmp);
+      return Result;
+    };
+    this.GetItemValue = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ItemValue",true).AttribValue;
+      return Result;
+    };
+    this.GetOptionList = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("OptionList",true).AttribValue;
+      return Result;
+    };
+    this.GetCaption = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Caption",true).AttribValue;
+      return Result;
+    };
+    this.GetBoxWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("BoxWidth",true).AttribValue;
+      return Result;
+    };
+    this.SetReadOnly = function (AValue) {
+      this.myNode.SetAttributeValue$1("ReadOnly",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      //alert('setreadonly');
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      if (ob!=null) {
+      if (AValue==true) {ob.disabled = true}
+      else {ob.disabled = false }  }
+       // alert('setreadonly done');
+    };
+    this.SetItemValue = function (AValue) {
+      this.myNode.SetAttributeValue$2("ItemValue",AValue);
+      //alert('setitemvalue to '+AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+AValue);
+      if (ob!=null) {
+         ob.checked=true;  };
+    };
+    this.SetOptionList = function (AValue) {
+      var myName = "";
+      var myCaption = "";
+      this.myNode.SetAttributeValue$2("OptionList",AValue);
+      myName = this.NameSpace + this.NodeName;
+      myCaption = this.myNode.GetAttribute("Caption",true).AttribValue;
+      //alert('setoptionlist. AValue='+AValue);
+      var ob = document.getElementById(myName+'Contents');
+      if (ob!=null) {
+        var Legend='<legend id='+myName+'ContentsLegend >"'+myCaption+'"</legend>';
+        var ItemValue=ob.value;
+        var Buttons=$mod.CreateButtonsList(this.myNode,AValue);
+        //alert('setting innerHTML to '+Legend+Buttons);
+        ob.innerHTML=Legend+Buttons;
+      };
+    };
+    this.SetCaption = function (AValue) {
+      this.myNode.SetAttributeValue$2("Caption",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsLegend');
+      if (ob!=null) {
+         //alert('setcaption '+AValue);
+         ob.innerHTML=AValue  };
+    };
+    this.SetBoxWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("BoxWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      //  if (ob==null) {alert(this.NodeName+'Contents'+'  not found');}
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.SetBgColor = function (AValue) {
+      pas.WrapperPanel.TWrapperPanel.SetBgColor.call(this,AValue);
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("ReadOnly",3,rtl.boolean,"GetReadOnly","SetReadOnly");
+    $r.addProperty("ItemValue",3,rtl.string,"GetItemValue","SetItemValue");
+    $r.addProperty("Caption",3,rtl.string,"GetCaption","SetCaption");
+    $r.addProperty("OptionList",3,rtl.string,"GetOptionList","SetOptionList");
+    $r.addProperty("BoxWidth",3,rtl.string,"GetBoxWidth","SetBoxWidth");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BgColor","Color","#FFFFFF","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Caption","String","Radio Buttons","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"OptionList","String",'["Option 1","Option 2","Option 3"]',"",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ItemValue","String","Option 1","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BoxWidth","String","300","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelText");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXRadioBtns";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var myCaption = "";
+    var OptionList = "";
+    var OnClickString = "";
+    myCaption = MyNode.GetAttribute("Caption",true).AttribValue;
+    OptionList = MyNode.GetAttribute("OptionList",true).AttribValue;
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\',\'\');"';
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid = NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        HTMLString = '<fieldset  id='+MyObjectName+' style="display: inline-block;height:100%;width:100%;" '
+                     + OnClickString
+                     +' >  ';
+        var Legend='<legend id='+MyObjectName+'Legend >'+myCaption+'</legend>';
+        var Buttons=$mod.CreateButtonsList(MyNode,OptionList);
+        HTMLString = HTMLString + Legend + Buttons + '</fieldset> ';
+        //alert('create radiogroup widget. html='+HTMLString);
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+      }
+      catch(err) { alert(err.message+'  in XRadioBtns.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXRadioBtns.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XTable",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel","Events"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.AddTableStyles = function (dummy) {
+    try{
+         // ----------------------------------------check if the style has already been set
+         //alert('AddTableStyles');
+         var x = document.getElementsByTagName("STYLE");
+         var StyleIsSet = false;
+         if (x.length>0){
+           for (var i=0; i<x.length; i++){
+             var y= x[i].innerHTML;
+             if (y.indexOf("table") !=-1) { StyleIsSet =true}
+           }
+         }
+         if (StyleIsSet == false){
+           var styletext = '<style>'+
+                         'table, th, td { '+
+                          ' background-color:#FFFFFF; '+
+                          ' border: 1px solid black; '+
+                          ' border-collapse: collapse; '+
+                          '}'+
+                         'th { '+
+                          ' background-color:#DDDDDD; '+
+                          ' text-align: left;'+
+                           '}'+
+                        '}</style>';
+         //alert(styletext);
+         //----------------------------- now append the style declarations to the head of the HTML page
+            document.head.innerHTML = document.head.innerHTML+styletext;
+         }
+    }catch(err) {alert('Error in XTable.AddTableStyles '+ err.message);};
+  };
+  this.TableChange = function (Sender, NodeName, NameSpace) {
+    var newData = "";
+    var myNode = null;
+    myNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,NodeName,NameSpace,true);
+    newData = myNode.ConstructDataString();
+    if (newData !== myNode.GetTableData()) {
+      myNode.SetAttributeValue$2("TableData",newData);
+      if ((myNode.GetSelectedCol() > -1) && (myNode.GetSelectedRow() > -1)) {
+        if (myNode.GetNumCols() < (myNode.GetSelectedCol() + 1)) myNode.SetSelectedCol(myNode.GetNumCols() - 1);
+        if (myNode.GetNumRows() < (myNode.GetSelectedRow() + 1)) myNode.SetSelectedRow(myNode.GetNumRows() - 1);
+        myNode.SetSelectedValue(myNode.GetCellValue(myNode.GetSelectedRow(),myNode.GetSelectedCol()));
+      };
+      pas.Events.handleEvent$2("Change",myNode.NodeName,NameSpace,newData);
+    };
+  };
+  this.CellClick = function (target, NodeName, NameSpace) {
+    var Result = "";
+    var TargetNode = null;
+    var col = 0;
+    var row = 0;
+    var ok = false;
+    TargetNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,NodeName,NameSpace,true);
+    row = -1;
+    col = -1;
+    ok = true;
+    //console.log('cellclick. node='+NodeName);
+      var sel = window.getSelection();
+      //console.log('selection='+sel.toString() + ' type:'+ sel.type);
+      if (sel.type=='Range') {
+        var anch=sel.anchorNode;
+        var a1 = anch.parentNode;
+        var foc =sel.focusNode;
+        var f1 = foc.parentNode;
+        //console.log('Range:  '+(a1==f1));
+        if (a1!=f1) {ok=false;}
+        };
+    
+      var closestByTag = function(el, clazz) {
+          // Traverse the DOM up with a while loop
+          while (el.tagName != clazz) {
+              // Increment the loop to the parent node
+              el = el.parentNode;
+              if (!el) {
+                  return null;
+              }
+          }
+          // At this point, the while loop has stopped and `el` represents the element that has
+          // the class you specified in the second parameter of the function `clazz`
+    
+          // Then return the matched element
+          return el;
+      }
+    
+      if (ok==true) {
+        // if the user has slid the mouse to select text, and mouseup is in a different cell from the selected text, then
+        // td returns null below.  In this case, set the cell selection to -1,-1 so we can prevent new text from appearing
+        // in the wrong cell.
+        var tr = closestByTag(target,'TR');
+    //    if (tr!=null) {
+    //      console.log('rowindex is '+tr.rowIndex);  }
+        var td = closestByTag(target,'TD');
+    //    if (td!=null) {
+    //      console.log('cellindex is '+td.cellIndex);  }
+        if ((tr!=null)&&(td!=null)) {
+          if (tr!=null) {row=tr.rowIndex;}  else {row=-1;}
+          if (td!=null) {col=td.cellIndex;} else {col=-1;}
+    //      console.log('click at row='+row+' col='+col);
+        }
+      }
+      else
+      {
+        //!! change the range selection here, to limit to one cell....
+        document.getSelection().removeAllRanges();
+        var range = new Range();
+        range.setStart(a1,0);
+        range.setEnd(a1,1);
+        document.getSelection().addRange(range);
+    
+        a1.focus();
+        var tr = closestByTag(a1,'TR');
+    //    if (tr!=null) {
+    //      console.log('rowindex is '+tr.rowIndex);  }
+        td = closestByTag(a1,'TD');
+    //    if (td!=null) {
+    //      console.log('cellindex is '+td.cellIndex);  }
+        if ((tr!=null)&&(td!=null)) {
+          if (tr!=null) {row=tr.rowIndex;}  else {row=-1;}
+          if (td!=null) {col=td.cellIndex;} else {col=-1;}
+    //      console.log('click at row='+row+' col='+col);
+        }
+      };
+    TargetNode.SetSelectedRow(row);
+    TargetNode.SetSelectedCol(col);
+    if ((row > -1) && (col > -1)) {
+      TargetNode.SetSelectedValue(TargetNode.GetCellValue(row,col));
+      Result = (pas.SysUtils.IntToStr(row) + ",") + pas.SysUtils.IntToStr(col);
+    } else {
+      TargetNode.SetSelectedValue("");
+      Result = "";
+    };
+    return Result;
+  };
+  this.KeyDown = function (target, NodeName, NameSpace) {
+    var Result = false;
+    var TargetNode = null;
+    TargetNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,NodeName,NameSpace,true);
+    if ((TargetNode.GetSelectedRow() > -1) && (TargetNode.GetSelectedCol() > -1)) {
+      Result = true}
+     else Result = false;
+    return Result;
+  };
+  rtl.createClass($mod,"TXTable",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("Change");
+    };
+    this.GetReadOnly = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("ReadOnly",true).AttribValue);
+      return Result;
+    };
+    this.GetTableWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("TableWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetTableHeight = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("TableHeight",true).AttribValue;
+      return Result;
+    };
+    this.GetTableData = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("TableData",true).AttribValue;
+      return Result;
+    };
+    this.GetColWidth = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("ColWidth",true).AttribValue);
+      return Result;
+    };
+    this.GetNumCols = function () {
+      var Result = 0;
+      var num = 0;
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        if (ob.rows.length > 0) {
+          num=ob.rows[0].cells.length;
+        }
+        else {num=0};
+      };
+      Result = num;
+      return Result;
+    };
+    this.GetNumRows = function () {
+      var Result = 0;
+      var num = 0;
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+      num=ob.rows.length;
+      };
+      Result = num;
+      return Result;
+    };
+    this.GetSelectedRow = function () {
+      var Result = 0;
+      var str = "";
+      str = this.myNode.GetAttribute("SelectedRow",true).AttribValue;
+      if (str !== "") {
+        Result = pas.SysUtils.StrToInt(str)}
+       else Result = -1;
+      return Result;
+    };
+    this.GetSelectedCol = function () {
+      var Result = 0;
+      var str = "";
+      str = this.myNode.GetAttribute("SelectedCol",true).AttribValue;
+      if (str !== "") {
+        Result = pas.SysUtils.StrToInt(str)}
+       else Result = -1;
+      return Result;
+    };
+    this.GetSelectedValue = function () {
+      var Result = "";
+      var r = 0;
+      var c = 0;
+      var v = "";
+      r = this.GetSelectedRow();
+      c = this.GetSelectedCol();
+      if ((r >= 0) && (c >= 0)) {
+        v = this.GetCellValue(r,c);
+        this.myNode.SetAttributeValue$1("SelectedValue",v,"String");
+        Result = v;
+      } else Result = "";
+      return Result;
+    };
+    this.GetHasHeaderRow = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("HasHeaderRow",true).AttribValue);
+      return Result;
+    };
+    this.SetReadOnly = function (AValue) {
+      this.myNode.SetAttributeValue$1("ReadOnly",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      if (ob!=null) {
+      if (AValue==true) {ob.disabled = true}
+      else {ob.disabled = false }
+      };
+    };
+    this.SetTableWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("TableWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.SetTableHeight = function (AValue) {
+      this.myNode.SetAttributeValue$2("TableHeight",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName);
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
+    };
+    this.SetTableData = function (AValue) {
+      var cw = "";
+      var hasHeaders = false;
+      var i = 0;
+      this.myNode.SetAttributeValue$1("TableData",AValue,"TableString");
+      hasHeaders = this.GetHasHeaderRow();
+      cw = this.myNode.GetAttribute("ColWidth",true).AttribValue;
+      try {
+          var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+          if ((ob!=null)&&(AValue!='')) {
+            var localtestdata=JSON.parse(AValue);
+            var RowCount =localtestdata.length;
+            var ColCount = 0;
+            for ( var i = 0; i < RowCount; i++ ) {
+              if(localtestdata[i].length> ColCount)
+                {ColCount = localtestdata[i].length }
+            }
+            //alert('rows='+RowCount+' cols='+ColCount);
+            ob.innerHTML='';
+            if (RowCount>0) {
+      
+              // first row is headers
+              var toprow=document.createElement("tr");
+              for (var j=0; j<ColCount; j++) {
+                if (hasHeaders==true) {
+                  var hdr=document.createElement("th");
+                  }
+                else {
+                  var hdr=document.createElement("td");}
+                hdr.style.width=cw+'px';
+                var textnode=document.createTextNode(localtestdata[0][j]);
+                hdr.appendChild(textnode);
+                toprow.appendChild(hdr);
+              }
+              ob.appendChild(toprow);
+      
+              var bdy=document.createElement("tbody");
+              ob.appendChild(bdy);
+              for (i = 1; i < RowCount; i++ ) {
+                 var row=document.createElement("tr");
+                 for (j=0; j<ColCount; j++) {
+                   var cell = document.createElement("td");
+                   //alert('cell value is '+localtestdata[i][j]);
+                   textnode=document.createTextNode(localtestdata[i][j]);
+                   cell.appendChild(textnode);
+                   row.appendChild(cell);
+                 }
+                 bdy.appendChild(row);
+              }
+            }
+          }
+          }
+          catch(err) {  alert("Error in TXTable.SetTableData: "+ err.message); };
+      i = this.GetNumCols();
+      this.SetNumCols(this.GetNumCols());
+      this.SetNumRows(this.GetNumRows());
+    };
+    this.SetColWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("ColWidth",pas.SysUtils.IntToStr(AValue));
+      this.SetTableData(this.GetTableData());
+    };
+    this.SetSelectedRow = function (AValue) {
+      var v = "";
+      this.myNode.SetAttributeValue$1("SelectedRow",pas.SysUtils.IntToStr(AValue),"Integer");
+      v = this.GetSelectedValue();
+    };
+    this.SetSelectedCol = function (AValue) {
+      var v = "";
+      this.myNode.SetAttributeValue$1("SelectedCol",pas.SysUtils.IntToStr(AValue),"Integer");
+      v = this.GetSelectedValue();
+    };
+    this.SetSelectedValue = function (AValue) {
+      this.myNode.SetAttributeValue$1("SelectedValue",AValue,"String");
+      this.SetCellValue(this.GetSelectedRow(),this.GetSelectedCol(),AValue);
+    };
+    this.SetNumRows = function (AValue) {
+      var r0 = 0;
+      var r = 0;
+      r0 = this.GetNumRows();
+      if (AValue > 0) {
+        if (AValue > r0) {
+          this.AddTableRows(AValue - r0)}
+         else if (AValue < r0) for (var $l1 = r0 - 1, $end2 = AValue; $l1 >= $end2; $l1--) {
+          r = $l1;
+          this.DeleteRow(r);
+        };
+        this.myNode.SetAttributeValue$1("NumRows",pas.SysUtils.IntToStr(AValue),"Integer");
+      };
+    };
+    this.SetNumCols = function (AValue) {
+      var c0 = 0;
+      var c = 0;
+      c0 = this.GetNumCols();
+      if (AValue > 0) {
+        if (AValue > c0) {
+          this.AddTableColumns(AValue - c0)}
+         else if (AValue < c0) for (var $l1 = c0 - 1, $end2 = AValue; $l1 >= $end2; $l1--) {
+          c = $l1;
+          this.DeleteColumn(c);
+        };
+        this.myNode.SetAttributeValue$1("NumCols",pas.SysUtils.IntToStr(AValue),"Integer");
+      };
+    };
+    this.SetHasHeaderRow = function (AValue) {
+      this.myNode.SetAttributeValue$1("HasHeaderRow",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      this.SetTableData(this.ConstructDataString());
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    this.ConstructDataString = function () {
+      var Result = "";
+      var dataStr = "";
+      dataStr = "[";
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        //alert('ob is '+ob.id);
+        for (var i = 0, row; row = ob.rows[i]; i++) {
+          if (i>0) { dataStr=dataStr+',';}
+          dataStr=dataStr+'[';
+          for (var j = 0, col; col = row.cells[j]; j++) {
+            if (j>0) { dataStr=dataStr+','; }
+            var str = row.cells[j].innerText;
+            dataStr=dataStr+ '"'+str+'"';
+          }
+          dataStr=dataStr+']';
+        }
+      };
+      dataStr = dataStr + "]";
+      Result = dataStr;
+      return Result;
+    };
+    this.ConstructTableStringFromArray = function (myArray) {
+      var Result = "";
+      var i = 0;
+      var j = 0;
+      var str = "";
+      str = "[";
+      for (var $l1 = 0, $end2 = rtl.length(myArray) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        if (i > 0) str = str + ",";
+        str = str + "[";
+        for (var $l3 = 0, $end4 = rtl.length(myArray[i]) - 1; $l3 <= $end4; $l3++) {
+          j = $l3;
+          if (j > 0) str = str + ",";
+          str = ((str + '"') + myArray[i][j]) + '"';
+        };
+        str = str + "]";
+      };
+      str = str + "]";
+      Result = str;
+      return Result;
+    };
+    this.GetCellValue = function (row, col) {
+      var Result = "";
+      var myval = "";
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        if (ob.rows.length > row) {
+          if (ob.rows[row].cells.length > col) {
+            var str=ob.rows[row].cells[col].innerText;
+            //str=str.replace(/&nbsp;/g, " ");
+            myval = str;
+          }
+        }
+      };
+      Result = myval;
+      return Result;
+    };
+    this.SetCellValue = function (row, col, AValue) {
+      if ((row >= 0) && (col >= 0)) {
+        var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+        if (ob!=null) {
+          if (ob.rows.length > row) {
+            if (ob.rows[row].cells.length > col) {
+              if (ob.rows[row].cells[col].innerText != AValue) {
+                ob.rows[row].cells[col].innerText = AValue;
+                pas.XTable.TableChange(ob,this.NodeName,this.NameSpace);
+              }
+            }
+          }
+        };
+      };
+    };
+    this.GetCellsAsArray = function () {
+      var Result = [];
+      var myArray = [];
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+      for (var i = 0, row; row = ob.rows[i]; i++) {
+         myArray[i] = [];
+         for (var j = 0, col; col = row.cells[j]; j++) {
+           myArray[i][j] = row.cells[j].innerText;
+        }
+      }
+      }
+      //alert(myArray);
+      Result = myArray;
+      return Result;
+    };
+    this.AddTableRows = function (numRows) {
+      var TheArray = [];
+      var c = 0;
+      var r = 0;
+      var r1 = 0;
+      TheArray = this.GetCellsAsArray();
+      r1 = rtl.length(TheArray);
+      TheArray = rtl.arraySetLength(TheArray,[],rtl.length(TheArray) + numRows);
+      for (var $l1 = r1, $end2 = rtl.length(TheArray) - 1; $l1 <= $end2; $l1++) {
+        r = $l1;
+        TheArray[r] = rtl.arraySetLength(TheArray[r],"",rtl.length(TheArray[0]));
+        for (var $l3 = 0, $end4 = rtl.length(TheArray[0]) - 1; $l3 <= $end4; $l3++) {
+          c = $l3;
+          TheArray[r][c] = "";
+        };
+      };
+      this.SetTableData(this.ConstructTableStringFromArray(TheArray));
+      this.SetNumRows(this.GetNumRows());
+    };
+    this.AddTableColumns = function (numCols) {
+      var TheArray = [];
+      var i = 0;
+      var j = 0;
+      var j0 = 0;
+      TheArray = this.GetCellsAsArray();
+      j0 = rtl.length(TheArray[0]);
+      for (var $l1 = 0, $end2 = rtl.length(TheArray) - 1; $l1 <= $end2; $l1++) {
+        i = $l1;
+        TheArray[i] = rtl.arraySetLength(TheArray[i],"",j0 + numCols);
+        for (var $l3 = j0, $end4 = rtl.length(TheArray[0]) - 1; $l3 <= $end4; $l3++) {
+          j = $l3;
+          if (i === 0) {
+            TheArray[i][j] = "hdr"}
+           else TheArray[i][j] = "";
+        };
+      };
+      this.SetTableData(this.ConstructTableStringFromArray(TheArray));
+      this.SetNumCols(this.GetNumCols());
+    };
+    this.DeleteRow = function (r) {
+      if ((r < 0) || (r > (this.GetNumRows() - 1))) {
+        pas.StringUtils.ShowMessage(("DeleteRow " + pas.SysUtils.IntToStr(r)) + " out of range")}
+       else {
+        //alert('deleting row '+r);
+        var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+        ob.deleteRow(r);
+        this.SetTableData(this.ConstructDataString());
+        this.SetNumRows(this.GetNumRows());
+      };
+    };
+    this.DeleteColumn = function (c) {
+      if ((c < 0) || (c > (this.GetNumCols() - 1))) {
+        pas.StringUtils.ShowMessage(("DeleteColumn " + pas.SysUtils.IntToStr(c)) + " out of range")}
+       else {
+        var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+        if (ob!=null) {
+        for (var i = 0, row; row = ob.rows[i]; i++) {
+                row.deleteCell(c);
+            } };
+        this.SetTableData(this.ConstructDataString());
+        this.SetNumCols(this.GetNumCols());
+      };
+    };
+    this.DeleteSelectedRow = function () {
+      var r = 0;
+      var c = 0;
+      r = this.GetSelectedRow();
+      c = this.GetSelectedCol();
+      if ((r < 0) || (c < 0)) {
+        pas.StringUtils.ShowMessage("DeleteSelectedRow - row not selected")}
+       else if (r < 1) {
+        pas.StringUtils.ShowMessage("DeleteSelectedRow - cannot delete header row")}
+       else {
+        this.DeleteRow(r);
+      };
+    };
+    this.DeleteSelectedColumn = function () {
+      var r = 0;
+      var c = 0;
+      r = this.GetSelectedRow();
+      c = this.GetSelectedCol();
+      if ((r < 0) || (c < 0)) {
+        pas.StringUtils.ShowMessage("DeleteTableColumn - column not selected")}
+       else if ((c === 0) && (this.GetNumCols() === 1)) {
+        pas.StringUtils.ShowMessage("DeleteTableColumn - cannot delete all columns")}
+       else {
+        this.DeleteColumn(c);
+      };
+    };
+    var $r = this.$rtti;
+    $r.addProperty("ReadOnly",3,rtl.boolean,"GetReadOnly","SetReadOnly");
+    $r.addProperty("TableHeight",3,rtl.string,"GetTableHeight","SetTableHeight");
+    $r.addProperty("TableWidth",3,rtl.string,"GetTableWidth","SetTableWidth");
+    $r.addProperty("TableData",3,rtl.string,"GetTableData","SetTableData");
+    $r.addProperty("ColWidth",3,rtl.longint,"GetColWidth","SetColWidth");
+    $r.addProperty("SelectedRow",3,rtl.longint,"GetSelectedRow","SetSelectedRow");
+    $r.addProperty("SelectedCol",3,rtl.longint,"GetSelectedCol","SetSelectedCol");
+    $r.addProperty("SelectedValue",3,rtl.string,"GetSelectedValue","SetSelectedValue");
+    $r.addProperty("NumCols",3,rtl.longint,"GetNumCols","SetNumCols");
+    $r.addProperty("NumRows",3,rtl.longint,"GetNumRows","SetNumRows");
+    $r.addProperty("HasHeaderRow",3,rtl.boolean,"GetHasHeaderRow","SetHasHeaderRow");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"TableWidth","String","150","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"TableHeight","String","100","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Top","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Table","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"HasHeaderRow","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"TableData","String",'[["a","b","c"],["1","2","3"]]',"",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SelectedRow","Integer","-1","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SelectedCol","Integer","-1","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"NumCols","Integer","3","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"NumRows","Integer","2","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ColWidth","Integer","40","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SelectedValue","String","","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXTable","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXTable";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ReadOnly = "";
+    var LabelText = "";
+    var OnFocusOutString = "";
+    var OnClickString = "";
+    var OnKeyString = "";
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    ReadOnly = MyNode.GetAttribute("ReadOnly",true).AttribValue;
+    OnClickString = (((((((((('onclick="event.stopPropagation();var rc=pas.XTable.CellClick(event.target,\'' + ScreenObjectName) + "','") + NameSpace) + "');") + "if (rc!='') { ") + "pas.Events.handleEvent(null,'Click','") + ScreenObjectName) + "','") + NameSpace) + "', rc); }") + '" ';
+    OnFocusOutString = ((('onfocusout="pas.XTable.TableChange(this,\'' + ScreenObjectName) + "','") + NameSpace) + '\');"';
+    OnKeyString = ((('onkeydown="if (!pas.XTable.KeyDown(event.target,\'' + ScreenObjectName) + "','") + NameSpace) + '\')) {return false;}"';
+    try{
+        pas.XTable.AddTableStyles('');
+    
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+        wrapper.style.display = 'flex';
+        var goright =  'flex-e'+'nd';
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid = NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var ReadOnlyString = '';
+        if (ReadOnly=='False') { ReadOnlyString = ' contenteditable ';}
+    
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+    
+        var TableString = '<table id='+MyObjectName+ ' '+
+                          OnClickString +
+                          OnKeyString +
+                           OnFocusOutString +
+                           ' style="display:inline-block; overflow:scroll; width:100%; height:100%;" '+
+                           ReadOnlyString+' >' +
+                             '<tr>'+
+                               '<th>1</th>'+
+                               '<th>2</th>'+
+                               '<th>3</th>'+
+                             '</tr>'+
+                             '<tbody></tbody>'+
+                           '</table> ';
+    
+        HTMLString = labelstring+TableString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+      }
+      catch(err) { alert(err.message+'  in XCheckBox.CreateXCheckBox');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXTable.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XProgressBar",["System","Classes","SysUtils","NodeUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXProgressBar",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.GetItemValue = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("ItemValue",true).AttribValue);
+      return Result;
+    };
+    this.GetBarWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("BarWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetMaxVal = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("MaxVal",true).AttribValue);
+      return Result;
+    };
+    this.SetItemValue = function (AValue) {
+      this.myNode.SetAttributeValue$2("ItemValue",pas.SysUtils.IntToStr(AValue));
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.value=AValue;  };
+    };
+    this.SetBarWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("BarWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.SetMaxVal = function (AValue) {
+      this.myNode.SetAttributeValue$2("MaxVal",pas.SysUtils.IntToStr(AValue));
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.max=AValue;  };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("ItemValue",3,rtl.longint,"GetItemValue","SetItemValue");
+    $r.addProperty("BarWidth",3,rtl.string,"GetBarWidth","SetBarWidth");
+    $r.addProperty("MaxVal",3,rtl.longint,"GetMaxVal","SetMaxVal");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BarWidth","String","200","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Right","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Progress Bar","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"MaxVal","Integer","100","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ItemValue","Integer","5","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXProgressBar","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXProgressBar";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ItemValue = "";
+    var MaxVal = "";
+    var LabelText = "";
+    var OnClickString = "";
+    ItemValue = MyNode.GetAttribute("ItemValue",true).AttribValue;
+    MaxVal = MyNode.GetAttribute("MaxVal",true).AttribValue;
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value);" ';
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid = NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+    
+        var BarString = '<progress id='+MyObjectName+' style="display: inline-block; height:20px"  max='+MaxVal+' value='+ItemValue+
+                                  OnClickString +
+                                  '></progress>';
+    
+        HTMLString = labelstring+BarString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+      }
+      catch(err) { alert(err.message+'  in XProgressBar.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXProgressBar.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XNumericSlider",["System","Classes","SysUtils","NodeUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXNumericSlider",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.GetItemValue = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("ItemValue",true).AttribValue);
+      return Result;
+    };
+    this.GetBarWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("BarWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetMaxVal = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("MaxVal",true).AttribValue);
+      return Result;
+    };
+    this.GetMinVal = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("MinVal",true).AttribValue);
+      return Result;
+    };
+    this.SetItemValue = function (AValue) {
+      this.myNode.SetAttributeValue$2("ItemValue",pas.SysUtils.IntToStr(AValue));
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.value=AValue;  };
+    };
+    this.SetBarWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("BarWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.SetMaxVal = function (AValue) {
+      this.myNode.SetAttributeValue$2("MaxVal",pas.SysUtils.IntToStr(AValue));
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.max=AValue;  };
+    };
+    this.SetMinVal = function (AValue) {
+      this.myNode.SetAttributeValue$2("MinVal",pas.SysUtils.IntToStr(AValue));
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.min=AValue;  };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("ItemValue",3,rtl.longint,"GetItemValue","SetItemValue");
+    $r.addProperty("BarWidth",3,rtl.string,"GetBarWidth","SetBarWidth");
+    $r.addProperty("MaxVal",3,rtl.longint,"GetMaxVal","SetMaxVal");
+    $r.addProperty("MinVal",3,rtl.longint,"GetMinVal","SetMinVal");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BarWidth","String","50","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Right","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Number Slider","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"MinVal","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"MaxVal","Integer","100","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ItemValue","Integer","5","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXNumericSlider","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXNumericSlider";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ItemValue = "";
+    var MaxVal = "";
+    var MinVal = "";
+    var LabelText = "";
+    var ReadOnly = "";
+    var OnClickString = "";
+    var OnChangeString = "";
+    ItemValue = MyNode.GetAttribute("ItemValue",true).AttribValue;
+    MaxVal = MyNode.GetAttribute("MaxVal",true).AttribValue;
+    MinVal = MyNode.GetAttribute("MinVal",true).AttribValue;
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    ReadOnly = MyNode.GetAttribute("ReadOnly",true).AttribValue;
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value);" ';
+    OnChangeString = (((((((('onchange="pas.NodeUtils.SetInterfaceProperty(\'' + ScreenObjectName) + "','") + NameSpace) + "','ItemValue',this.value);") + "pas.Events.handleEvent(null,'Change','") + ScreenObjectName) + "','") + NameSpace) + '\', this.value.toString());" ';
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid = NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+        var ReadOnlyString = '';
+        if (ReadOnly=='True') { ReadOnlyString = ' readonly ';}
+    
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+    
+        var SliderString = '<input type="range" id='+MyObjectName + ' '+
+                     OnChangeString + ' '+
+                     OnClickString + ' '+
+                     '   '+ReadOnlyString+
+                     ' value='+ItemValue+
+                     ' min='+MinVal+' max='+MaxVal+' step=1 ></input>' ;
+    
+        HTMLString = labelstring+SliderString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+        pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
+      }
+      catch(err) { alert(err.message+'  in XNumericSlider.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXNumericSlider.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XNumberSpinner",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXNumberSpinner",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("Change");
+    };
+    this.GetMaxVal = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("MaxVal",true).AttribValue);
+      return Result;
+    };
+    this.GetMinVal = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("MinVal",true).AttribValue);
+      return Result;
+    };
+    this.GetStepSize = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("StepSize",true).AttribValue);
+      return Result;
+    };
+    this.GetItemValue = function () {
+      var Result = 0;
+      Result = pas.SysUtils.StrToInt(this.myNode.GetAttribute("ItemValue",true).AttribValue);
+      return Result;
+    };
+    this.GetReadOnly = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("ReadOnly",true).AttribValue);
+      return Result;
+    };
+    this.GetSpinnerWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("SpinnerWidth",true).AttribValue;
+      return Result;
+    };
+    this.SetMaxVal = function (AValue) {
+      this.myNode.SetAttributeValue$2("MaxVal",pas.SysUtils.IntToStr(AValue));
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.max=AValue;  };
+    };
+    this.SetMinVal = function (AValue) {
+      this.myNode.SetAttributeValue$2("MinVal",pas.SysUtils.IntToStr(AValue));
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.min=AValue;  };
+    };
+    this.SetStepSize = function (AValue) {
+      this.myNode.SetAttributeValue$2("StepSize",pas.SysUtils.IntToStr(AValue));
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.step=AValue;  };
+    };
+    this.SetItemValue = function (AValue) {
+      this.myNode.SetAttributeValue$2("ItemValue",pas.SysUtils.IntToStr(AValue));
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         ob.value=AValue;  };
+    };
+    this.SetReadOnly = function (AValue) {
+      this.myNode.SetAttributeValue$1("ReadOnly",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        ob.readOnly = AValue  };
+    };
+    this.SetSpinnerWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("SpinnerWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("MaxVal",3,rtl.longint,"GetMaxVal","SetMaxVal");
+    $r.addProperty("MinVal",3,rtl.longint,"GetMinVal","SetMinVal");
+    $r.addProperty("StepSize",3,rtl.longint,"GetStepSize","SetStepSize");
+    $r.addProperty("ItemValue",3,rtl.longint,"GetItemValue","SetItemValue");
+    $r.addProperty("ReadOnly",3,rtl.boolean,"GetReadOnly","SetReadOnly");
+    $r.addProperty("SpinnerWidth",3,rtl.string,"GetSpinnerWidth","SetSpinnerWidth");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpinnerWidth","String","50","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Right","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Number Spinner","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"MinVal","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"MaxVal","Integer","100","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"StepSize","Integer","1","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ItemValue","Integer","5","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXNumberSpinner","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXNumberSpinner";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ItemValue = "";
+    var LabelText = "";
+    var MinVal = "";
+    var MaxVal = "";
+    var StepSize = "";
+    var ReadOnly = false;
+    var OnChangeString = "";
+    var OnClickString = "";
+    MinVal = MyNode.GetAttribute("MinVal",true).AttribValue;
+    MaxVal = MyNode.GetAttribute("MaxVal",true).AttribValue;
+    StepSize = MyNode.GetAttribute("StepSize",true).AttribValue;
+    ItemValue = MyNode.GetAttribute("ItemValue",true).AttribValue;
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    ReadOnly = pas.SysUtils.StrToBool(MyNode.GetAttribute("ReadOnly",true).AttribValue);
+    OnClickString = ((((('onclick="ob=document.getElementById(\'' + ScreenObjectName) + "');ob.focus();pas.Events.handleEvent(null,'Click','") + ScreenObjectName) + "','") + NameSpace) + '\', this.value);event.stopPropagation();" ';
+    OnChangeString = (((((((('onchange="pas.NodeUtils.SetInterfaceProperty(\'' + ScreenObjectName) + "','") + NameSpace) + "','ItemValue',this.value); ") + "pas.Events.handleEvent(null,'Change','") + ScreenObjectName) + "','") + NameSpace) + '\', this.value, \'ItemValue\');" ';
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid = NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var ReadOnlyString = '';
+        if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
+    
+        var inputtext= ItemValue;
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+        var SpinnerString = '<input type="number"  id='+MyObjectName+' ' +
+                              OnClickString +
+                              OnChangeString +
+                     ' class="widgetinner '+wrapperid+'" ' +
+                     ' style="display: inline-block; '+
+                     '" value='+ItemValue+' '+ReadOnlyString+
+                     ' min='+MinVal+' max='+MaxVal+' step='+StepSize+'></input>' ;
+    
+        HTMLString = labelstring+SpinnerString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+        pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
+      }
+      catch(err) { alert(err.message+'  in XNumberSpinner.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXNumberSpinner.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XDatePicker",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXDatePicker",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("Change");
+    };
+    this.GetItemValue = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ItemValue",true).AttribValue;
+      return Result;
+    };
+    this.GetReadOnly = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("ReadOnly",true).AttribValue);
+      return Result;
+    };
+    this.GetBoxWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("BoxWidth",true).AttribValue;
+      return Result;
+    };
+    this.SetItemValue = function (AValue) {
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+          if (ob!=null) {
+              //alert('set '+AValue);
+              // format is DD/MM/YYYY from the property editor, OR YYYY-MM-DD from the picker widget
+              var bits = AValue.split('/');
+              if (bits.length > 1) {
+              var mmddyyyy = bits[1]+'/'+bits[0]+'/'+bits[2];
+              }
+              else
+              {
+                bits = AValue.split('-');
+                mmddyyyy = bits[1]+'/'+bits[2]+'/'+bits[0];
+              }
+              //alert('formatted '+mmddyyyy);
+              var date = new Date(mmddyyyy);   // use format MM/DD/YYYY
+      
+              var month = date.getMonth() +1;
+              var monthstr = month.toString();
+              if (month<10) {monthstr='0'+monthstr;}
+      
+              var day = date.getDate();
+              var daystr = day.toString();
+              if (day<10) {daystr='0'+daystr;}
+      
+              var year = date.getFullYear();
+              //alert(daystr+'/'+monthstr+'/'+year);
+      
+              ob.value=year+'-'+monthstr+'-'+daystr;      // wants format YYYY-MM-DD
+              this.SetAttributeValue('ItemValue',daystr+'/'+monthstr+'/'+year,'String',false); // set property format DD/MM/YYYY
+              };
+    };
+    this.SetReadOnly = function (AValue) {
+      this.myNode.SetAttributeValue$1("ReadOnly",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        ob.readOnly = AValue  };
+    };
+    this.SetBoxWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("BoxWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("ItemValue",3,rtl.string,"GetItemValue","SetItemValue");
+    $r.addProperty("ReadOnly",3,rtl.boolean,"GetReadOnly","SetReadOnly");
+    $r.addProperty("BoxWidth",3,rtl.string,"GetBoxWidth","SetBoxWidth");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BoxWidth","String","200","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Right","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Date Picker","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ItemValue","String","01\/01\/2000","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXDatePicker","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXDatePicker";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ItemValue = "";
+    var LabelText = "";
+    var ReadOnly = false;
+    var OnChangeString = "";
+    var OnClickString = "";
+    ItemValue = MyNode.GetAttribute("ItemValue",true).AttribValue;
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    ReadOnly = pas.SysUtils.StrToBool(MyNode.GetAttribute("ReadOnly",true).AttribValue);
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value.toString());" ';
+    OnChangeString = (((((((('onchange="pas.NodeUtils.SetInterfaceProperty(\'' + ScreenObjectName) + "','") + NameSpace) + "','ItemValue',this.value.toString()); ") + "pas.Events.handleEvent(null,'Change','") + ScreenObjectName) + "','") + NameSpace) + '\', this.value.toString(), \'ItemValue\');" ';
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid =  NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var ReadOnlyString = '';
+        if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
+    
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+        var PickerString = '<input type="date" id='+MyObjectName+' '+
+                           ' class="widgetinner '+wrapperid+'" ' +
+                            OnClickString +
+                            OnChangeString +
+                            ' style="display: inline-block;"   '+ReadOnlyString+'> ';
+    
+        HTMLString = labelstring+PickerString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+        pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
+      }
+      catch(err) { alert(err.message+'  in XDatePicker.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXDatePicker.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XColorPicker",["System","Classes","SysUtils","NodeUtils","StringUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXColorPicker",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("Change");
+    };
+    this.GetItemValue = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ItemValue",true).AttribValue;
+      return Result;
+    };
+    this.GetReadOnly = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("ReadOnly",true).AttribValue);
+      return Result;
+    };
+    this.GetBoxWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("BoxWidth",true).AttribValue;
+      return Result;
+    };
+    this.SetItemValue = function (AValue) {
+      this.myNode.SetAttributeValue$2("ItemValue",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+          ob.value=AValue;
+          };
+    };
+    this.SetReadOnly = function (AValue) {
+      this.myNode.SetAttributeValue$1("ReadOnly",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        ob.readOnly = AValue  };
+    };
+    this.SetBoxWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("BoxWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("ItemValue",3,rtl.string,"GetItemValue","SetItemValue");
+    $r.addProperty("ReadOnly",3,rtl.boolean,"GetReadOnly","SetReadOnly");
+    $r.addProperty("BoxWidth",3,rtl.string,"GetBoxWidth","SetBoxWidth");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BoxWidth","String","200","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Right","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Colour Picker","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ReadOnly","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ItemValue","String","","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXColorPicker","BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXColorPicker";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var ItemValue = "";
+    var LabelText = "";
+    var ReadOnly = false;
+    var OnChangeString = "";
+    var OnClickString = "";
+    ItemValue = MyNode.GetAttribute("ItemValue",true).AttribValue;
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    ReadOnly = pas.SysUtils.StrToBool(MyNode.GetAttribute("ReadOnly",true).AttribValue);
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value.toString());" ';
+    OnChangeString = (((((((('onchange="pas.NodeUtils.SetInterfaceProperty(\'' + ScreenObjectName) + "','") + NameSpace) + "','ItemValue',this.value.toString()); ") + "pas.Events.handleEvent(null,'Change','") + ScreenObjectName) + "','") + NameSpace) + '\', this.value.toString(), \'ItemValue\');" ';
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var NodeIDString = "'"+ScreenObjectName+"'";
+        var wrapperid =  NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var ReadOnlyString = '';
+        if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
+    
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+        var PickerString = '<input type="color"  id='+MyObjectName+' '+
+                            OnClickString +
+                            OnChangeString +
+                           ' style="display: inline-block; padding:0px;" value='+ItemValue+' '+ReadOnlyString+'> ';
+    
+        HTMLString = labelstring+PickerString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+        pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
+      }
+      catch(err) { alert(err.message+'  in XColorPicker.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXColorPicker.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XImage",["System","Classes","SysUtils","NodeUtils","HTMLUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXImage",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.GetSource = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Source",true).AttribValue;
+      return Result;
+    };
+    this.GetImageWidth = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ImageWidth",true).AttribValue;
+      return Result;
+    };
+    this.GetImageHeight = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("ImageHeight",true).AttribValue;
+      return Result;
+    };
+    this.SetSource = function (AValue) {
+      this.myNode.SetAttributeValue$2("Source",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+         if (AValue=='') {
+           ob.src='dfltImage.gif';
+         }
+         else {
+         try{
+           ob.src=AValue
+           }
+               catch(err) { alert(err.message+'  in XImage.SetSource '+AValue);}
+           }
+         };
+    };
+    this.SetImageWidth = function (AValue) {
+      this.myNode.SetAttributeValue$2("ImageWidth",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    };
+    this.SetImageHeight = function (AValue) {
+      this.myNode.SetAttributeValue$2("ImageHeight",AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("Source",3,rtl.string,"GetSource","SetSource");
+    $r.addProperty("ImageHeight",3,rtl.string,"GetImageHeight","SetImageHeight");
+    $r.addProperty("ImageWidth",3,rtl.string,"GetImageWidth","SetImageWidth");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ImageWidth","String","250","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ImageHeight","String","200","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Right","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","Image","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Source","String","","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty("TXImage","ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty("TXImage","ContainerWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXImage";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var Source = "";
+    var LabelText = "";
+    var OnClickString = "";
+    var marginString = "";
+    LabelText = MyNode.GetAttribute("LabelText",true).AttribValue;
+    Source = MyNode.GetAttribute("Source",true).AttribValue;
+    marginString = ((((((("margin:" + pas.HTMLUtils.glbMarginSpacing) + " ") + pas.HTMLUtils.glbMarginSpacing) + " ") + pas.HTMLUtils.glbMarginSpacing) + " ") + pas.HTMLUtils.glbMarginSpacing) + ";";
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', \'\');" ';
+    try{
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var wrapperid = NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+        var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
+    
+        var ImageString = ' <img  id='+MyObjectName+ ' style="display: inline-block;" src='+Source+' '+
+                             OnClickString +
+                             ' >';
+    
+        var HTMLString = labelstring+ImageString;
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+        }
+        catch(err) { alert(err.message+'  in XImage.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXImage.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XGroupBox",["System","Classes","SysUtils","NodeUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXGroupBox",pas.WrapperPanel.TWrapperPanel,function () {
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+    };
+    this.GetCaption = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("Caption",true).AttribValue;
+      return Result;
+    };
+    this.SetCaption = function (AValue) {
+      var AVal = "";
+      this.myNode.SetAttributeValue$2("Caption",AValue);
+      AVal = pas.SysUtils.UpperCase(AValue);
+      var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+      if (ob!=null) {
+        };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeType = $impl.MyNodeType;
+      this.MyForm = MyForm;
+      this.FAlignChildrenVertical = true;
+      this.SetMyEventTypes();
+      this.FIsContainer = true;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("Caption",3,rtl.string,"GetCaption","SetCaption");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerWidth","String","300px","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ContainerHeight","String","300px","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"BgColor","Color","#555555","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Caption","String","Group Caption","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"HTMLClasses","String","","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateWidget);
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"LabelText");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXGroupBox";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var Caption = "";
+    var OnClickString = "";
+    Caption = pas.SysUtils.UpperCase(MyNode.GetAttribute("Caption",true).AttribValue);
+    OnClickString = ((('onclick="event.stopPropagation();pas.Events.handleEvent(null,\'Click\',\'' + ScreenObjectName) + "','") + NameSpace) + '\', this.value);" ';
+    try{
+    
+        var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
+    
+        var HTMLString='';
+        var wrapperid =  NameSpace+ScreenObjectName;
+        var MyObjectName=wrapperid+'Contents';
+    
+       // HTMLString = '<div  id='+MyObjectName+ ' style=" height:100%; width:100%; position:relative; z-index:0;" ' +
+        HTMLString = '<div  id='+MyObjectName+ ' style=" height:100%; width:100%; z-index:0;"  class="vboxNoStretch widgetinner '+NameSpace+ScreenObjectName+'" ' +
+                     OnClickString +
+                      '><legend>'+Caption+'</legend></div>';
+    
+    
+        var wrapper=document.getElementById(wrapperid);
+        wrapper.insertAdjacentHTML('beforeend', HTMLString);
+    
+      }
+      catch(err) { alert(err.message+'  in XScrollBox.CreateWidget');};
+    MyNode.ScreenObject = MyNode;
+    pas.NodeUtils.RefreshComponentProps(MyNode);
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXGroupBox.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XStore",["System","Classes","SysUtils","NodeUtils","HTMLUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXStore",pas.WrapperPanel.TWrapperPanel,function () {
+    this.getDataValue = function () {
+      var Result = "";
+      Result = pas.HTMLUtils.ReadFromLocalStore(this.getKeyName());
+      return Result;
+    };
+    this.getKeyName = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("KeyName",true).AttribValue;
+      return Result;
+    };
+    this.setDataValue = function (AValue) {
+      this.myNode.SetAttributeValue$2("DataValue",AValue);
+      pas.HTMLUtils.WriteToLocalStore(this.getKeyName(),AValue);
+    };
+    this.setKeyName = function (AValue) {
+      this.myNode.SetAttributeValue$2("KeyName",AValue);
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeClass = "NV";
+      this.NodeType = "TXStore";
+      this.MyForm = MyForm;
+      this.myNode.myEventTypes = pas.Classes.TStringList.$create("Create$1");
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    this.Destroy = function () {
+      pas.HTMLUtils.ClearLocalStore(this.getKeyName());
+      pas.System.TObject.Destroy.call(this);
+    };
+    var $r = this.$rtti;
+    $r.addProperty("KeyName",3,rtl.string,"getKeyName","setKeyName");
+    $r.addProperty("DataValue",3,rtl.string,"getDataValue","setDataValue");
+  });
+  $mod.$init = function () {
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"KeyName","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"DataValue","String","","",false);
+    pas.NodeUtils.AddNodeFuncLookup("TXStore",$impl.CreateinterfaceObj,$impl.CreateStore);
+    pas.WrapperPanel.SuppressDesignerProperty("TXStore","Alignment");
+    pas.WrapperPanel.SuppressDesignerProperty("TXStore","IsVisible");
+    pas.WrapperPanel.SuppressDesignerProperty("TXStore","LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty("TXStore","LabelText");
+    pas.WrapperPanel.SuppressDesignerProperty("TXStore","Hint");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.myDefaultAttribs = [];
+  $impl.CreateStore = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    MyNode.ScreenObject = MyNode;
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXStore.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XTrapEvents",["System","Classes","SysUtils","NodeUtils","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  rtl.createClass($mod,"TXTrapEvents",pas.WrapperPanel.TWrapperPanel,function () {
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.WrapperPanel.TWrapperPanel.Create$2.call(this,NodeName,NameSpace);
+      this.NodeClass = "NV";
+      this.NodeType = "TXTrapEvents";
+      this.MyForm = MyForm;
+      this.myNode.myEventTypes = pas.Classes.TStringList.$create("Create$1");
+      this.SetMyEventTypes();
+      this.FIsContainer = false;
+    };
+    this.Destroy = function () {
+      pas.System.TObject.Destroy.call(this);
+    };
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Any");
+    };
+  });
+  $mod.$init = function () {
+    pas.NodeUtils.AddNodeFuncLookup("TXTrapEvents",$impl.CreateinterfaceObj,$impl.CreateTrapper);
+    pas.WrapperPanel.SuppressDesignerProperty("TXTrapEvents","Alignment");
+    pas.WrapperPanel.SuppressDesignerProperty("TXTrapEvents","IsVisible");
+    pas.WrapperPanel.SuppressDesignerProperty("TXTrapEvents","LabelPos");
+    pas.WrapperPanel.SuppressDesignerProperty("TXTrapEvents","LabelText");
+    pas.WrapperPanel.SuppressDesignerProperty("TXTrapEvents","Hint");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.CreateTrapper = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    MyNode.ScreenObject = MyNode;
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXTrapEvents.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XHTMLText",["System","Classes","SysUtils","StringUtils","NodeUtils","XIFrame","UtilsJSCompile","XForm","XCode","XButton","XVBox","XTabControl","XMemo","WrapperPanel"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.TXHTMLMessage = function (s) {
+    if (s) {
+      this.objid = s.objid;
+      this.NameSpace = s.NameSpace;
+      this.mtype = s.mtype;
+      this.mdata = s.mdata;
+    } else {
+      this.objid = "";
+      this.NameSpace = "";
+      this.mtype = "";
+      this.mdata = "";
+    };
+    this.$equal = function (b) {
+      return (this.objid === b.objid) && ((this.NameSpace === b.NameSpace) && ((this.mtype === b.mtype) && (this.mdata === b.mdata)));
+    };
+  };
+  $mod.$rtti.$Record("TXHTMLMessage",{}).addFields("objid",rtl.string,"NameSpace",rtl.string,"mtype",rtl.string,"mdata",rtl.string);
+  this.HandleTXHTMLMessage = function (msg) {
+    var ItemNode = null;
+    var message = "";
+    if (msg.objid !== "") {
+      ItemNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,msg.objid,msg.NameSpace,false);
+      if (ItemNode !== null) {
+        if (msg.mtype === "titleChange") {
+          message = msg.mdata;
+          if (message !== "") {
+            message = ItemNode.ExtractTextFromTitle(message);
+            if (pas.SysUtils.Trim(message).length > 0) {
+              ItemNode.SetSourceText(message);
+            };
+          };
+        };
+      };
+    };
+  };
+  rtl.createClass($mod,"TXHTMLText",pas.XIFrame.TXIFrame,function () {
+    this.GetIsEditable = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("IsEditable",true).AttribValue);
+      return Result;
+    };
+    this.GetSourceText = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("SourceText",true).AttribValue;
+      return Result;
+    };
+    this.GetHeaderHTML = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("HeaderHTML",true).AttribValue;
+      return Result;
+    };
+    this.GetFooterHTML = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("FooterHTML",true).AttribValue;
+      return Result;
+    };
+    this.SetIsEditable = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("IsEditable",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      };
+    };
+    this.SetSourceText = function (AValue) {
+      var URLStringList = null;
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("SourceText",AValue,"String");
+        URLStringList = this.CreateTextURL(AValue);
+        this.SetHTMLSource(URLStringList.GetTextStr());
+        URLStringList = rtl.freeLoc(URLStringList);
+      };
+    };
+    this.SetHeaderHTML = function (AValue) {
+      if (this.myNode !== null) {
+        if (AValue !== this.myNode.GetAttribute("HeaderHTML",false).AttribValue) {
+          this.myNode.SetAttributeValue$1("HeaderHTML",AValue,"String");
+          this.SetSourceText(this.GetSourceText());
+        };
+      };
+    };
+    this.SetFooterHTML = function (AValue) {
+      if (this.myNode !== null) {
+        if (AValue !== this.myNode.GetAttribute("FooterHTML",false).AttribValue) {
+          this.myNode.SetAttributeValue$1("FooterHTML",AValue,"String");
+          this.SetSourceText(this.GetSourceText());
+        };
+      };
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.XIFrame.TXIFrame.Create$3.call(this,MyForm,NodeName,NameSpace);
+      this.NodeType = "TXHTMLText";
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    this.CreateTextURL = function (txt) {
+      var Result = null;
+      var WYSIWYGHEADER = null;
+      var WYSIWYGFOOTER = null;
+      var TheText = null;
+      var OutputStringList = null;
+      var startstring = "";
+      var endstring = "";
+      var InnerStartLength = 0;
+      var InnerEndLength = 0;
+      WYSIWYGHEADER = pas.Classes.TStringList.$create("Create$1");
+      WYSIWYGFOOTER = pas.Classes.TStringList.$create("Create$1");
+      TheText = pas.Classes.TStringList.$create("Create$1");
+      OutputStringList = pas.Classes.TStringList.$create("Create$1");
+      startstring = '<div contenteditable="false" class="wysiwyg-content">';
+      endstring = "<\/div>";
+      InnerStartLength = startstring.length;
+      InnerEndLength = endstring.length;
+      TheText.Add(startstring);
+      TheText.Add(txt);
+      TheText.Add(endstring);
+      WYSIWYGHEADER.Add("<!DOCTYPE html>");
+      WYSIWYGHEADER.Add("<html>");
+      WYSIWYGHEADER.Add("<head>");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add(("<title>TXHTMLText " + this.myNode.NodeName) + "<\/title>");
+      WYSIWYGHEADER.Add("<\/head>");
+      WYSIWYGHEADER.Add("<body>");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add('<div id="FrameContent" class="content" style="background-color:powderblue; ">');
+      WYSIWYGHEADER.Add(this.myNode.GetAttribute("HeaderHTML",false).AttribValue);
+      WYSIWYGHEADER.Add('      <div id="thetext" class="wysiwyg" style="height: 100%; width: 100%; background-color:white; border-style: solid;border-width:thin;">');
+      WYSIWYGFOOTER.Add("      <\/div>");
+      WYSIWYGFOOTER.Add(this.myNode.GetAttribute("FooterHTML",false).AttribValue);
+      WYSIWYGFOOTER.Add("    <\/div>");
+      WYSIWYGFOOTER.Add("<\/body>");
+      WYSIWYGFOOTER.Add("<\/html>");
+      OutputStringList.AddStrings(WYSIWYGHEADER);
+      OutputStringList.AddStrings(TheText);
+      OutputStringList.AddStrings(WYSIWYGFOOTER);
+      Result = OutputStringList;
+      WYSIWYGHEADER = rtl.freeLoc(WYSIWYGHEADER);
+      WYSIWYGFOOTER = rtl.freeLoc(WYSIWYGFOOTER);
+      TheText = rtl.freeLoc(TheText);
+      return Result;
+    };
+    this.ExtractTextFromTitle = function (message) {
+      var Result = "";
+      var str = "";
+      var StartPos = 0;
+      var EndPos = 0;
+      str = message;
+      StartPos = pas.System.Pos("Z!Z!Z",str);
+      if (StartPos > 0) {
+        str = pas.System.Copy(str,StartPos + 5,999999);
+        EndPos = pas.System.Pos("Z!Z!Z",str);
+        if (EndPos > 0) str = pas.System.Copy(str,1,EndPos - 1);
+      } else str = "Z!Z!Z";
+      Result = str;
+      return Result;
+    };
+    this.SetMyEventTypes$1 = function () {
+      this.myEventTypes.Add("Click");
+    };
+    var $r = this.$rtti;
+    $r.addProperty("IsEditable",3,rtl.boolean,"GetIsEditable","SetIsEditable");
+    $r.addProperty("SourceText",3,rtl.string,"GetSourceText","SetSourceText");
+    $r.addProperty("HeaderHTML",3,rtl.string,"GetHeaderHTML","SetHeaderHTML");
+    $r.addProperty("FooterHTML",3,rtl.string,"GetFooterHTML","SetFooterHTML");
+  });
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"FrameWidth","String","300","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"FrameHeight","String","300","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Top","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","HTML Text","",false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"HTMLSource","String","","",false,false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"IsEditable","Boolean","True","Allow the text page to be edited",false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Showing","Boolean","False","When not embedded, set this to display the text in a standalone browser page",false,false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SourceText","String","...text...","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"HeaderHTML","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"FooterHTML","String","","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateHTMLTextWidget);
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"HTMLSource");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ActualHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ActualWidth");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXHTMLText";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateHTMLTextWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var NewWidget = null;
+    var h = 0;
+    var w = 0;
+    pas.XIFrame.DoCreateFrameWidget(MyNode,ParentNode,ScreenObjectName,position);
+    NewWidget = MyNode;
+    h = NewWidget.GetActualHeight();
+    w = NewWidget.GetActualWidth();
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXHTMLText.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("XHTMLEditor",["System","Classes","SysUtils","StringUtils","NodeUtils","XIFrame","UtilsJSCompile","XForm","XCode","XButton","XVBox","XTabControl","XMemo","EventsInterface","WrapperPanel","Events"],function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  this.TXHTMLMessage = function (s) {
+    if (s) {
+      this.objid = s.objid;
+      this.NameSpace = s.NameSpace;
+      this.mtype = s.mtype;
+      this.mdata = s.mdata;
+    } else {
+      this.objid = "";
+      this.NameSpace = "";
+      this.mtype = "";
+      this.mdata = "";
+    };
+    this.$equal = function (b) {
+      return (this.objid === b.objid) && ((this.NameSpace === b.NameSpace) && ((this.mtype === b.mtype) && (this.mdata === b.mdata)));
+    };
+  };
+  $mod.$rtti.$Record("TXHTMLMessage",{}).addFields("objid",rtl.string,"NameSpace",rtl.string,"mtype",rtl.string,"mdata",rtl.string);
+  this.HandleTXHTMLMessage = function (msg) {
+    var ItemNode = null;
+    var message = "";
+    if (msg.objid !== "") {
+      ItemNode = pas.NodeUtils.FindDataNodeById(pas.NodeUtils.SystemNodeTree,msg.objid,msg.NameSpace,false);
+      if (ItemNode !== null) {
+        if (msg.mtype === "titleChange") {
+          message = msg.mdata;
+          if (message !== "") {
+            message = ItemNode.ExtractTextFromTitle(message);
+            if (pas.SysUtils.Trim(message).length > 0) {
+              ItemNode.SetSourceText(message);
+              if (pas.NodeUtils.StartingUp === false) pas.Events.handleEvent$2("Change",ItemNode.NodeName,msg.NameSpace,message);
+            };
+          } else {
+            ItemNode.SetShowing(false);
+            pas.Events.handleEvent$2("HTMLEditorBrowserClosed",ItemNode.NodeName,msg.NameSpace,"");
+          };
+        };
+      };
+    };
+  };
+  rtl.createClass($mod,"TXHTMLEditor",pas.XIFrame.TXIFrame,function () {
+    this.$init = function () {
+      pas.XIFrame.TXIFrame.$init.call(this);
+      this.fHandleChange = null;
+    };
+    this.$final = function () {
+      this.fHandleChange = undefined;
+      pas.XIFrame.TXIFrame.$final.call(this);
+    };
+    this.GetIsEmbedded = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("IsEmbedded",true).AttribValue);
+      return Result;
+    };
+    this.GetIsEditable = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("IsEditable",true).AttribValue);
+      return Result;
+    };
+    this.GetShowing = function () {
+      var Result = false;
+      Result = pas.StringUtils.MyStrToBool(this.myNode.GetAttribute("GetShowing",true).AttribValue);
+      return Result;
+    };
+    this.GetSourceText = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("SourceText",true).AttribValue;
+      return Result;
+    };
+    this.GetHeaderHTML = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("HeaderHTML",true).AttribValue;
+      return Result;
+    };
+    this.GetFooterHTML = function () {
+      var Result = "";
+      Result = this.myNode.GetAttribute("FooterHTML",true).AttribValue;
+      return Result;
+    };
+    this.SetIsEmbedded = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("IsEmbedded",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+        if (AValue === false) {
+          this.SetIsVisible(false)}
+         else {
+          this.SetIsVisible(true);
+          this.SetSourceText(this.GetSourceText());
+        };
+      };
+    };
+    this.SetIsEditable = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("IsEditable",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+      };
+    };
+    this.SetShowing = function (AValue) {
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("Showing",pas.StringUtils.MyBoolToStr(AValue),"Boolean");
+        if (this.GetIsEmbedded() === false) {
+          if (AValue === true) {
+            this.PopUpBrowser()}
+           else {
+            this.CloseBrowserWindow();
+          };
+        };
+      };
+    };
+    this.SetSourceText = function (AValue) {
+      var URLStringList = null;
+      if (this.myNode !== null) {
+        this.myNode.SetAttributeValue$1("SourceText",AValue,"String");
+        URLStringList = this.CreateTextURL();
+        this.SetHTMLSource(URLStringList.GetTextStr());
+      };
+    };
+    this.SetHeaderHTML = function (AValue) {
+      if (this.myNode !== null) {
+        if (AValue !== this.myNode.GetAttribute("HeaderHTML",false).AttribValue) {
+          this.myNode.SetAttributeValue$1("HeaderHTML",AValue,"String");
+          this.SetSourceText(this.GetSourceText());
+        };
+      };
+    };
+    this.SetFooterHTML = function (AValue) {
+      if (this.myNode !== null) {
+        if (AValue !== this.myNode.GetAttribute("FooterHTML",false).AttribValue) {
+          this.myNode.SetAttributeValue$1("FooterHTML",AValue,"String");
+          this.SetSourceText(this.GetSourceText());
+        };
+      };
+    };
+    this.PopUpBrowser = function () {
+      var URLStringList = null;
+      URLStringList = this.CreateTextURL();
+      if (this.GetIsEmbedded() === false) {
+        this.LaunchHTML("Data",URLStringList.GetTextStr(),"TXHTMLEditor");
+      } else {
+        this.SetHTMLSource(URLStringList.GetTextStr());
+      };
+      URLStringList = rtl.freeLoc(URLStringList);
+    };
+    this.Create$3 = function (MyForm, NodeName, NameSpace) {
+      pas.XIFrame.TXIFrame.Create$3.call(this,MyForm,NodeName,NameSpace);
+      this.NodeType = "TXHTMLEditor";
+      this.FIsContainer = false;
+      pas.NodeUtils.SetNodePropDefaults(this,$impl.myDefaultAttribs);
+    };
+    this.CreateTextURL = function () {
+      var Result = null;
+      var WYSIWYGHEADER = null;
+      var WYSIWYGFOOTER = null;
+      var HelpText = null;
+      var OutputStringList = null;
+      var startstring = "";
+      var endstring = "";
+      var InnerStartLength = 0;
+      var InnerEndLength = 0;
+      var ActionBarClass = "";
+      WYSIWYGHEADER = pas.Classes.TStringList.$create("Create$1");
+      WYSIWYGFOOTER = pas.Classes.TStringList.$create("Create$1");
+      HelpText = pas.Classes.TStringList.$create("Create$1");
+      OutputStringList = pas.Classes.TStringList.$create("Create$1");
+      if (this.GetIsEditable() === true) {
+        startstring = '<div contenteditable="true"'}
+       else startstring = '<div contenteditable="false"';
+      startstring = startstring + ' class="wysiwyg-content" id = "my_wysiwyg_editor" >';
+      endstring = "<\/div>";
+      InnerStartLength = startstring.length;
+      InnerEndLength = endstring.length;
+      HelpText.Add(startstring);
+      HelpText.Add(this.GetSourceText());
+      HelpText.Add(endstring);
+      WYSIWYGHEADER.Add("<!DOCTYPE html>");
+      WYSIWYGHEADER.Add("<html>");
+      WYSIWYGHEADER.Add("<head>");
+      WYSIWYGHEADER.Add("<!--");
+      WYSIWYGHEADER.Add("The MIT License (MIT)");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add("Copyright (c) Jared Reich");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add("Permission is hereby granted, free of charge, to any person obtaining a copy");
+      WYSIWYGHEADER.Add('of this software and associated documentation files (the "Software"), to deal');
+      WYSIWYGHEADER.Add("in the Software without restriction, including without limitation the rights");
+      WYSIWYGHEADER.Add("to use, copy, modify, merge, publish, distribute, sublicense, and\/or sell");
+      WYSIWYGHEADER.Add("copies of the Software, and to permit persons to whom the Software is");
+      WYSIWYGHEADER.Add("furnished to do so, subject to the following conditions:");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add("The above copyright notice and this permission notice shall be included in all");
+      WYSIWYGHEADER.Add("copies or substantial portions of the Software.");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add('THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR');
+      WYSIWYGHEADER.Add("IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,");
+      WYSIWYGHEADER.Add("FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE");
+      WYSIWYGHEADER.Add("AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER");
+      WYSIWYGHEADER.Add("LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,");
+      WYSIWYGHEADER.Add("OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE");
+      WYSIWYGHEADER.Add("SOFTWARE.");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add("Downloaded from ...... https:\/\/github.com\/jaredreich\/pell......26\/01\/2019");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add("Modified by Steve Wright 27\/01\/2019 to exclude images and code but include");
+      WYSIWYGHEADER.Add("superscripts, centering, colors, undo, save, done and quit functions ");
+      WYSIWYGHEADER.Add("as well as code to return the edited text to the calling program -->");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add('<meta name="viewport" content="user-scalable=1.0,initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0">');
+      WYSIWYGHEADER.Add(("<title>TXHTMLEditor " + this.myNode.NodeName) + "<\/title>");
+      WYSIWYGHEADER.Add("<style>");
+      WYSIWYGHEADER.Add(".wysiwyg-actionbar-color: #FFF !default;");
+      WYSIWYGHEADER.Add(".wysiwyg-border-color: rgba(10, 10, 10, 0.1) !default;");
+      WYSIWYGHEADER.Add(".wysiwyg-border-style: solid !default;");
+      WYSIWYGHEADER.Add(".wysiwyg-border-width: 1px !default;");
+      WYSIWYGHEADER.Add(".wysiwyg-button-height: 30px !default;");
+      WYSIWYGHEADER.Add(".wysiwyg-button-selected-color: #F0F0F0 !default;");
+      WYSIWYGHEADER.Add(".wysiwyg-button-width: 30px !default;");
+      WYSIWYGHEADER.Add(".wysiwyg-content-padding: 10px !default;");
+      WYSIWYGHEADER.Add(".wysiwyg {");
+      WYSIWYGHEADER.Add("  border: .wysiwyg-border-width .wysiwyg-border-style .wysiwyg-border-color;");
+      WYSIWYGHEADER.Add("}");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add(".wysiwyg-content {");
+      WYSIWYGHEADER.Add("  box-sizing: border-box;");
+      WYSIWYGHEADER.Add("  height: 100%;");
+      WYSIWYGHEADER.Add("  width: 100%;");
+      WYSIWYGHEADER.Add("  outline: 0;");
+      WYSIWYGHEADER.Add("  overflow-y: auto;");
+      WYSIWYGHEADER.Add("  padding: .wysiwyg-content-padding;");
+      WYSIWYGHEADER.Add("}");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add(".wysiwyg-actionbar {");
+      WYSIWYGHEADER.Add("  background-color: powderblue;");
+      WYSIWYGHEADER.Add("  border-bottom: .wysiwyg-border-width .wysiwyg-border-style .wysiwyg-border-color;");
+      WYSIWYGHEADER.Add("}");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add(".wysiwyg-button {");
+      WYSIWYGHEADER.Add("  background-color: transparent;");
+      WYSIWYGHEADER.Add("  border: none;");
+      WYSIWYGHEADER.Add("  cursor: pointer;");
+      WYSIWYGHEADER.Add("  height: .wysiwyg-button-height;");
+      WYSIWYGHEADER.Add("  outline: 0;");
+      WYSIWYGHEADER.Add("  width: .wysiwyg-button-width;");
+      WYSIWYGHEADER.Add("  vertical-align: bottom;");
+      WYSIWYGHEADER.Add("}");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add(".wysiwyg-button-selected {");
+      WYSIWYGHEADER.Add("  background-color: .wysiwyg-button-selected-color;");
+      WYSIWYGHEADER.Add("}");
+      WYSIWYGHEADER.Add(".showActionBar {background-color:powderblue; border-style: solid; border-width:thin;");
+      WYSIWYGHEADER.Add("}");
+      WYSIWYGHEADER.Add(".hideActionBar {height:0px;");
+      WYSIWYGHEADER.Add("}");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add("<\/style>");
+      WYSIWYGHEADER.Add("<style>");
+      WYSIWYGHEADER.Add("      html {");
+      WYSIWYGHEADER.Add("        height: 100%;");
+      WYSIWYGHEADER.Add("      }");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add("      body {");
+      WYSIWYGHEADER.Add("        height: 100%;");
+      WYSIWYGHEADER.Add("        margin: 0;");
+      WYSIWYGHEADER.Add("        padding: 0;");
+      WYSIWYGHEADER.Add("      }");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add("      .content {");
+      WYSIWYGHEADER.Add("        box-sizing: border-box;");
+      WYSIWYGHEADER.Add("        margin: 0 auto;");
+      WYSIWYGHEADER.Add("        max-width: 1000px;");
+      WYSIWYGHEADER.Add("        padding: 20px;");
+      WYSIWYGHEADER.Add("      }");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add("      #html-output {");
+      WYSIWYGHEADER.Add("        white-space: pre-wrap;");
+      WYSIWYGHEADER.Add("      }");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add("<\/style>");
+      WYSIWYGHEADER.Add("<\/head>");
+      WYSIWYGHEADER.Add("<body>");
+      WYSIWYGHEADER.Add("");
+      WYSIWYGHEADER.Add('<div id="FrameContent" class="content" style="display:flex;flex-direction:column;background-color:powderblue; height:100%">');
+      WYSIWYGHEADER.Add(this.myNode.GetAttribute("HeaderHTML",false).AttribValue);
+      if (this.GetIsEditable() === true) {
+        ActionBarClass = "showActionBar"}
+       else ActionBarClass = "hideActionBar";
+      WYSIWYGHEADER.Add(('      <div id="MyActionBar" class="' + ActionBarClass) + '" >');
+      WYSIWYGHEADER.Add("      <\/div>");
+      WYSIWYGHEADER.Add('      <div id="editor" class="wysiwyg" style="flex-grow: 1; width: 100%; overflow:scroll;background-color:white; border-style: solid;border-width:thin;">');
+      WYSIWYGFOOTER.Add("      <\/div>");
+      WYSIWYGFOOTER.Add(this.myNode.GetAttribute("FooterHTML",false).AttribValue);
+      WYSIWYGFOOTER.Add("    <\/div>");
+      WYSIWYGFOOTER.Add("<script>");
+      WYSIWYGFOOTER.Add("function stopediting(){window.close()};");
+      WYSIWYGFOOTER.Add('const defaultParagraphSeparatorString = "defaultParagraphSeparator"');
+      WYSIWYGFOOTER.Add('const formatBlock = "formatBlock"');
+      WYSIWYGFOOTER.Add("const addEventListener = (parent, type, listener) => parent.addEventListener(type, listener)");
+      WYSIWYGFOOTER.Add("const appendChild = (parent, child) => parent.appendChild(child)");
+      WYSIWYGFOOTER.Add("const createElement = tag => document.createElement(tag)");
+      WYSIWYGFOOTER.Add("const queryCommandState = command => document.queryCommandState(command)");
+      WYSIWYGFOOTER.Add("const queryCommandValue = command => document.queryCommandValue(command)");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("\/\/export");
+      WYSIWYGFOOTER.Add("const exec = (command, value = null) => document.execCommand(command, false, value)");
+      WYSIWYGFOOTER.Add("var updateCounter = 0; ");
+      WYSIWYGFOOTER.Add("function checkTitle() {");
+      WYSIWYGFOOTER.Add("  var Checkstring = document.title.substr(document.title.length-5);");
+      WYSIWYGFOOTER.Add('  if (Checkstring != "Z!Z!Z" ){ ');
+      WYSIWYGFOOTER.Add('    alert("Error ---- There is a problem saving the edited text (text too long ?)  ---- Save your work to the clipboard, and Quit ")');
+      WYSIWYGFOOTER.Add("    return false; } ");
+      WYSIWYGFOOTER.Add("  else return true; ");
+      WYSIWYGFOOTER.Add("}");
+      WYSIWYGFOOTER.Add("const defaultActions = {");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("bold: {");
+      WYSIWYGFOOTER.Add('    icon: "<b>B<\/b>",');
+      WYSIWYGFOOTER.Add('    title: "Bold",');
+      WYSIWYGFOOTER.Add('    state: () => queryCommandState("bold"),');
+      WYSIWYGFOOTER.Add('    result: () => exec("bold")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("italic: {");
+      WYSIWYGFOOTER.Add('    icon: "<i>I<\/i>",');
+      WYSIWYGFOOTER.Add('    title: "Italic",');
+      WYSIWYGFOOTER.Add('    state: () => queryCommandState("italic"),');
+      WYSIWYGFOOTER.Add('    result: () => exec("italic")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("underline: {");
+      WYSIWYGFOOTER.Add('    icon: "<u>U<\/u>",');
+      WYSIWYGFOOTER.Add('    title: "Underline",');
+      WYSIWYGFOOTER.Add('    state: () => queryCommandState("underline"),');
+      WYSIWYGFOOTER.Add('    result: () => exec("underline")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("strikethrough: {");
+      WYSIWYGFOOTER.Add('    icon: "<strike>S<\/strike>",');
+      WYSIWYGFOOTER.Add('    title: "Strike-through",');
+      WYSIWYGFOOTER.Add('    state: () => queryCommandState("strikeThrough"),');
+      WYSIWYGFOOTER.Add('    result: () => exec("strikeThrough")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add(" Superscript: {");
+      WYSIWYGFOOTER.Add('      icon: "<b><sup>s<\/sup><\/b>",');
+      WYSIWYGFOOTER.Add('      title: "superscript",');
+      WYSIWYGFOOTER.Add('      result: () => exec("superscript")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("heading1: {");
+      WYSIWYGFOOTER.Add('    icon: "<b>H<sub>1<\/sub><\/b>",');
+      WYSIWYGFOOTER.Add('    title: "Heading 1",');
+      WYSIWYGFOOTER.Add('    result: () => exec(formatBlock, "<h1>")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("heading2: {");
+      WYSIWYGFOOTER.Add('    icon: "<b>H<sub>2<\/sub><\/b>",');
+      WYSIWYGFOOTER.Add('    title: "Heading 2",');
+      WYSIWYGFOOTER.Add('    result: () => exec(formatBlock, "<h2>")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("heading3: {");
+      WYSIWYGFOOTER.Add('    icon: "<b>H<sub>3<\/sub><\/b>",');
+      WYSIWYGFOOTER.Add('    title: "Heading 3",');
+      WYSIWYGFOOTER.Add('    result: () => exec(formatBlock, "<h3>")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("paragraph: {");
+      WYSIWYGFOOTER.Add('    icon: "&#182;",');
+      WYSIWYGFOOTER.Add('    title: "Paragraph",');
+      WYSIWYGFOOTER.Add('    result: () => exec(formatBlock, "<p>")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("quote: {");
+      WYSIWYGFOOTER.Add('    icon: "&#8220; &#8221;",');
+      WYSIWYGFOOTER.Add('    title: "Quote (This indents the text)",');
+      WYSIWYGFOOTER.Add('    result: () => exec(formatBlock, "<blockquote>")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("centre: {");
+      WYSIWYGFOOTER.Add('    icon: "<b>c<\/b>",');
+      WYSIWYGFOOTER.Add('    title: "Centre the selected text",');
+      WYSIWYGFOOTER.Add('    result: () => document.execCommand("justifycenter")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("olist: {");
+      WYSIWYGFOOTER.Add('    icon: "&#35;",');
+      WYSIWYGFOOTER.Add('    title: "Ordered List",');
+      WYSIWYGFOOTER.Add('    result: () => exec("insertOrderedList")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("ulist: {");
+      WYSIWYGFOOTER.Add('    icon: "&#8226;",');
+      WYSIWYGFOOTER.Add('    title: "Unordered List",');
+      WYSIWYGFOOTER.Add('    result: () => exec("insertUnorderedList")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("line: {");
+      WYSIWYGFOOTER.Add('    icon: "&#8213;",');
+      WYSIWYGFOOTER.Add('    title: "Horizontal Line",');
+      WYSIWYGFOOTER.Add('    result: () => exec("insertHorizontalRule")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("red: {");
+      WYSIWYGFOOTER.Add('    icon: "<b>r<\/b>",');
+      WYSIWYGFOOTER.Add('    title: "Red",');
+      WYSIWYGFOOTER.Add('    BackgroundColor: "#FF5050",');
+      WYSIWYGFOOTER.Add("    \/\/ I have made this more of a pink to help people");
+      WYSIWYGFOOTER.Add("    \/\/ who are red green colour blind to tell the difference");
+      WYSIWYGFOOTER.Add('    result: () => document.execCommand("foreColor",false, "#FF5050")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("green: {");
+      WYSIWYGFOOTER.Add('    icon: "<b>g<\/b>",');
+      WYSIWYGFOOTER.Add('    title: "Green",');
+      WYSIWYGFOOTER.Add('    BackgroundColor: "#00FF00",');
+      WYSIWYGFOOTER.Add('    result: () => document.execCommand("foreColor",false, "#00FF00")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("blue: {");
+      WYSIWYGFOOTER.Add('      icon: "<b>b<\/b>",');
+      WYSIWYGFOOTER.Add('      title: "Blue",');
+      WYSIWYGFOOTER.Add('      BackgroundColor: "#0000FF",');
+      WYSIWYGFOOTER.Add('      result: () =>document.execCommand("foreColor",false, "#0000FF")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("link: {");
+      WYSIWYGFOOTER.Add('    icon: "&#128279;",');
+      WYSIWYGFOOTER.Add('    title: "Link",');
+      WYSIWYGFOOTER.Add("    result: () => {");
+      WYSIWYGFOOTER.Add('      const url = window.prompt("Enter the link URL")');
+      WYSIWYGFOOTER.Add('      if (url) exec("createLink", url)');
+      WYSIWYGFOOTER.Add("    }");
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("Undo: {");
+      WYSIWYGFOOTER.Add('    icon: "<b>Undo<\/b>",');
+      WYSIWYGFOOTER.Add('    title: "Undo",');
+      WYSIWYGFOOTER.Add('    result: () => exec("undo")');
+      WYSIWYGFOOTER.Add("  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("save: {");
+      WYSIWYGFOOTER.Add('    icon: "<b>Commit<\/b>",');
+      WYSIWYGFOOTER.Add('    title: "Save",');
+      WYSIWYGFOOTER.Add("    result: () => {  ");
+      WYSIWYGFOOTER.Add('                  var theText = document.getElementById("my_wysiwyg_editor").innerHTML;    ');
+      WYSIWYGFOOTER.Add(('                  var savedtext = "TXHTMLEditor ' + this.myNode.NodeName) + 'Z!Z!Z"+ theText+"Z!Z!Z";');
+      if (this.GetIsEmbedded()) {
+        WYSIWYGFOOTER.Add(((('                if (parent!=null) {parent.postMessage({"objid":"' + this.myNode.NodeName) + '", "NameSpace":"') + this.myNode.NameSpace) + '", "mtype":"titleChange", "mdata":savedtext},"*")}');
+      } else WYSIWYGFOOTER.Add(((('                if (window.opener!=null) {window.opener.postMessage({"objid":"' + this.myNode.NodeName) + '", "NameSpace":"') + this.myNode.NameSpace) + '", "mtype":"titleChange", "mdata":savedtext},"*")} ');
+      WYSIWYGFOOTER.Add("                  },");
+      WYSIWYGFOOTER.Add("      },");
+      WYSIWYGFOOTER.Add("");
+      if (this.GetIsEmbedded() === false) {
+        WYSIWYGFOOTER.Add("Done: {");
+        WYSIWYGFOOTER.Add('    icon: "<b>Done<\/b>",');
+        WYSIWYGFOOTER.Add('    title: "Save and exit",');
+        WYSIWYGFOOTER.Add("    result: () => {  ");
+        WYSIWYGFOOTER.Add(('                  var savedtext = "TXHTMLEditor ' + this.myNode.NodeName) + 'Z!Z!Z"+ document.getElementById("my_wysiwyg_editor").innerHTML+"Z!Z!Z";');
+        WYSIWYGFOOTER.Add("                  document.title =savedtext; var ok=checkTitle(); ");
+        WYSIWYGFOOTER.Add("                  if (ok) { ");
+        WYSIWYGFOOTER.Add(((('                    if (window.opener!=null) {window.opener.postMessage({"objid":"' + this.myNode.NodeName) + '", "NameSpace":"') + this.myNode.NameSpace) + '", "mtype":"titleChange", "mdata":savedtext},"*");}');
+        WYSIWYGFOOTER.Add("                    setTimeout(function(){stopediting(); }, 600);} },");
+        WYSIWYGFOOTER.Add("  },");
+        WYSIWYGFOOTER.Add("");
+        WYSIWYGFOOTER.Add("Quit: {");
+        WYSIWYGFOOTER.Add('    icon: "<b>Quit<\/b>",');
+        WYSIWYGFOOTER.Add('    title: "Exit without saving",');
+        WYSIWYGFOOTER.Add("    result: () => window.close()");
+        WYSIWYGFOOTER.Add("  },");
+        WYSIWYGFOOTER.Add("");
+      };
+      WYSIWYGFOOTER.Add("\/\/code: {");
+      WYSIWYGFOOTER.Add('\/\/    icon: "&lt;\/&gt;",');
+      WYSIWYGFOOTER.Add('\/\/    title: "Code",');
+      WYSIWYGFOOTER.Add('\/\/    result: () => exec(formatBlock, "<pre>")');
+      WYSIWYGFOOTER.Add("\/\/  },");
+      WYSIWYGFOOTER.Add("");
+      WYSIWYGFOOTER.Add("\/\/image: {");
+      WYSIWYGFOOTER.Add('\/\/    icon: "&#128247;",');
+      WYSIWYGFOOTER.Add('\/\/    title: "Image",');
+      WYSIWYGFOOTER.Add("\/\/    result: () => {");
+      WYSIWYGFOOTER.Add('\/\/      const url = window.prompt("Enter the image URL")');
+      WYSIWYGFOOTER.Add('\/\/      if (url) exec("insertImage", url)');
+      WYSIWYGFOOTER.Add("\/\/    }");
+      WYSIWYGFOOTER.Add("\/\/  }");
+      WYSIWYGFOOTER.Add("}");
+      WYSIWYGFOOTER.Add("const defaultClasses = {");
+      WYSIWYGFOOTER.Add('  actionbar: "wysiwyg-actionbar",');
+      WYSIWYGFOOTER.Add('  button: "wysiwyg-button",');
+      WYSIWYGFOOTER.Add('  content: "wysiwyg-content",');
+      WYSIWYGFOOTER.Add('  selected: "wysiwyg-button-selected"');
+      WYSIWYGFOOTER.Add("}");
+      WYSIWYGFOOTER.Add("\/\/export");
+      WYSIWYGFOOTER.Add("const init = settings => {");
+      WYSIWYGFOOTER.Add("\tconst actions = settings.actions");
+      WYSIWYGFOOTER.Add("    ? (");
+      WYSIWYGFOOTER.Add("      settings.actions.map(action => {");
+      WYSIWYGFOOTER.Add('        if (typeof action === "string") return defaultActions[action]');
+      WYSIWYGFOOTER.Add("        else if (defaultActions[action.name]) return { ...defaultActions[action.name], ...action }");
+      WYSIWYGFOOTER.Add("        return action");
+      WYSIWYGFOOTER.Add("      })");
+      WYSIWYGFOOTER.Add("    )");
+      WYSIWYGFOOTER.Add("    : Object.keys(defaultActions).map(action => defaultActions[action])");
+      WYSIWYGFOOTER.Add("\tconst classes = { ...defaultClasses, ...settings.classes }");
+      WYSIWYGFOOTER.Add('\tconst defaultParagraphSeparator = settings[defaultParagraphSeparatorString] || "div"');
+      if (this.GetIsEditable() === true) {
+        WYSIWYGFOOTER.Add('\tconst actionbar = createElement("div")');
+        WYSIWYGFOOTER.Add('\tactionbar.style.border = "solid"');
+        WYSIWYGFOOTER.Add('\tactionbar.style.borderWidth="thin"');
+        WYSIWYGFOOTER.Add('\tactionbar.style.width = "100%"');
+        WYSIWYGFOOTER.Add("    actionbar.className = classes.actionbar");
+        WYSIWYGFOOTER.Add("    \/\/ detect IE8 and above, and edge");
+        WYSIWYGFOOTER.Add("    if (document.documentMode || \/Edge\/.test(navigator.userAgent)) {");
+        WYSIWYGFOOTER.Add('      appendChild(document.getElementById("MyActionBar"), actionbar)');
+        WYSIWYGFOOTER.Add("    }");
+        WYSIWYGFOOTER.Add("    else");
+        WYSIWYGFOOTER.Add("    {");
+        WYSIWYGFOOTER.Add('      var referenceNode = document.getElementById("editor");');
+        WYSIWYGFOOTER.Add("      referenceNode.before(actionbar);");
+        WYSIWYGFOOTER.Add("    }");
+      };
+      WYSIWYGFOOTER.Add('\tconst content = settings.element.content = createElement("div")');
+      WYSIWYGFOOTER.Add("\tcontent.contentEditable = false");
+      WYSIWYGFOOTER.Add("\tcontent.className = classes.content");
+      WYSIWYGFOOTER.Add("\tcontent.oninput = ({ target: { firstChild } }) => {");
+      WYSIWYGFOOTER.Add("    if (firstChild && firstChild.nodeType === 3) exec(formatBlock, `<${defaultParagraphSeparator}>`)");
+      WYSIWYGFOOTER.Add('    else if (content.innerHTML === "<br>") content.innerHTML = ""');
+      WYSIWYGFOOTER.Add("    settings.onChange(content.innerHTML)");
+      WYSIWYGFOOTER.Add("  }");
+      WYSIWYGFOOTER.Add("\tcontent.onkeydown = event => {");
+      WYSIWYGFOOTER.Add('    if (event.key === "Enter" && queryCommandValue(formatBlock) === "blockquote") {');
+      WYSIWYGFOOTER.Add("      setTimeout(() => exec(formatBlock, `<${defaultParagraphSeparator}>`), 0)");
+      WYSIWYGFOOTER.Add("    }");
+      WYSIWYGFOOTER.Add("  }");
+      WYSIWYGFOOTER.Add("\tappendChild(settings.element, content)");
+      WYSIWYGFOOTER.Add("\tactions.forEach(action => {");
+      WYSIWYGFOOTER.Add('    const button = createElement("button")');
+      WYSIWYGFOOTER.Add("    button.className = classes.button");
+      WYSIWYGFOOTER.Add("    button.innerHTML = action.icon");
+      WYSIWYGFOOTER.Add("    button.title = action.title");
+      WYSIWYGFOOTER.Add("    button.style.backgroundColor = action.BackgroundColor");
+      WYSIWYGFOOTER.Add('    button.setAttribute("type", "button")');
+      WYSIWYGFOOTER.Add("    button.onclick = () => action.result() && content.focus()");
+      WYSIWYGFOOTER.Add("    if (action.state) {");
+      WYSIWYGFOOTER.Add('      const handler = () => button.classList[action.state() ? "add" : "remove"](classes.selected)');
+      WYSIWYGFOOTER.Add('      addEventListener(content, "keyup", handler)');
+      WYSIWYGFOOTER.Add('      addEventListener(content, "mouseup", handler)');
+      WYSIWYGFOOTER.Add('      addEventListener(button, "click", handler)');
+      WYSIWYGFOOTER.Add("    }");
+      WYSIWYGFOOTER.Add("    appendChild(actionbar, button)");
+      WYSIWYGFOOTER.Add("  })");
+      WYSIWYGFOOTER.Add('  if (settings.styleWithCSS) exec("styleWithCSS")');
+      WYSIWYGFOOTER.Add("  exec(defaultParagraphSeparatorString, defaultParagraphSeparator)");
+      WYSIWYGFOOTER.Add("  return settings.element");
+      WYSIWYGFOOTER.Add("}");
+      WYSIWYGFOOTER.Add("\/\/export");
+      WYSIWYGFOOTER.Add("\/\/default");
+      WYSIWYGFOOTER.Add("\/\/ { exec, init }");
+      WYSIWYGFOOTER.Add("<\/script>");
+      WYSIWYGFOOTER.Add("<script>");
+      WYSIWYGFOOTER.Add("      var editor = init({");
+      WYSIWYGFOOTER.Add('        element: document.getElementById("editor"),');
+      WYSIWYGFOOTER.Add('        defaultParagraphSeparator: "p",');
+      WYSIWYGFOOTER.Add("        onChange: function (html) {");
+      WYSIWYGFOOTER.Add("        }");
+      WYSIWYGFOOTER.Add("      })");
+      WYSIWYGFOOTER.Add("<\/script>");
+      WYSIWYGFOOTER.Add("<\/body>");
+      WYSIWYGFOOTER.Add("<\/html>");
+      OutputStringList.AddStrings(WYSIWYGHEADER);
+      OutputStringList.Add(HelpText.GetTextStr());
+      OutputStringList.AddStrings(WYSIWYGFOOTER);
+      Result = OutputStringList;
+      WYSIWYGHEADER = rtl.freeLoc(WYSIWYGHEADER);
+      WYSIWYGFOOTER = rtl.freeLoc(WYSIWYGFOOTER);
+      HelpText = rtl.freeLoc(HelpText);
+      return Result;
+    };
+    this.ExtractTextFromTitle = function (message) {
+      var Result = "";
+      var str = "";
+      var StartPos = 0;
+      var EndPos = 0;
+      str = message;
+      StartPos = pas.System.Pos("Z!Z!Z",str);
+      if (StartPos > 0) {
+        str = pas.System.Copy(str,StartPos + 5,999999);
+        EndPos = pas.System.Pos("Z!Z!Z",str);
+        if (EndPos > 0) str = pas.System.Copy(str,1,EndPos - 1);
+      } else str = "Z!Z!Z";
+      Result = str;
+      return Result;
+    };
+    this.SetMyEventTypes = function () {
+      this.myEventTypes.Add("Click");
+      this.myEventTypes.Add("Change");
+      this.myEventTypes.Add("HTMLEditorBrowserClosed");
+    };
+    var $r = this.$rtti;
+    $r.addProperty("IsEmbedded",3,rtl.boolean,"GetIsEmbedded","SetIsEmbedded");
+    $r.addProperty("IsEditable",3,rtl.boolean,"GetIsEditable","SetIsEditable");
+    $r.addProperty("Showing",3,rtl.boolean,"GetShowing","SetShowing");
+    $r.addProperty("SourceText",3,rtl.string,"GetSourceText","SetSourceText");
+    $r.addProperty("HeaderHTML",3,rtl.string,"GetHeaderHTML","SetHeaderHTML");
+    $r.addProperty("FooterHTML",3,rtl.string,"GetFooterHTML","SetFooterHTML");
+    $r.addProperty("HandleChange",0,pas.NodeUtils.$rtti["TEventHandler"],"fHandleChange","fHandleChange");
+  });
+  this.dotest = function () {
+  };
+  $mod.$init = function () {
+    pas.WrapperPanel.AddWrapperDefaultAttribs({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }});
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SuspendRefresh","Boolean","False","",false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ActualHeight","Integer","","",true,false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"ActualWidth","Integer","","",true,false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"FrameWidth","String","300","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"FrameHeight","String","300","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Border","Boolean","True","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SpacingAround","Integer","0","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelPos","String","Top","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"LabelText","String","HTML Editor","",false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"HTMLSource","String","","",false,false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"IsEmbedded","Boolean","True","Display the text in an embedded IFrame (needs CEF4)",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"IsEditable","Boolean","True","Allow the text page to be edited",false);
+    pas.NodeUtils.AddDefaultAttribute$1({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"Showing","Boolean","False","When not embedded, set this to display the text in a standalone browser page",false,false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"SourceText","String","...text...","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"HeaderHTML","String","","",false);
+    pas.NodeUtils.AddDefaultAttribute({p: $impl, get: function () {
+        return this.p.myDefaultAttribs;
+      }, set: function (v) {
+        this.p.myDefaultAttribs = v;
+      }},"FooterHTML","String","","",false);
+    pas.NodeUtils.AddDefaultsToTable($impl.MyNodeType,$impl.myDefaultAttribs);
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"Alignment",pas.NodeUtils.AlignmentOptions.slice(0));
+    pas.NodeUtils.AddAttribOptions($impl.MyNodeType,"LabelPos",pas.NodeUtils.LabelPosOptions.slice(0));
+    pas.NodeUtils.AddNodeFuncLookup($impl.MyNodeType,$impl.CreateinterfaceObj,$impl.CreateHTMLEditorWidget);
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerHeight");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"ContainerWidth");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"SuspendRefresh");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"BgColor");
+    pas.WrapperPanel.SuppressDesignerProperty($impl.MyNodeType,"HTMLSource");
+  };
+},null,function () {
+  "use strict";
+  var $mod = this;
+  var $impl = $mod.$impl;
+  $impl.MyNodeType = "TXHTMLEditor";
+  $impl.myDefaultAttribs = [];
+  $impl.CreateHTMLEditorWidget = function (MyNode, ParentNode, ScreenObjectName, NameSpace, position, Alignment) {
+    var Result = null;
+    var NewWidget = null;
+    var h = 0;
+    var w = 0;
+    pas.XIFrame.DoCreateFrameWidget(MyNode,ParentNode,ScreenObjectName,position);
+    NewWidget = MyNode;
+    h = NewWidget.GetActualHeight();
+    w = NewWidget.GetActualWidth();
+    Result = MyNode;
+    return Result;
+  };
+  $impl.CreateinterfaceObj = function (MyForm, NodeName, NameSpace) {
+    var Result = null;
+    Result = $mod.TXHTMLEditor.$create("Create$3",[MyForm,NodeName,NameSpace]);
+    return Result;
+  };
+});
+rtl.module("Example3Unit",["System","Classes","SysUtils","HTMLUtils","EventsInterface","StringUtils","NodeUtils","PasteDialogUnit","UtilsJSCompile","XIFrame","XMenu","XScrollBox","XVBox","XHBox","XTree","XMemo","XTabControl","XButton","XLabel","XEditBox","XCheckBox","XHyperLink","XRadioBtns","XForm","XTable","XProgressBar","XNumericSlider","XNumberSpinner","XComboBox","XDatePicker","XColorPicker","XImage","XGroupBox","XCode","XStore","XBitMap","XTrapEvents","XHTMLText","XHTMLEditor","XSVGContainer"],function () {
+  "use strict";
+  var $mod = this;
+  this.InitialisePage = function (dummy) {
+    pas.NodeUtils.StartingUp = true;
+    $mod.Example3Form = $mod.TExample3Form.$create("Create");
+    pas.NodeUtils.InitFormObject($mod.Example3Form,"Example3Form");
+    pas.NodeUtils.MainForm = $mod.Example3Form;
+    $mod.Example3Form.Example3FormMainMenu = pas.NodeUtils.CreateInterfaceObject($mod.Example3Form,"TXMainMenu","Example3FormMainMenu","");
+    $mod.Example3Form.MyRootDiv = pas.NodeUtils.CreateInterfaceObject($mod.Example3Form,"TXScrollBox","MyRootDiv","");
+    $mod.Example3Form.XHBox1 = pas.NodeUtils.CreateInterfaceObject($mod.Example3Form,"TXHBox","XHBox1","");
+    $mod.Example3Form.XEditBox1 = pas.NodeUtils.CreateInterfaceObject($mod.Example3Form,"TXEditBox","XEditBox1","");
+    $mod.Example3Form.XButton1 = pas.NodeUtils.CreateInterfaceObject($mod.Example3Form,"TXButton","XButton1","");
+    $mod.Example3Form.XMemo1 = pas.NodeUtils.CreateInterfaceObject($mod.Example3Form,"TXMemo","XMemo1","");
+    $mod.Example3Form.XIFrame1 = pas.NodeUtils.CreateInterfaceObject($mod.Example3Form,"TXIFrame","XIFrame1","");
+    pas.NodeUtils.MainForm = $mod.Example3Form;
+    pas.NodeUtils.UIRootNode.MyForm = null;
+    pas.NodeUtils.LoadedSystemString = "*";
+    pas.NodeUtils.LoadedSystemString = (((((((((("" + "<Root|; Class |=Root|; Name |=ApplicationRoot|; NameSpace |=|;ParentName|{ String|{|{True|{.|;>") + "<Root|; Class |=Root|; Name |=UIRootNode|; NameSpace |=|;ParentName|{ String|{ApplicationRoot|{True|{.|;|@@|>") + "<TXForm|; Class |=UI|; Name |=Example3Form|; NameSpace |=|;ParentName|{ String|{UIRootNode|{True|{.|;>") + "<TXMainMenu|; Class |=UI|; Name |=Example3FormMainMenu|; NameSpace |=|;IsVisible|{ Boolean|{True|{False|{.|;ParentName|{ String|{Example3Form|{True|{.|;><\/TXMainMenu>") + "<TXScrollBox|; Class |=UI|; Name |=MyRootDiv|; NameSpace |=|;Alignment|{ String|{Left|{False|{.|;BgColor|{ Color|{#80FFFF|{False|{.|;Border|{ Boolean|{True|{False|{.|;ContainerHeight|{ String|{100%|{False|{.|;ContainerWidth|{ String|{100%|{False|{.|;Hint|{ String|{|{False|{.|;HTMLClasses|{ String|{|{False|{.|;IsVisible|{ Boolean|{True|{False|{.|;ScrollType|{ String|{Both|{False|{.|;SpacingAround|{ Integer|{0|{False|{.|;ParentName|{ String|{Example3Form|{True|{.|;>") + "<TXHBox|; Class |=UI|; Name |=XHBox1|; NameSpace |=|;Alignment|{ String|{Left|{False|{.|;BgColor|{ Color|{|{False|{.|;Border|{ Boolean|{False|{False|{.|;ContainerHeight|{ String|{|{False|{.|;ContainerWidth|{ String|{|{False|{.|;Hint|{ String|{|{False|{.|;HTMLClasses|{ String|{|{False|{.|;InheritColor|{ Boolean|{True|{False|{.|;IsVisible|{ Boolean|{True|{False|{.|;LabelPos|{ String|{|{False|{.|;LabelText|{ String|{|{False|{.|;SpacingAround|{ Integer|{0|{False|{.|;ParentName|{ String|{MyRootDiv|{True|{.|;>") + "<TXEditBox|; Class |=UI|; Name |=XEditBox1|; NameSpace |=|;Alignment|{ String|{Top|{False|{.|;Border|{ Boolean|{False|{False|{.|;BoxWidth|{ String|{300|{False|{.|;Hint|{ String|{|{False|{.|;HTMLClasses|{ String|{|{False|{.|;IsVisible|{ Boolean|{True|{False|{.|;ItemValue|{ String|{https:\/\/www.lazarus-ide.org\/|{False|{.|;LabelPos|{ String|{Right|{False|{.|;LabelText|{ String|{|{False|{.|;PasswordBox|{ Boolean|{False|{False|{.|;ReadOnly|{ Boolean|{False|{False|{.|;SpacingAround|{ Integer|{0|{False|{.|;ParentName|{ String|{XHBox1|{True|{.|;><\/TXEditBox>") + "<TXButton|; Class |=UI|; Name |=XButton1|; NameSpace |=|;Alignment|{ String|{Top|{False|{.|;Border|{ Boolean|{False|{False|{.|;ButtonWidth|{ String|{|{False|{.|;Caption|{ String|{Go|{False|{.|;Enabled|{ Boolean|{True|{False|{.|;Hint|{ String|{|{False|{.|;HTMLClasses|{ String|{|{False|{.|;IsVisible|{ Boolean|{True|{False|{.|;SpacingAround|{ Integer|{0|{False|{.|;ParentName|{ String|{XHBox1|{True|{.|;><\/TXButton><\/TXHBox>") + "<TXMemo|; Class |=UI|; Name |=XMemo1|; NameSpace |=|;Alignment|{ String|{Left|{False|{.|;Border|{ Boolean|{True|{False|{.|;Hint|{ String|{|{False|{.|;HTMLClasses|{ String|{|{False|{.|;IsVisible|{ Boolean|{True|{False|{.|;ItemValue|{ String|{&crlf;URL Examples: &crlf;&crlf;https:\/\/www.lazarus-ide.org\/&crlf;https:\/\/www.google.com\/maps\/&crlf;https:\/\/www.google.com\/maps\/embed&crlf;http:\/\/www.bbc.co.uk\/news\/&crlf;http:\/\/www.bbc.co.uk\/news\/embed\/&crlf;http:\/\/www.bbc.co.uk\/news\/technology-35731734\/embed&crlf;|{False|{.|;LabelPos|{ String|{Top|{False|{.|;LabelText|{ String|{|{False|{.|;MemoHeight|{ String|{200|{False|{.|;MemoWidth|{ String|{100%|{False|{.|;ReadOnly|{ Boolean|{True|{False|{.|;SpacingAround|{ Integer|{0|{False|{.|;ParentName|{ String|{MyRootDiv|{True|{.|;><\/TXMemo>") + "<TXIFrame|; Class |=UI|; Name |=XIFrame1|; NameSpace |=|;Alignment|{ String|{Left|{False|{.|;BgColor|{ Color|{#FFFFFF|{False|{.|;Border|{ Boolean|{True|{False|{.|;FrameHeight|{ String|{300|{False|{.|;FrameWidth|{ String|{300|{False|{.|;Hint|{ String|{|{False|{.|;HTMLClasses|{ String|{|{False|{.|;HTMLSource|{ String|{https:\/\/www.lazarus-ide.org\/|{False|{.|;IsVisible|{ Boolean|{True|{False|{.|;LabelPos|{ String|{Top|{False|{.|;LabelText|{ String|{IFrame|{False|{.|;SpacingAround|{ Integer|{0|{False|{.|;SuspendRefresh|{ Boolean|{False|{False|{.|;ParentName|{ String|{MyRootDiv|{True|{.|;><\/TXIFrame><\/TXScrollBox><\/TXForm><\/Root>") + "<Root|; Class |=Code|; Name |=CodeUnits|; NameSpace |=|;ParentName|{ String|{ApplicationRoot|{True|{.|;><\/Root><\/Root>";
+    pas.NodeUtils.XMLToNodeTree(pas.NodeUtils.LoadedSystemString,pas.NodeUtils.UIRootNode,false);
+    pas.NodeUtils.StartingUp = false;
+  };
+  rtl.createClass($mod,"TExample3Form",pas.XForm.TXForm,function () {
+    this.$init = function () {
+      pas.XForm.TXForm.$init.call(this);
+      this.Example3FormMainMenu = null;
+      this.MyRootDiv = null;
+      this.XButton1 = null;
+      this.XEditBox1 = null;
+      this.XHBox1 = null;
+      this.XIFrame1 = null;
+      this.XMemo1 = null;
+    };
+    this.$final = function () {
+      this.Example3FormMainMenu = undefined;
+      this.MyRootDiv = undefined;
+      this.XButton1 = undefined;
+      this.XEditBox1 = undefined;
+      this.XHBox1 = undefined;
+      this.XIFrame1 = undefined;
+      this.XMemo1 = undefined;
+      pas.XForm.TXForm.$final.call(this);
+    };
+    this.DummyPositionMarker = function () {
+    };
+    this.XButton1HandleButtonClick = function (e, nodeID, myValue) {
+      this.XIFrame1.SetHTMLSource(this.XEditBox1.GetItemValue());
+    };
+  });
+  this.Example3Form = null;
+  $mod.$init = function () {
+    pas.StringUtils.MainUnitName = "Example3Unit";
+    try{
+    // now do any Javascript specific start up code
+    pas.HTMLUtils.addHandVBoxStyles();
+    }catch(err) { alert(err.message+' in StartupCode');};
+  };
+});

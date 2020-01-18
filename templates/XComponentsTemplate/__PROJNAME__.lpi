@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
-    <Version Value="11"/>
+    <Version Value="12"/>
     <PathDelim Value="\"/>
     <General>
+      <Flags>
+        <CompatibilityMode Value="True"/>
+      </Flags>
       <SessionStorage Value="InProjectDir"/>
-      <MainUnit Value="0"/>
       <Title Value="__PROJNAME__"/>
       <ResourceType Value="res"/>
       <UseXPManifest Value="True"/>
@@ -26,16 +28,13 @@
         <Mode0 Name="default"/>
       </Modes>
     </RunParams>
-    <RequiredPackages Count="3">
+    <RequiredPackages Count="2">
       <Item1>
-        <PackageName Value="TurboPowerIPro"/>
+        <PackageName Value="XComponents"/>
       </Item1>
       <Item2>
-        <PackageName Value="XComponents"/>
-      </Item2>
-      <Item3>
         <PackageName Value="LCL"/>
-      </Item3>
+      </Item2>
     </RequiredPackages>
     <Units Count="2">
       <Unit0>
@@ -59,9 +58,11 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="C:\cef4\CEF4Delphi-master\packages\lib\i386-win32\"/>
+      <OtherUnitFiles Value="$PkgOutDir(CEF4Delphi_Lazarus)"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
+    <Conditionals Value="//UnitPath += &apos;;$PkgOutDir(CEF4Delphi_Lazarus)&apos;;
+IncPath += &apos;;C:\XcomponentsLaz2\resources\&apos;;    // location of rtl.lrs"/>
     <Linking>
       <Options>
         <Win32>

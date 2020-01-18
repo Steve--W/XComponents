@@ -197,14 +197,15 @@ end;
 
 function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
-  xItemText,xEnabled,marginString:string;
+  xItemText,xEnabled:string;
+  //,marginString
 begin
 xItemText:= MyNode.getAttribute('Caption',true).AttribValue;
 xEnabled:= MyNode.getAttribute('Enabled',true).AttribValue;
-marginString := 'margin:'+glbMarginSpacing+' '
-                         +glbMarginSpacing+' '
-                         +glbMarginSpacing+' '
-                         +glbMarginSpacing+';';
+//marginString := 'margin:'+glbMarginSpacing+' '
+//                         +glbMarginSpacing+' '
+//                         +glbMarginSpacing+' '
+//                         +glbMarginSpacing+';';
 AddButtonStyles;
 
 asm
@@ -224,13 +225,15 @@ asm
     var typestring="'ButtonClick'";
     HTMLString = '<input type="button" id='+MyObjectName+' class="widgetinner '+wrapperid+'" '+
                          'style="font-size:inherit; display: inline-block; '+
-                                marginString+'" '+
+//                                marginString+'" '+
                                 '" '+
     'onclick="event.stopPropagation(); pas.Events.handleEvent(null,'+typestring+','+NodeIDString+', '+NameSpaceString+', '+NodeIDString+');"'+
                         '  '+EnabledString+' value="'+xItemText+'"> ';
 
     var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
+
+    pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
 
   }
   catch(err) { alert(err.message+'  in XButton.CreateWidget');}

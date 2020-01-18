@@ -14,7 +14,7 @@ interface
 uses
   Classes,  SysUtils, StringUtils, TypInfo,
 {$ifndef JScript}
-  Forms,Controls, StdCtrls, ExtCtrls, Dialogs, Clipbrd, ProjectIntf, LazIDEIntf,
+  Forms,Controls, StdCtrls, ExtCtrls, Dialogs, Clipbrd, ProjectIntf, LazIDEIntf, LazLogger,
  // UtilsJSCompile,
   {$ifdef Chromium}
   uCEFApplication,
@@ -840,6 +840,9 @@ begin
   begin
     if defaultAttribs[i].AttribReadOnly=false then
     begin
+      {$ifndef JScript}
+      if NewNode.NodeType='TXIFrame' then debugln('AddDefaultAttribs '+defaultAttribs[i].AttribName+' '+defaultAttribs[i].AttribValue);
+      {$endif}
       SetXObjectProperty(myComponent,NewNode,defaultAttribs[i].AttribName,defaultAttribs[i].AttribType,defaultAttribs[i].AttribValue);
     end;
   end;
@@ -889,6 +892,7 @@ procedure CreateComponentDataNode2(myComponent:TObject;myType:String; defaultAtt
 var
   NewNode:TDataNode;
 begin
+  if myType='TXIFrame' then debugln('CreateComponentDataNode2 1');
   NewNode:=TDataNode.Create('UI','','',myType,false);       // name is set later
   NewNode.ScreenObject:=myComponent;
   NewNode.myEventTypes:=eventTypes;
@@ -896,13 +900,17 @@ begin
   NewNode.MyForm:=TForm(myOwner);
   NewNode.IsDynamic:=IsDynamic;
 
+  if myType='TXIFrame' then debugln('CreateComponentDataNode2 2');
   SetObjectProp(myComponent,'myNode',NewNode);
 
+  if myType='TXIFrame' then debugln('CreateComponentDataNode2 3');
   AddDefaultAttribs(myComponent,NewNode,defaultAttribs);
 
+  if myType='TXIFrame' then debugln('CreateComponentDataNode2 4');
   // temporarily set as child of root node, so that name uniqueness checks can be done during design
   AddChildToParentNode(SystemNodetree,NewNode,-1);
 
+  if myType='TXIFrame' then debugln('CreateComponentDataNode2 done');
 end;
 
 {$else}
@@ -1034,7 +1042,7 @@ var
 begin
    pos:=-1;
    if trim(ScreenObjectID)='' then
-     showmessage('oops no id');
+     showmessage('FindDataNodeById: oops no id');
    FoundItem:=nil;
    FoundParent:=nil;
    TempItem:=ScanChildrenForNodeByName(InTree,ScreenObjectID,Namespace,FoundParent,pos);
@@ -2166,7 +2174,7 @@ begin
      ScreenObjectName:=SourceNode.NodeName;
      ScreenObjectType:=SourceNode.NodeType;
      ParentNode:=nil;
-     //if ScreenObjectType='TXTrapEvents' then showmessage('TXTrapEvents 1 '+ScreenObjectName+' ParentName='+ParentName);
+
      if ParentName<>'' then
      begin
        ParentNode:=FindDataNodeByID(SystemNodeTree,ParentName,BaseNameSpace,false);
@@ -2196,7 +2204,6 @@ begin
      if (SourceNode.NodeClass='NV') and (SourceNode.NameSpace='') then
        ParentNode:=DefaultParent;
 
-     //if ScreenObjectType='TXTrapEvents' then showmessage('TXTrapEvents 2 Parent='+ParentNode.NodeName);
      // If the object was defined in a Lazarus form at design time,
      // the necessary data node (interface object) should already have been created.
      // Find it, add it to the identified parent, and set the relevant attributes.
@@ -2209,7 +2216,6 @@ begin
      // create a data node for it.
      if myNode=nil then
      begin
-       //if ScreenObjectType='TXTrapEvents' then showmessage('creating dynamic component '+ScreenObjectType+'; '+ NodeClass+'; '+ScreenObjectName);
        myNode:=SourceNode;
        // Create a screen object by running the registered instantiation function for the node type
        InsertSystemNode(ParentNode,myNode,-1);
@@ -2274,15 +2280,15 @@ begin
      or ((SourceNode.NodeClass='NV') and (SourceNode.NodeType<>''))
      or (SourceNode.NodeClass = 'SVG') then
      begin
-       //if ExpandingComposite then showmessage('setting attribute values');
+       //showmessage('setting attribute values');
        for i:=0 to length(SourceNode.NodeAttributes)-1 do
        begin
-         //if ExpandingComposite then showmessage(SourceNode.NodeAttributes[i].AttribName);
+         //showmessage(SourceNode.NodeAttributes[i].AttribName);
          mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
          mynode.SetAttributeSource(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribSource.InputNodeName,
                                    SourceNode.NodeAttributes[i].AttribSource.InputAttribName);
        end;
-       //if ExpandingComposite then showmessage('done attributes.  Name='+MyNode.NameSpace+'.'+MyNode.NodeName);
+       //showmessage('done attributes.  Name='+MyNode.NameSpace+'.'+MyNode.NodeName);
        if MainForm<>nil then
          mf:=MainForm.Name
        else
@@ -2488,10 +2494,10 @@ var
 begin
   valueStr:=NewValue;
 
-  //showmessage('setintfprop. name='+NameSpace+' '+myname+' prop='+PropName+' value=>'+NewValue+'<');
   myObj:=TObject(FindDataNodeById(SystemNodeTree,myName,NameSpace,false));
   if myObj<>nil then
   begin
+    //showmessage('setintfprop. name='+NameSpace+' '+myname+' prop='+PropName+' value=>'+NewValue+'<');
     MyPropType := PropType(myObj, PropName);
     if MyPropType = tkString then
     begin
@@ -2752,7 +2758,7 @@ begin
     {$else}
     if pType = tkString then
     begin
-      //showmessage('setting string property');
+      //showmessage('setting string property '+PropName+' '+newValue);
       SetStringProp(myObj,PropName,NewValue);
     end
     else if pType = tkInteger then
@@ -2761,10 +2767,12 @@ begin
       SetNativeIntProp(myObj,PropName,strtoint(newValue));
     end
     else if pType = tkBool then
-      SetBoolProp(myObj,PropName,myStrToBool(NewValue))
+    begin
+      SetBoolProp(myObj,PropName,myStrToBool(newValue));
+    end
     else if pType = tkDynArray then
     begin
-      //showmessage('arg... property '+PropName+' needs tkDynArray type');       //!!!!
+      //showmessage('... property '+PropName+' needs tkDynArray type');       //!!!!
       targetNode.SetAttributeValue(PropName,newValue);
     end
     {$endif}
@@ -3526,15 +3534,6 @@ begin
   // PasteDialog and CompilerLog forms are in XComponents units - need to instantiate the forms here.
   PasteDialogUnit.SetupPasteDialogForm;
   CompilerLogUnit.SetupCompilerLogForm;
-  {$ifdef Chromium}
-  // !!!!cef issue. all of this has to be done in the main project unit, else it doesn't work at all...
-  //GlobalCEFApp.OnProcessMessageReceived := @GlobalCEFProc.GlobalCEFApp_OnProcessMessageReceived;
-//  GlobalCEFApp.OnProcessMessageReceived := @GlbObject.GlobalCEFApp_OnProcessMessageReceived;
-//  if GlbObject<>nil then
-//    GlobalCEFApp.OnProcessMessageReceived := @GlbObject.GlobalCEFApp_OnProcessMessageReceived
-//  else
-//    showmessage('GlbObject is nil');
-  {$endif}
 end;
 {$endif}
 

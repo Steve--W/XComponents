@@ -513,26 +513,6 @@ begin
   end;
 end;
 
-//procedure SetCommonWrapperProperties(myWrapper:TWrapperPanel);
-//begin
-//  myWrapper.Alignment:=myWrapper.Alignment;
-//  myWrapper.Hint:=myWrapper.Hint;
-//  myWrapper.IsVisible:=myWrapper.IsVisible;
-//  myWrapper.SpacingAround:=myWrapper.SpacingAround;
-//  myWrapper.Border:=myWrapper.Border;
-//  if FindSuppressedProperty(myWrapper.myNode.NodeType,'BgColor')<0 then
-//    myWrapper.BgColor:=myWrapper.BgColor;
-//end;
-
-//procedure SetCommonWrapperPropDefaults(myWrapper:TWrapperPanel);
-//begin
-//  myWrapper.Alignment:='Left';
-//  myWrapper.Hint:='';
-//  myWrapper.IsVisible:=true;
-//  myWrapper.SpacingAround:=0;
-//  myWrapper.Border:=false;
-//end;
-
 procedure AddWrapperDefaultAttribs(var myDefaultAttribs:TDefaultAttributesArray);
 begin
   AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
@@ -740,17 +720,17 @@ begin
       if (ob!=null)  {
         if (AValue==true) {
           if (this.NodeType != 'TXMenuItem') {
-          ob.style.display = 'flex';                //!!!! this needs to be reset to whatever it was before!!!!
-          if (this.LabelPos!='') {
-            self.SortOutMyAlignmentAndLabelPos;
-            }
-          else
-            {self.SortOutAlignment;}
+            ob.style.display = 'flex';                //!!!! this needs to be reset to whatever it was before!!!!
+            if (this.LabelPos!='') {
+              self.SortOutMyAlignmentAndLabelPos;
+              }
+            else
+              {self.SortOutAlignment;}
           }
           else
           { //!! for a menu item
-          // delete the 'display' attribute
-          ob.removeAttribute("style");
+            // delete the 'display' attribute
+            ob.removeAttribute("style");
           }
         }
         else  {
@@ -969,7 +949,8 @@ begin
 
            if ((ob!=null) && (wrapper!=null)) {
            // clear everything first...
-           wrapper.style.display='';
+           //var savedDisplay = wrapper.style.display;
+           //wrapper.style.display='';
            wrapper.classList.remove('hbox');
            wrapper.classList.remove('hboxNoStretch');
            wrapper.classList.remove('vbox');
@@ -1228,10 +1209,12 @@ begin
     var ob = document.getElementById(this.NameSpace+this.NodeName);
     if (ob!=null) {
     if (AValue==true ) {
-       ob.classList.add("normal-border");
+      ob.classList.remove("no-border");
+      ob.classList.add("normal-border");
     }
     else {
        ob.classList.remove("normal-border");
+       ob.classList.add("no-border");
     } }
   end;
   {$endif}

@@ -10,27 +10,28 @@ uses
   cthreads,
   {$endif}
   {$ifdef Chromium}
-  uCEFApplication,
+  uCEFApplication, uCEFConstants,
+  extctrls,
   {$endif}
   Interfaces, // this includes the LCL widgetset
-  Forms, __MAINUNIT__;
+  Forms, __MAINUNIT__,
+  CEFXUtils;
 
 {$R *.res}
 
 {$ifdef Chromium}
+{$IFDEF MSWINDOWS}
+  // CEF3 needs to set the LARGEADDRESSAWARE flag which allows 32-bit processes to use up to 3GB of RAM.
+  {$SetPEFlags $20}
+{$ENDIF}
 const
 //  CEFLibDir:String = 'C:\cef4\FrameworkDir';
-  CEFLibDir:String = 'cef4';
+  CEFLibDir:String = '__CEF4Path__';
 {$endif}
 
 begin
   {$ifdef Chromium}
-  GlobalCEFApp := TCefApplication.Create;
-  GlobalCEFApp.FrameworkDirPath:=CEFLibDir;
-  GlobalCEFApp.ResourcesDirPath:=CEFLibDir;
-  GlobalCEFApp.LocalesDirPath:=CEFLibDir+'\locales';
-  GlobalCEFApp.EnableGPU := True;                    // Enable hardware acceleration
-  InitialiseCefMessaging;
+  SetupCEF4(CEFLibDir);
 
   if GlobalCEFApp.StartMainProcess then
   {$endif}
@@ -41,8 +42,7 @@ begin
     Application.Run;
   end;
   {$ifdef Chromium}
-  GlobalCEFApp.Free;
-  GlobalCEFApp := nil;
+  CloseCEF4;
   {$endif}
 end.
 

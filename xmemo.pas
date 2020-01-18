@@ -209,7 +209,7 @@ procedure TXMemo.SetMemoWidth(AValue:string);
  var
    tc:TControl;
  begin
-   tc:=self.myControl;
+  tc:=self.myControl;
   myNode.SetAttributeValue('MemoWidth',AValue);
   SetHeightWidth(self.myNode,tc,'MemoWidth','MemoHeight');
   tc.Update;
@@ -220,7 +220,7 @@ procedure TXMemo.SetMemoHeight(AValue:string);
  var
    tc:TControl;
  begin
-   tc:=self.myControl;
+  tc:=self.myControl;
   myNode.SetAttributeValue('MemoHeight',AValue);
   SetHeightWidth(self.myNode,tc,'MemoWidth','MemoHeight');
   tc.Update;

@@ -258,6 +258,7 @@ begin
     var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
+    pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
   }
   catch(err) { alert(err.message+'  in XDatePicker.CreateWidget');}
 

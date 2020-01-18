@@ -163,7 +163,7 @@ begin
 end;
 
 function CreateForm(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
-// for dynamic creation of a XForm (Windows) at runtime.
+// for dynamic creation of a XForm (Desktop) at runtime.
 var
   NewForm:TXForm;
   NewNode,PanelNode:TDataNode;
@@ -567,14 +567,14 @@ begin
     else
     begin
       //showmessage('TXForm '+self.Name+' SetShowing '+AValue);
+       if (self.myNode.NodeName<>MainForm.Name) or (self.myNode.NameSpace<>'') then
+         if InOpenXForms(self.myNode.NodeName,self.myNode.NameSpace)<0 then
+           AddOpenXForm(self.myNode.NodeName,self.myNode.NameSpace);
       if self.Visible = false then
         if AValue='Modal' then
           self.showmodal
         else if AValue='Normal' then
           self.Show;
-      if (self.myNode.NodeName<>MainForm.Name) or (self.myNode.NameSpace<>'') then
-        if InOpenXForms(self.myNode.NodeName,self.myNode.NameSpace)<0 then
-          AddOpenXForm(self.myNode.NodeName,self.myNode.NameSpace);
     end;
     {$else}
     if self.NodeName<>'' then

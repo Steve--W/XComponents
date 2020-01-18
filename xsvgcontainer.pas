@@ -404,7 +404,9 @@ procedure TXSVGContainer.ReLoadURL;
 begin
   if (self.SuspendRefresh)
   {$ifndef JScript}
-  or (GlobalSuppressFrameDisplay)
+  //or (GlobalSuppressFrameDisplay)
+  or (csLoading in componentState)
+  or (csDesigning in componentState)
   {$endif}
   then
     EXIT;
@@ -460,7 +462,7 @@ var
   c:integer;
   SVGWidget:TXSVGWidget;
   ItemNode:TDataNode;
-  TempMsg : ICefProcessMessage;
+  //TempMsg : ICefProcessMessage;
 begin
   if (not (csDesigning in componentState))
   and (not StartingUp)

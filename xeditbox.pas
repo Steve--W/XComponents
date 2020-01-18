@@ -249,7 +249,7 @@ begin
                           OnPasteString +
                           OnClickString +
                           OnChangeString +
-                 ' style="display: inline-block; '+
+                 ' style="display: inline-block; padding:0px;'+
                  '" value="'+inputtext+'"'+ReadOnlyString+'>' ;
 
     HTMLString = labelstring+EBoxString;
@@ -258,10 +258,7 @@ begin
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
     // fix the height for an edit box to one line-height...
-    var ob=document.getElementById(MyObjectName);
-    var obStyle = window.getComputedStyle(ob);
-    ob.style.maxHeight = obStyle.getPropertyValue('line-height');
-    //alert('maxHeight='+ob.style.maxHeight);
+    pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
   }
   catch(err) { alert(err.message+'  in XEditBox.CreateXEditBox');}
 

@@ -621,12 +621,12 @@ begin
 end;
 function TXTabControl.GetTabSheet(Index: Integer): TXTabSheet;
 begin
- // debugln('XTabControl.GetTabSheet');
+  //debugln('XTabControl.GetTabSheet');
   Result:=TXTabSheet(inherited Pages[Index]);
 end;
 procedure TXTabControl.SetActiveTabSheet(const AValue: TXTabSheet);
 begin
- // debugln(['XTabControl.SetActiveTabSheet ',DbgSName(Self),' ',DbgSName(AValue)]);
+  //debugln(['XTabControl.SetActiveTabSheet ',DbgSName(Self),' ',DbgSName(AValue)]);
   ActivePageComponent := AValue;
 end;
 function TXTabControl.GetPageClass: TCustomPageClass;

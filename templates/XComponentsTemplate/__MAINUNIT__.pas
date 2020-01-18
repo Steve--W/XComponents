@@ -1,4 +1,18 @@
 unit __MAINUNIT__;
+//-------------------------------------------------------------------------
+// After creating a new project from this template, do the following
+// BEFORE attempting to add components to the form:
+//
+// 1) Project Inspector ---- Add requirement for package XComponents.
+// 2) Project Options   ---- Config & Target : Check the -WG checkbox.
+// 3) Project Options   ---- Custom Options/Conditionals : Add the line:
+//                                IncPath += ';$PkgDir(XComponents)';    // location of rtl.lrs
+// 4) IF you have installed XComponents to include CEF4 capability, then
+//    Project Options   ---- Custom Options/Conditionals : Add the line:
+//                                UnitPath += ';$PkgOutDir(CEF4Delphi_Lazarus)';
+// 5) IF you wish to use CEF4 capability in this project, then
+//    Project Options   ---- Custom Options: insert directive   -dChromium
+//--------------------------------------------------------------------------
 {$ifndef JScript}
 {$mode objfpc}{$H+}
 {$endif}
@@ -7,14 +21,10 @@ interface
 uses
   Classes, SysUtils,
   {$ifndef JScript}
-  FileUtil, Forms, Controls, Graphics, Dialogs, LCLIntf, LMessages,
+  FileUtil, Forms, Controls, Graphics, Dialogs, LCLIntf,
   ExtCtrls, Menus, ComCtrls, StdCtrls, TypInfo, LazIDEIntf, LResources,
-  ColorBox, Types, IpHtml, Ipfilebroker,
+  Types, IpHtml, Ipfilebroker,
   CompilerLogUnit,  LazsUtils,
-  {$ifdef Chromium}
-  uCEFApplication, uCEFInterfaces, uCEFConstants, uCEFTypes,
-  uCEFProcessMessage, uCEFMiscFunctions,uCEFDOMVisitor,
-  {$endif}
 {$else}
   HTMLUtils,
 {$endif}
@@ -38,17 +48,18 @@ procedure InitialisePage(dummy:string);
 type
 T__MAINFORM__ = class(TXForm)
 
-  {$ifndef JScript}
-  // Lazarus-only Form components...
-  WebMenu: TMenuItem;
-  CompileToJS: TMenuItem;
-  CompilerShowLog: TMenuItem;
-  {$endif}
   __MAINFORM__MainMenu: TXMainMenu;
   MyRootDiv: TXScrollBox;
 
   {$ifndef JScript}
-  // Lazarus-only methods...
+  // Lazarus/Desktop-only Form components...
+  WebMenu: TMenuItem;
+  CompileToJS: TMenuItem;
+  CompilerShowLog: TMenuItem;
+  {$endif}
+
+  {$ifndef JScript}
+  // Lazarus/Desktop-only methods...
   procedure CompilerShowLogClick(Sender: TObject);
   procedure CompileToJSClick(Sender: TObject);
   procedure FormCreate(Sender: TObject);
@@ -64,20 +75,6 @@ public
   { public declarations }
 end;
 
-{$ifndef JScript}
-{$ifdef Chromium}
-type TGlbObject = class(TObject)
-procedure GlobalCEFApp_OnProcessMessageReceived(const browser       : ICefBrowser;
-                                                      sourceProcess : TCefProcessId;
-                                                const message       : ICefProcessMessage;
-                                                var   aHandled      : boolean);
-end;
-procedure InitialiseCEFMessaging;
-var
-  GlbObject:TGlbObject;
-{$endif}
-{$endif}
-
 var
 __MAINFORM__: T__MAINFORM__;
 
@@ -85,92 +82,6 @@ implementation
 
 {$R *.lfm}
 
-{$ifndef JScript}
-{$ifdef Chromium}
-function SimpleNodeSearch(const aDocument: ICefDomDocument; NodeType,LookFor:String):String;
-var
-  TempNode : ICefDomNode;
-  str:String;
-  i:integer;
-begin
-  try
-    if (aDocument <> nil) then
-    begin
-      TempNode := aDocument.GetElementById(LookFor);
-      if (TempNode <> nil) then
-        begin
-          //CefLog('CEF4Delphi', 1, CEF_LOG_SEVERITY_ERROR, LookFor + ' element name : ' + TempNode.Name);
-          //CefLog('CEF4Delphi', 1, CEF_LOG_SEVERITY_ERROR, LookFor + ' element value : ' + TempNode.GetValue);
-          if NodeType='TXHTMLEditor' then
-          begin
-            str:=TempNode.AsMarkup;
-            // for TXHTMLEditor, have to extract the inner html from the div...
-            i:=FoundString(str,'>');
-            if i>0 then Delete(str,1,i);
-            i:=FoundString(str,'</div>');
-            if i>0 then Delete(str,i,6);
-            result:=str;
-          end;
-        end;
-    end;
-  except
-    on e : exception do
-      if CustomExceptionHandler('SimpleNodeSearch', e) then raise;
-  end;
-end;
-
-procedure DOMVisitor_OnDocAvailable_TXHTMLEditor(const browser: ICefBrowser; const document: ICefDomDocument);
-var
-  msg: ICefProcessMessage;
-  txt:String;
-begin
-  // This function is called from a different process.
-  // document is only valid inside this function.
-
-  // Simple DOM search to find the html text editor content
-  txt:=SimpleNodeSearch(document,'TXHTMLEditor','my_wysiwyg_editor');
-
-  // Send back results to the browser process
-  // Notice that the XHTMLEDITOR_SEND_TEXT message name needs to be recognized in
-  // Chromium OnProcessMessageReceived method
-  msg := TCefProcessMessageRef.New(XHTMLEDITOR_SEND_TEXT);
-  msg.ArgumentList.SetString(0, txt);
-  browser.SendProcessMessage(PID_BROWSER, msg);
-end;
-
-procedure TGlbObject.GlobalCEFApp_OnProcessMessageReceived(const browser       : ICefBrowser;
-                                                      sourceProcess : TCefProcessId;
-                                                const message       : ICefProcessMessage;
-                                                var   aHandled      : boolean);
-var
-  TempFrame   : ICefFrame;
-  TempVisitor : TCefFastDomVisitor2;
-begin
-  aHandled := False;
-  if (browser <> nil) then
-    begin
-      CefLog('XIDE OnProcessMessageReceived. ', 1, CEF_LOG_SEVERITY_ERROR, message.name);
-      if (message.name = XHTMLEDITOR_GETTEXT) then
-        begin
-          TempFrame := browser.MainFrame;
-
-          if (TempFrame <> nil) then
-            begin
-              TempVisitor := TCefFastDomVisitor2.Create(browser, @DOMVisitor_OnDocAvailable_TXHTMLEditor);
-              TempFrame.VisitDom(TempVisitor);
-            end;
-          aHandled := True;
-      end;
-    end;
-end;
-
-procedure InitialiseCEFMessaging;
-begin
-  GlbObject:=TGlbObject.Create;
-  GlobalCEFApp.OnProcessMessageReceived := @GlbObject.GlobalCEFApp_OnProcessMessageReceived;
-end;
-{$endif}
-{$endif}
 
 procedure T__MAINFORM__.DummyPositionMarker;     // do not delete this procedure
 begin
@@ -224,7 +135,7 @@ begin
 
   // this include file contains the system description to be loaded at startup.
   {$I systemnodetree.inc}
-  XMLToNodeTree(LoadedSystemString);   //! has been saved by the 'Run in Browser' menu button
+  XMLToNodeTree(LoadedSystemString,UIRootNode);   //! has been saved by the 'Run in Browser' menu button
 
   StartingUp:=false;
 end;
@@ -236,7 +147,8 @@ end;
 begin
     MainUnitName:='__MAINUNIT__';
     {$ifndef JScript}
-    {$I __RTLDir__/rtl.lrs}
+    Application.ShowHint:=true;
+    {$I rtl.lrs}
     {$Else}
        asm
        try{

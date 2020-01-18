@@ -50,6 +50,7 @@ procedure ShowGreyOverlay(ParentName,WindowId:String);
 procedure DeleteGreyOverlay(DivId:String);
 procedure ApplyClasses(ob:TObject;AValue:String;myNode:TdataNode);
 procedure SyncTimeout(msec:integer);
+procedure FixHeightToLineHeight(obName:String);
 
 
 const
@@ -412,39 +413,7 @@ begin
    end;
    result := match;
 end;
-(*
-function PrepareHeightWidthHTML(var HW,StrVal,StyleVal:string):Boolean;
-var
-  hw1:string;
-  pct:Boolean;
-begin
-  // prepare height and width for html
-  pct:=false;
-  if (FoundString(StrVal,'%')>0) then
-    pct:=true;
-  if (FoundString(StrVal,'px')>0) or (pct=true) then
-    hw1:=StrVal
-  else if StrVal<>'' then
-    hw1:=StrVal+'px'
-  else
-     hw1:='';
-  StrVal:=hw1;
 
-  if HW='H' then
-  begin
-    StyleVal:= 'height:'+hw1+';' ;
-    if (FoundString(hw1,'px')>0) then
-      StyleVal := StyleVal + 'max-height:'+hw1+';';
-  end;
-  if HW='W' then
-  begin
-    StyleVal:= 'width:'+hw1+';' ;
-    if (FoundString(hw1,'px')>0) then
-      StyleVal := StyleVal + 'max-width:'+hw1+';';
-  end;
-  result:=pct;
-end;
-*)
 function PrepareHeightWidthHTML(var HW,StrVal:string):Boolean;
 var
   hw1:string;
@@ -683,6 +652,8 @@ begin
        if (ShowBorder==true) {
           wrapper.classList.add("normal-border");
        }
+
+       wrapper.style.padding = '0px';
 
        return wrapper;
 
@@ -1010,6 +981,20 @@ begin
   catch(err) {alert('Error in HTMLUtils.ApplyClasses '+ err.message);}
 end;
 end;
+
+procedure FixHeightToLineHeight(obName:String);
+begin
+  asm
+    // fix the height to one line-height...
+    var ob=document.getElementById(obName);
+    if (ob!=null) {
+      var obStyle = window.getComputedStyle(ob);
+      ob.style.maxHeight = obStyle.getPropertyValue('line-height');
+      //alert('maxHeight='+ob.style.maxHeight);
+    }
+  end;
+end;
+
 
 begin
 IdentifyBrowser;

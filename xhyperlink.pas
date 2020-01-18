@@ -270,8 +270,8 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Right','',false);
-  AddDefaultAttribute(myDefaultAttribs,'LabelCaption','String','BBC News','',false);
-  AddDefaultAttribute(myDefaultAttribs,'URL','String','http://www.bbc.co.uk/news','',false);
+  AddDefaultAttribute(myDefaultAttribs,'LabelCaption','String','Lazarus IDE','',false);
+  AddDefaultAttribute(myDefaultAttribs,'URL','String','https://www.lazarus-ide.org/','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);

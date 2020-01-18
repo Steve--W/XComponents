@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <ProjectSession>
+    <PathDelim Value="\"/>
+    <Version Value="12"/>
+    <BuildModes Active="Default"/>
+    <Units>
+      <Unit>
+        <Filename Value="XExample3cef.lpr"/>
+        <IsPartOfProject Value="True"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="10"/>
+        <TopLine Value="6"/>
+        <CursorPos X="29" Y="13"/>
+        <UsageCount Value="74"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="Example3Unit.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="Example3Form"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <TopLine Value="67"/>
+        <CursorPos Y="87"/>
+        <UsageCount Value="74"/>
+        <Loaded Value="True"/>
+        <LoadedDesigner Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <UnitName Value="XIFrame"/>
+        <EditorIndex Value="7"/>
+        <TopLine Value="413"/>
+        <CursorPos X="24" Y="427"/>
+        <UsageCount Value="37"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\XComponentsLaz2\xhyperlink.pas"/>
+        <UnitName Value="XHyperLink"/>
+        <EditorIndex Value="6"/>
+        <TopLine Value="252"/>
+        <CursorPos X="76" Y="273"/>
+        <UsageCount Value="37"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\XComponentsLaz2\xsvgcontainer.pas"/>
+        <UnitName Value="XSVGContainer"/>
+        <EditorIndex Value="9"/>
+        <TopLine Value="803"/>
+        <CursorPos X="49" Y="813"/>
+        <UsageCount Value="37"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\XComponentsLaz2\nodeutils.pas"/>
+        <UnitName Value="NodeUtils"/>
+        <EditorIndex Value="3"/>
+        <TopLine Value="2294"/>
+        <CursorPos X="31" Y="2302"/>
+        <UsageCount Value="14"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\XComponentsLaz2\stringutils.pas"/>
+        <UnitName Value="StringUtils"/>
+        <EditorIndex Value="4"/>
+        <TopLine Value="22"/>
+        <CursorPos X="43" Y="519"/>
+        <UsageCount Value="14"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\XComponentsLaz2\xeditbox.pas"/>
+        <UnitName Value="XEditBox"/>
+        <EditorIndex Value="2"/>
+        <TopLine Value="302"/>
+        <CursorPos Y="321"/>
+        <UsageCount Value="13"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\XComponentsLaz2\cefxutils.pas"/>
+        <UnitName Value="CEFXUtils"/>
+        <EditorIndex Value="8"/>
+        <TopLine Value="169"/>
+        <CursorPos X="79" Y="187"/>
+        <UsageCount Value="13"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\XComponentsLaz2\lazsutils.pas"/>
+        <UnitName Value="LazsUtils"/>
+        <EditorIndex Value="5"/>
+        <TopLine Value="159"/>
+        <CursorPos X="11" Y="175"/>
+        <UsageCount Value="13"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="C:\XComponentsLaz2\xtable.pas"/>
+        <UnitName Value="XTable"/>
+        <EditorIndex Value="1"/>
+        <UsageCount Value="10"/>
+        <Loaded Value="True"/>
+      </Unit>
+    </Units>
+    <JumpHistory Count="30" HistoryIndex="29">
+      <Position1>
+        <Filename Value="Example3Unit.pas"/>
+        <Caret Line="86" TopLine="68"/>
+      </Position1>
+      <Position2>
+        <Filename Value="Example3Unit.pas"/>
+        <Caret Line="108" TopLine="93"/>
+      </Position2>
+      <Position3>
+        <Filename Value="Example3Unit.pas"/>
+        <Caret Line="112" Column="70" TopLine="31"/>
+      </Position3>
+      <Position4>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="1146" Column="33" TopLine="1138"/>
+      </Position4>
+      <Position5>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="427" Column="3" TopLine="409"/>
+      </Position5>
+      <Position6>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="1363" TopLine="1353"/>
+      </Position6>
+      <Position7>
+        <Filename Value="Example3Unit.pas"/>
+        <Caret Line="112" Column="70" TopLine="31"/>
+      </Position7>
+      <Position8>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="109" Column="57" TopLine="98"/>
+      </Position8>
+      <Position9>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="126" Column="344" TopLine="98"/>
+      </Position9>
+      <Position10>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="132" Column="43" TopLine="105"/>
+      </Position10>
+      <Position11>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="353" Column="15" TopLine="325"/>
+      </Position11>
+      <Position12>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="399" Column="35" TopLine="371"/>
+      </Position12>
+      <Position13>
+        <Filename Value="Example3Unit.pas"/>
+        <Caret Line="112" Column="70" TopLine="31"/>
+      </Position13>
+      <Position14>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="1354" Column="50" TopLine="289"/>
+      </Position14>
+      <Position15>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="432" Column="26" TopLine="407"/>
+      </Position15>
+      <Position16>
+        <Filename Value="Example3Unit.pas"/>
+        <Caret Line="86" Column="5" TopLine="19"/>
+      </Position16>
+      <Position17>
+        <Filename Value="C:\XComponentsLaz2\stringutils.pas"/>
+        <Caret Line="519" Column="43" TopLine="22"/>
+      </Position17>
+      <Position18>
+        <Filename Value="C:\XComponentsLaz2\lazsutils.pas"/>
+        <Caret Line="1387" Column="13" TopLine="1373"/>
+      </Position18>
+      <Position19>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="357" Column="17" TopLine="339"/>
+      </Position19>
+      <Position20>
+        <Filename Value="Example3Unit.pas"/>
+        <Caret Line="86" Column="5" TopLine="37"/>
+      </Position20>
+      <Position21>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="40" Column="41" TopLine="34"/>
+      </Position21>
+      <Position22>
+        <Filename Value="Example3Unit.pas"/>
+        <Caret Line="86" Column="5" TopLine="37"/>
+      </Position22>
+      <Position23>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="351" TopLine="240"/>
+      </Position23>
+      <Position24>
+        <Filename Value="Example3Unit.pas"/>
+        <Caret Line="86" Column="5" TopLine="37"/>
+      </Position24>
+      <Position25>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="1150" Column="33" TopLine="1131"/>
+      </Position25>
+      <Position26>
+        <Filename Value="Example3Unit.pas"/>
+        <Caret Line="86" Column="5" TopLine="37"/>
+      </Position26>
+      <Position27>
+        <Filename Value="C:\XComponentsLaz2\xiframe.pas"/>
+        <Caret Line="427" Column="24" TopLine="413"/>
+      </Position27>
+      <Position28>
+        <Filename Value="C:\XComponentsLaz2\lazsutils.pas"/>
+        <Caret Line="175" Column="11" TopLine="159"/>
+      </Position28>
+      <Position29>
+        <Filename Value="C:\XComponentsLaz2\nodeutils.pas"/>
+        <Caret Line="1043" Column="37" TopLine="1026"/>
+      </Position29>
+      <Position30>
+        <Filename Value="Example3Unit.pas"/>
+        <Caret Line="63" Column="38" TopLine="37"/>
+      </Position30>
+    </JumpHistory>
+    <RunParams>
+      <FormatVersion Value="2"/>
+      <Modes Count="0" ActiveMode=""/>
+    </RunParams>
+  </ProjectSession>
+</CONFIG>

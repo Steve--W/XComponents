@@ -172,7 +172,7 @@ begin
       begin
         // is a wrapperpanel
         tmp:=GetObjectProp(MouseDownComponent,'myControl');
-        if tmp<>nil then showmessage('myControl is '+tmp.ClassName);
+        //if tmp<>nil then showmessage('myControl is '+tmp.ClassName);
         NewParent:=TComponent(tmp);                //!!!!! this doesn't work here - still uses original parent
         //showmessage('set parent to '+NewParent.ClassName);
       end
@@ -639,8 +639,6 @@ and (myComponent.Align<>alClient)
 then
 begin
   str:=myComponent.ClassName;
-  if myComponent.ClassName = 'TStringGrid' then
-    h:=0;
    myComponent.DisableAutoSizing;
    myTag:=nil;
    if myComponent.Tag>0 then
@@ -649,6 +647,8 @@ begin
      myTag:=TComponentTag(myComponent.Tag);
      if (myTag<>nil) and (Assigned(myTag)) then
      begin
+       if myComponent.ClassName = 'TXMemo' then
+         hh:='';
         hh:=myTag.HH;
         ww:=myTag.WW;
         prw:=FindSizedParent(myComponent,'w');
@@ -659,7 +659,9 @@ begin
              if FoundString(hh,'%')>0 then
              begin
              // Percentage
-                Hh := myStringReplace(hh, '%', '',999,999);
+                  if myComponent.ClassName = 'TXMemo' then
+                    h:=0;
+                  Hh := myStringReplace(hh, '%', '',999,999);
 //                tmp:=prh.ClientHeight;
 //                tmp2:=prh.Height;
                 if hh='' then h:=-1 else h:=strtoint(hh);

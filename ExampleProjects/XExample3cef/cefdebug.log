@@ -1,0 +1,239 @@
+[1110/091504.276:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1110/091705.132:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1110/091751.719:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1110/091753.421:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1110/091753.466:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1110/092313.791:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1110/092315.498:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1110/092315.595:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/083102.941:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/083105.323:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/083105.483:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/083108.740:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)
+[1111/084019.968:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/084025.195:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/084025.259:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/084025.358:WARNING:spdy_session.cc(3317)] Received HEADERS for invalid stream 23
+[1111/084441.009:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/084445.146:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/084445.212:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/084448.545:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)
+[1111/085034.998:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/085039.936:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/085040.002:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/085043.364:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)
+[1111/085455.570:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/085459.648:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/085459.716:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/085503.088:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)
+[1111/090233.668:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/090238.169:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/090238.235:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/090241.626:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)
+[1111/090444.528:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/090446.703:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/090446.765:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/090450.121:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)
+[1111/091222.392:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/091224.702:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/091224.766:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/091228.132:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)
+[1111/091722.714:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/091724.901:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/091724.966:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/091728.301:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)
+[1111/092404.448:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092406.667:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092406.734:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092410.123:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)
+[1111/092413.247:WARNING:spdy_session.cc(3317)] Received HEADERS for invalid stream 3
+[1111/092450.513:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092452.621:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092452.684:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092455.964:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)
+[1111/092530.310:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(61,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(73,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092531.125:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(120,36-100): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092531.135:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(214,32-92): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(215,32-92): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092556.781:INFO:CONSOLE(796)] "Mixed Content: The page at 'https://www.bbc.co.uk/news/technology-35731734/embed' was loaded over HTTPS, but requested an insecure image 'http://emp.bbc.co.uk/emp/embed/img/bbclogo.png'. This content should also be served over HTTPS.", source: https://www.bbc.co.uk/news/technology-35731734/embed (796)
+[1111/092851.104:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092853.334:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092853.402:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1111/092856.759:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)
+[1111/092900.791:WARNING:spdy_session.cc(3317)] Received HEADERS for invalid stream 3
+[1111/092904.737:WARNING:spdy_session.cc(3317)] Received HEADERS for invalid stream 39
+[1111/092904.816:WARNING:spdy_session.cc(3317)] Received HEADERS for invalid stream 7
+[1111/092904.988:WARNING:spdy_session.cc(3317)] Received HEADERS for invalid stream 9
+[1111/092942.068:INFO:CONSOLE(1)] "
+%cB%c %cB%c %cC%c %c NEWS
+%c
+%cHi there! Do you want to help build a fast and accessible web experience used
+by over 300 million people around the world each month? We're hiring people for
+all sorts of roles. Head on over to %chttps://bbc-news.github.io/join-us/%c to find out more!
+", source: https://m.files.bbci.co.uk/modules/bbc-morph-news-front-page-js-bundle/1.56.3/newsFrontPagePersonalised.js (1)
+[1111/093000.660:WARNING:spdy_session.cc(3317)] Received HEADERS for invalid stream 17
+[1111/093015.599:WARNING:ipc_message_attachment_set.cc(49)] MessageAttachmentSet destroyed with unconsumed attachments: 0/1
+[1113/110356.596:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[1114/094457.423:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[0110/160352.433:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[0110/160520.908:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(40,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(52,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[0110/160526.793:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(60,9-59): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(72,10-44): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[0110/160526.960:WARNING:angle_platform_impl.cc(52)] compileToBinary(259): 
+C:\fakepath(75,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\fakepath(97,10-54): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+
+[0110/160530.286:INFO:CONSOLE(0)] "The resource https://fig.bbc.co.uk/frameworks/fig/2/fig.js?callback=orb.orb_fig was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source:  (0)

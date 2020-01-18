@@ -91,10 +91,6 @@ type
     procedure myChromiumAfterCreated(Sender: TObject; const browser: ICefBrowser); override;
 
     //  TOnProcessMessageReceived       = procedure(Sender: TObject; const browser: ICefBrowser; const frame: ICefFrame; sourceProcess: TCefProcessId; const message: ICefProcessMessage; out Result: Boolean) of object;
-    //procedure ChromiumProcessMessageReceived(
-    //  Sender: TObject; const Browser: ICefBrowser;
-    //  sourceProcess: TCefProcessId;
-    //  const message: ICefProcessMessage; out Result: Boolean);
     procedure ChromiumProcessMessageReceived(
       Sender: TObject; const browser: ICefBrowser;
       const frame: ICefFrame; sourceProcess: TCefProcessId;
@@ -250,6 +246,7 @@ var
   c:integer;
   NewText:String;
   TempMsg : ICefProcessMessage;
+  //newval:ICefValue;
 begin
   // User has pressed 'Save'.
   if (not (csDesigning in componentState))
@@ -257,9 +254,11 @@ begin
   and (self.myNode<>nil)
   then
   begin
-    // Send a cef message to fetch the new value of the edited text
+    // Send a cef message to fetch the new value of the frame output array
     // (Use the ArgumentList property if you need to pass some parameters.)
     TempMsg := TCefProcessMessageRef.New(XHTMLEDITOR_GETTEXT);
+    //TempMsg.ArgumentList.SetValue(0,newval);              //  msg.ArgumentList.SetString(0, txt);
+
     myChromium.SendProcessMessage(PID_RENDERER, TempMsg);
 
   end;

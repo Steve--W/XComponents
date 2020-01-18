@@ -1,0 +1,513 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <ProjectSession>
+    <PathDelim Value="\"/>
+    <Version Value="12"/>
+    <BuildModes Active="Default"/>
+    <Units Count="47">
+      <Unit0>
+        <Filename Value="XExample2.lpr"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="6"/>
+        <CursorPos X="40" Y="30"/>
+        <UsageCount Value="202"/>
+        <Loaded Value="True"/>
+      </Unit0>
+      <Unit1>
+        <Filename Value="Example2Unit.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="Example2Form"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <IsVisibleTab Value="True"/>
+        <CursorPos Y="3"/>
+        <UsageCount Value="202"/>
+        <Loaded Value="True"/>
+        <LoadedDesigner Value="True"/>
+      </Unit1>
+      <Unit2>
+        <Filename Value="compilerlogunit.pas"/>
+        <HasResources Value="True"/>
+        <UnitName Value="CompilerLogUnit"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="36"/>
+        <CursorPos X="25" Y="58"/>
+        <UsageCount Value="202"/>
+      </Unit2>
+      <Unit3>
+        <Filename Value="C:\fpcupdeluxe\lazarus\lcl\include\control.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="4364"/>
+        <CursorPos X="62" Y="4375"/>
+        <UsageCount Value="100"/>
+      </Unit3>
+      <Unit4>
+        <Filename Value="C:\XComponentsLaz19\utilsjscompile.pas"/>
+        <UnitName Value="UtilsJSCompile"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="155"/>
+        <CursorPos Y="174"/>
+        <UsageCount Value="100"/>
+      </Unit4>
+      <Unit5>
+        <Filename Value="C:\XComponentsLaz19\lazsutils.pas"/>
+        <UnitName Value="LazsUtils"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="1158"/>
+        <CursorPos X="27" Y="1182"/>
+        <UsageCount Value="100"/>
+      </Unit5>
+      <Unit6>
+        <Filename Value="C:\XComponentsLaz19\xeditbox.pas"/>
+        <UnitName Value="XEditBox"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="317"/>
+        <CursorPos X="23" Y="273"/>
+        <UsageCount Value="100"/>
+      </Unit6>
+      <Unit7>
+        <Filename Value="C:\XComponentsLaz19\wrapperpanel.pas"/>
+        <UnitName Value="WrapperPanel"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="397"/>
+        <CursorPos X="3" Y="570"/>
+        <UsageCount Value="100"/>
+      </Unit7>
+      <Unit8>
+        <Filename Value="C:\XComponentsLaz19\xscrollbox.pas"/>
+        <UnitName Value="XScrollBox"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="158"/>
+        <CursorPos X="3" Y="160"/>
+        <UsageCount Value="100"/>
+      </Unit8>
+      <Unit9>
+        <Filename Value="C:\XComponentsLaz19\xtabcontrol.pas"/>
+        <UnitName Value="XTabControl"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="353"/>
+        <CursorPos X="42" Y="366"/>
+        <UsageCount Value="100"/>
+      </Unit9>
+      <Unit10>
+        <Filename Value="C:\fpcupdeluxe\lazarus\lcl\controls.pp"/>
+        <UnitName Value="Controls"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="1537"/>
+        <CursorPos X="39" Y="1555"/>
+        <UsageCount Value="100"/>
+      </Unit10>
+      <Unit11>
+        <Filename Value="C:\XComponentsLaz19\xvbox.pas"/>
+        <UnitName Value="XVBox"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="62"/>
+        <CursorPos X="26" Y="82"/>
+        <UsageCount Value="100"/>
+      </Unit11>
+      <Unit12>
+        <Filename Value="C:\XComponentsLaz19\nodeutils.pas"/>
+        <UnitName Value="NodeUtils"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="881"/>
+        <CursorPos X="16" Y="901"/>
+        <UsageCount Value="100"/>
+      </Unit12>
+      <Unit13>
+        <Filename Value="C:\fpcupdeluxe\lazarus\components\ideintf\projectintf.pas"/>
+        <UnitName Value="ProjectIntf"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="449"/>
+        <CursorPos X="3" Y="484"/>
+        <UsageCount Value="100"/>
+      </Unit13>
+      <Unit14>
+        <Filename Value="C:\XComponentsLaz19\events.pas"/>
+        <UnitName Value="Events"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="229"/>
+        <CursorPos X="29" Y="250"/>
+        <UsageCount Value="100"/>
+      </Unit14>
+      <Unit15>
+        <Filename Value="C:\XComponentsLaz19\popup.pas"/>
+        <UnitName Value="Popup"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="254"/>
+        <CursorPos X="22" Y="273"/>
+        <UsageCount Value="100"/>
+      </Unit15>
+      <Unit16>
+        <Filename Value="C:\XComponentsLaz19\xbutton.pas"/>
+        <UnitName Value="XButton"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="117"/>
+        <CursorPos X="32" Y="141"/>
+        <UsageCount Value="13"/>
+      </Unit16>
+      <Unit17>
+        <Filename Value="C:\XComponentsLaz19\xhbox.pas"/>
+        <UnitName Value="XHBox"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="171"/>
+        <CursorPos Y="189"/>
+        <UsageCount Value="13"/>
+      </Unit17>
+      <Unit18>
+        <Filename Value="C:\XComponentsLaz19\xiframe.pas"/>
+        <UnitName Value="XIFrame"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="521"/>
+        <CursorPos Y="540"/>
+        <UsageCount Value="13"/>
+      </Unit18>
+      <Unit19>
+        <Filename Value="C:\XComponentsLaz19\xtree.pas"/>
+        <UnitName Value="XTree"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="964"/>
+        <CursorPos X="16" Y="985"/>
+        <UsageCount Value="13"/>
+      </Unit19>
+      <Unit20>
+        <Filename Value="C:\XComponentsLaz19\htmlutils.pas"/>
+        <UnitName Value="HTMLUtils"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="457"/>
+        <CursorPos X="51" Y="467"/>
+        <UsageCount Value="13"/>
+      </Unit20>
+      <Unit21>
+        <Filename Value="C:\fpcupdeluxe\lazarus\lcl\lresources.pp"/>
+        <UnitName Value="LResources"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="5339"/>
+        <CursorPos Y="5359"/>
+        <UsageCount Value="12"/>
+      </Unit21>
+      <Unit22>
+        <Filename Value="C:\XComponentsLaz19\ximage.pas"/>
+        <UnitName Value="XImage"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="247"/>
+        <CursorPos X="18" Y="332"/>
+        <UsageCount Value="12"/>
+      </Unit22>
+      <Unit23>
+        <Filename Value="C:\XComponentsLaz19\xlabel.pas"/>
+        <UnitName Value="XLabel"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="119"/>
+        <UsageCount Value="12"/>
+      </Unit23>
+      <Unit24>
+        <Filename Value="C:\XComponentsLaz19\xgroupbox.pas"/>
+        <UnitName Value="XGroupBox"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="10"/>
+        <CursorPos Y="107"/>
+        <UsageCount Value="10"/>
+      </Unit24>
+      <Unit25>
+        <Filename Value="C:\XComponentsLaz2\utilsjscompile.pas"/>
+        <UnitName Value="UtilsJSCompile"/>
+        <EditorIndex Value="4"/>
+        <TopLine Value="366"/>
+        <CursorPos X="15" Y="385"/>
+        <UsageCount Value="12"/>
+        <Loaded Value="True"/>
+      </Unit25>
+      <Unit26>
+        <Filename Value="C:\pas2jsnew\compiler\packages\pastojs\src\pas2jscompiler.pp"/>
+        <UnitName Value="Pas2jsCompiler"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="3252"/>
+        <CursorPos Y="3273"/>
+        <UsageCount Value="10"/>
+      </Unit26>
+      <Unit27>
+        <Filename Value="C:\pas2jsnew\compiler\packages\fcl-passrc\src\pasresolver.pp"/>
+        <UnitName Value="PasResolver"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="15526"/>
+        <CursorPos Y="15547"/>
+        <UsageCount Value="10"/>
+      </Unit27>
+      <Unit28>
+        <Filename Value="C:\XComponentsLaz2\xgpucanvas.pas"/>
+        <UnitName Value="XGPUCanvas"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos X="5" Y="31"/>
+        <UsageCount Value="12"/>
+      </Unit28>
+      <Unit29>
+        <Filename Value="C:\XComponentsLaz2\backup\utilsjscompile.pas.bak"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos X="3" Y="25"/>
+        <UsageCount Value="10"/>
+        <DefaultSyntaxHighlighter Value="None"/>
+      </Unit29>
+      <Unit30>
+        <Filename Value="C:\XComponentsLaz2\resources\rtl.lrs"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="27928"/>
+        <CursorPos X="44" Y="27949"/>
+        <UsageCount Value="10"/>
+      </Unit30>
+      <Unit31>
+        <Filename Value="C:\XComponentsLaz2\resources\setupxidelrs.txt"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos X="39"/>
+        <UsageCount Value="10"/>
+        <DefaultSyntaxHighlighter Value="None"/>
+      </Unit31>
+      <Unit32>
+        <Filename Value="C:\XComponentsLaz2\htmlutils.pas"/>
+        <UnitName Value="HTMLUtils"/>
+        <EditorIndex Value="3"/>
+        <TopLine Value="960"/>
+        <CursorPos X="30" Y="978"/>
+        <UsageCount Value="12"/>
+        <Loaded Value="True"/>
+      </Unit32>
+      <Unit33>
+        <Filename Value="C:\XComponentsLaz2\xcolorpicker.pas"/>
+        <UnitName Value="XColorPicker"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="285"/>
+        <CursorPos X="33" Y="305"/>
+        <UsageCount Value="12"/>
+      </Unit33>
+      <Unit34>
+        <Filename Value="C:\XComponentsLaz2\xcombobox.pas"/>
+        <UnitName Value="XComboBox"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="258"/>
+        <CursorPos X="31" Y="291"/>
+        <UsageCount Value="12"/>
+      </Unit34>
+      <Unit35>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <UnitName Value="WrapperPanel"/>
+        <EditorIndex Value="2"/>
+        <TopLine Value="1186"/>
+        <CursorPos X="39" Y="1216"/>
+        <UsageCount Value="12"/>
+        <Loaded Value="True"/>
+      </Unit35>
+      <Unit36>
+        <Filename Value="C:\XComponentsLaz2\xcode.pas"/>
+        <UnitName Value="XCode"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="450"/>
+        <CursorPos X="21" Y="464"/>
+        <UsageCount Value="10"/>
+      </Unit36>
+      <Unit37>
+        <Filename Value="C:\XComponentsLaz2\xform.pas"/>
+        <UnitName Value="XForm"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="264"/>
+        <CursorPos X="30" Y="281"/>
+        <UsageCount Value="10"/>
+      </Unit37>
+      <Unit38>
+        <Filename Value="C:\XComponentsLaz2\xtabcontrol.pas"/>
+        <UnitName Value="XTabControl"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="1082"/>
+        <CursorPos X="44" Y="1100"/>
+        <UsageCount Value="10"/>
+      </Unit38>
+      <Unit39>
+        <Filename Value="C:\XComponentsLaz2\xtree.pas"/>
+        <UnitName Value="XTree"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="867"/>
+        <CursorPos X="88" Y="888"/>
+        <UsageCount Value="10"/>
+      </Unit39>
+      <Unit40>
+        <Filename Value="C:\XComponentsLaz2\xscrollbox.pas"/>
+        <UnitName Value="XScrollBox"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="170"/>
+        <CursorPos X="66" Y="388"/>
+        <UsageCount Value="11"/>
+      </Unit40>
+      <Unit41>
+        <Filename Value="C:\XComponentsLaz2\xvbox.pas"/>
+        <UnitName Value="XVBox"/>
+        <EditorIndex Value="1"/>
+        <TopLine Value="73"/>
+        <CursorPos X="14" Y="105"/>
+        <UsageCount Value="11"/>
+        <Loaded Value="True"/>
+      </Unit41>
+      <Unit42>
+        <Filename Value="C:\XComponentsLaz2\xhbox.pas"/>
+        <UnitName Value="XHBox"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="164"/>
+        <CursorPos Y="182"/>
+        <UsageCount Value="10"/>
+      </Unit42>
+      <Unit43>
+        <Filename Value="C:\XComponentsLaz2\xgroupbox.pas"/>
+        <UnitName Value="XGroupBox"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="367"/>
+        <CursorPos X="81" Y="379"/>
+        <UsageCount Value="10"/>
+      </Unit43>
+      <Unit44>
+        <Filename Value="C:\XComponentsLaz2\xbutton.pas"/>
+        <UnitName Value="XButton"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="167"/>
+        <CursorPos X="7" Y="207"/>
+        <UsageCount Value="10"/>
+      </Unit44>
+      <Unit45>
+        <Filename Value="C:\XComponentsLaz2\nodeutils.pas"/>
+        <UnitName Value="NodeUtils"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="2189"/>
+        <CursorPos X="7" Y="2204"/>
+        <UsageCount Value="10"/>
+      </Unit45>
+      <Unit46>
+        <Filename Value="C:\XComponentsLaz2\lazsutils.pas"/>
+        <UnitName Value="LazsUtils"/>
+        <EditorIndex Value="5"/>
+        <UsageCount Value="10"/>
+        <Loaded Value="True"/>
+      </Unit46>
+    </Units>
+    <JumpHistory Count="30" HistoryIndex="29">
+      <Position1>
+        <Filename Value="XExample2.lpr"/>
+        <Caret Line="42" Column="13"/>
+      </Position1>
+      <Position2>
+        <Filename Value="XExample2.lpr"/>
+        <Caret Line="30" Column="40"/>
+      </Position2>
+      <Position3>
+        <Filename Value="C:\XComponentsLaz2\lazsutils.pas"/>
+      </Position3>
+      <Position4>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="16" Column="92"/>
+      </Position4>
+      <Position5>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="66" Column="20" TopLine="34"/>
+      </Position5>
+      <Position6>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="84" Column="22" TopLine="52"/>
+      </Position6>
+      <Position7>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="93" Column="23" TopLine="61"/>
+      </Position7>
+      <Position8>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="103" Column="32" TopLine="72"/>
+      </Position8>
+      <Position9>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="148" Column="92" TopLine="116"/>
+      </Position9>
+      <Position10>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="164" Column="58" TopLine="132"/>
+      </Position10>
+      <Position11>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="218" Column="9" TopLine="195"/>
+      </Position11>
+      <Position12>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="219" Column="9" TopLine="195"/>
+      </Position12>
+      <Position13>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="227" Column="43" TopLine="208"/>
+      </Position13>
+      <Position14>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="287" Column="93" TopLine="267"/>
+      </Position14>
+      <Position15>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="433" Column="75" TopLine="411"/>
+      </Position15>
+      <Position16>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="522" Column="39" TopLine="502"/>
+      </Position16>
+      <Position17>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="516" TopLine="511"/>
+      </Position17>
+      <Position18>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="588" Column="33" TopLine="571"/>
+      </Position18>
+      <Position19>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="590" Column="50" TopLine="571"/>
+      </Position19>
+      <Position20>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="651" Column="43" TopLine="631"/>
+      </Position20>
+      <Position21>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="652" Column="44" TopLine="631"/>
+      </Position21>
+      <Position22>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="654" Column="30" TopLine="631"/>
+      </Position22>
+      <Position23>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="656" Column="23" TopLine="631"/>
+      </Position23>
+      <Position24>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="669" Column="29" TopLine="652"/>
+      </Position24>
+      <Position25>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="672" Column="29" TopLine="652"/>
+      </Position25>
+      <Position26>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="1179" Column="14" TopLine="1162"/>
+      </Position26>
+      <Position27>
+        <Filename Value="C:\XComponentsLaz2\xvbox.pas"/>
+        <Caret Line="38" Column="59" TopLine="28"/>
+      </Position27>
+      <Position28>
+        <Filename Value="C:\XComponentsLaz2\wrapperpanel.pas"/>
+        <Caret Line="1189" Column="34" TopLine="1186"/>
+      </Position28>
+      <Position29>
+        <Filename Value="C:\XComponentsLaz2\htmlutils.pas"/>
+        <Caret Line="630" Column="32" TopLine="610"/>
+      </Position29>
+      <Position30>
+        <Filename Value="C:\XComponentsLaz2\htmlutils.pas"/>
+        <Caret Line="978" Column="30" TopLine="960"/>
+      </Position30>
+    </JumpHistory>
+    <RunParams>
+      <FormatVersion Value="2"/>
+      <Modes Count="0" ActiveMode=""/>
+    </RunParams>
+  </ProjectSession>
+</CONFIG>

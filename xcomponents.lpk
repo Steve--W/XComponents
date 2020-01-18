@@ -9,19 +9,16 @@
       <PathDelim Value="\"/>
       <SearchPaths>
         <IncludeFiles Value="Icons"/>
-        <OtherUnitFiles Value="$(XComponents_Pas2JSPaths);$(XComponents_cefPaths)"/>
+        <OtherUnitFiles Value="$(XComponents_Pas2JSPaths);$PkgOutDir(CEF4Delphi_Lazarus)"/>
         <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
       </SearchPaths>
       <Conditionals Value="if ((TargetOS=&apos;win32&apos;) or (TargetOS=&apos;win64&apos;)) then
  begin
-   //XComponents_Pas2JSPaths :=  &apos;C:\pas2jsnew\compiler\packages\fcl-js\src\;C:\pas2jsnew\compiler\packages\fcl-json\src\;C:\pas2jsnew\compiler\packages\fcl-passrc\src\;C:\pas2jsnew\compiler\packages\pastojs\src\&apos;;
    XComponents_Pas2JSPaths :=  &apos;pas2js0\&apos;;
-   XComponents_cefPaths :=  &apos;C:\cef4Master\CEF4Delphi-master\packages\lib\i386-win32\&apos;;
  end
  else if (TargetOS=&apos;linux&apos;) then
  begin
    XComponents_Pas2JSPaths :=  &apos;./pas2js0/&apos;;
-   XComponents_cefPaths :=  &apos;&apos;;
  end;"/>
       <BuildMacros>
         <Count Value="2"/>
@@ -55,7 +52,7 @@
         <CustomOptions Value="-dChromium"/>
       </Other>
     </CompilerOptions>
-    <Files Count="42">
+    <Files Count="43">
       <Item1>
         <Filename Value="wrapperpanel.pas"/>
         <UnitName Value="WrapperPanel"/>
@@ -253,6 +250,10 @@
         <Filename Value="compilerlogunit.pas"/>
         <UnitName Value="CompilerLogUnit"/>
       </Item42>
+      <Item43>
+        <Filename Value="cefxutils.pas"/>
+        <UnitName Value="CEFXUtils"/>
+      </Item43>
     </Files>
     <RequiredPkgs Count="6">
       <Item1>

@@ -14,7 +14,7 @@ uses
   XMemo, XTree, XTable, XCode, XProgressBar, XNumericSlider, XNumberSpinner, 
   XDatePicker, XColorPicker, XImage, XBitMap, XRadioBtns, XMenu, XIFrame, 
   XHTMLEditor, XSVGContainer, XHTMLText, XTrapEvents, XStore, PasteDialogUnit, 
-  CompilerLogUnit, LazarusPackageIntf;
+  CompilerLogUnit, CEFXUtils, LazarusPackageIntf;
 
 implementation
 

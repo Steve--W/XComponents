@@ -30,6 +30,7 @@ type
   TXComboBox = class(TWrapperPanel)
   private
     { Private declarations }
+    fPriorIndex:integer;
     {$ifndef JScript}
     fHandleClick:TEventHandler;
     fHandleChange:TEventHandler;
@@ -78,6 +79,7 @@ type
     property ReadOnly: Boolean read GetReadOnly write SetReadOnly;
     property BoxWidth: String read GetBoxWidth write SetBoxWidth;
     property OptionList: String read GetOptionList write SetOptionList;
+    property PriorIndex:integer read fPriorIndex write fPriorIndex;
 
     {$ifndef JScript}
     // Events to be visible in Lazarus IDE
@@ -149,6 +151,7 @@ begin
 
   CreateComponentDataNode2(self,MyNodeType,myDefaultAttribs, self.myEventTypes, TheOwner,IsDynamic);
 
+  fPriorIndex:=0;
   self.ParentColor:=true;
   // Setting IsContainer false will prevent designer dropping new child controls into this one.
   self.IsContainer:=false;
@@ -179,6 +182,7 @@ procedure TXComboBox.ComboBoxChange(Sender: TObject) ;
     ComboBox := TComboBox(sender) ;
     self.ItemIndex:=ComboBox.ItemIndex;
     CallHandleEvent('Change',self.ItemValue,Sender);
+    fPriorIndex:=ComboBox.ItemIndex;
  end;
 
 
@@ -202,6 +206,7 @@ begin
 
   self.SetMyEventTypes;
   self.IsContainer:=false;
+  fPriorIndex:=0;
 
   SetNodePropDefaults(self,myDefaultAttribs);
 
@@ -221,7 +226,9 @@ begin
 
   OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
   OnChangeString:= 'onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''','''+NameSpace+''',''ItemIndex'',pas.SysUtils.IntToStr(this.selectedIndex)); '+
-                           'pas.Events.handleEvent(null,''Change'','''+ScreenObjectName+''','''+NameSpace+''', this.options[selectedIndex].value, ''ItemValue'');" ';
+                           'pas.Events.handleEvent(null,''Change'','''+ScreenObjectName+''','''+NameSpace+''', this.options[selectedIndex].value, ''ItemValue'');'+
+                           'pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''','''+NameSpace+''',''PriorIndex'',pas.SysUtils.IntToStr(this.selectedIndex)); '+
+                           '" ';
 
   asm
     try{
@@ -259,16 +266,19 @@ begin
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
     // attempt to fix the height for a combo box to one line-height... (still not displayed same as editbox...tbd!!!!)
-    var dummyEBoxString = '<input type="'+TypeString+'"  id='+MyObjectName+'dummy ' +
-                     ' class="widgetinner '+wrapperid+'" ' +
-                     ' style="display: inline-block;" >';
-    wrapper.insertAdjacentHTML('beforeend', dummyEBoxString);
-    var ob=document.getElementById(MyObjectName);
-    var dum=document.getElementById(MyObjectName+'dummy');
-    var obStyle = window.getComputedStyle(dum);
-    ob.style.height = obStyle.getPropertyValue('line-height');
-    //alert('combobox height='+ob.style.height);
-    wrapper.removeChild(dum);
+//    var dummyEBoxString = '<input type="'+TypeString+'"  id='+MyObjectName+'dummy ' +
+//                     ' class="widgetinner '+wrapperid+'" ' +
+//                     ' style="display: inline-block;" >';
+//    wrapper.insertAdjacentHTML('beforeend', dummyEBoxString);
+
+    pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
+
+//    var ob=document.getElementById(MyObjectName);
+//    var dum=document.getElementById(MyObjectName+'dummy');
+//    var obStyle = window.getComputedStyle(dum);
+//    ob.style.height = obStyle.getPropertyValue('line-height');
+//    //alert('combobox height='+ob.style.height);
+//    wrapper.removeChild(dum);
   }
   catch(err) { alert(err.message+'  in XComboBox.CreateWidget');}
 

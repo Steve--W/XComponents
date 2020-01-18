@@ -292,13 +292,14 @@ begin
     var PickerString = '<input type="color"  id='+MyObjectName+' '+
                         OnClickString +
                         OnChangeString +
-                       ' style="display: inline-block;" value='+ItemValue+' '+ReadOnlyString+'> ';
+                       ' style="display: inline-block; padding:0px;" value='+ItemValue+' '+ReadOnlyString+'> ';
 
     HTMLString = labelstring+PickerString;
 
     var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
+    pas.HTMLUtils.FixHeightToLineHeight(MyObjectName);
   }
   catch(err) { alert(err.message+'  in XColorPicker.CreateWidget');}
 

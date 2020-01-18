@@ -237,6 +237,7 @@ begin
     var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
+    pas.HTMLUtils.FixHeightToLineHeight(ScreenObjectName);
   }
   catch(err) { alert(err.message+'  in XCheckBox.CreateXCheckBox');}
 

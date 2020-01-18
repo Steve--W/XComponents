@@ -16,8 +16,8 @@ unit XIFrame;
 (*
 In the windows desktop environment.....
 if the CEF4 Chromium embedded widget tools are installed, then in the Windows environment, an IFrame
-will be created as an embedded Chromium browser.  (compiler directive 'Chromium' is set).
-If CEF4 is not available, an IFrame will be displayed by launching a separate browser page for each IFrame.
+will be created as an embedded Chromium browser.  (compiler directive '-dChromium' is set).
+If CEF4 is not available, a TXIFrame will be displayed by launching a separate browser page for each IFrame.
 The project runtime then loosely communicates with the resulting browser page by running a polling timer which
 finds and fetches the titles of opened windows.
 
@@ -32,7 +32,7 @@ uses
   WrapperPanel, Events,
   {$ifndef JScript}
   LResources, Forms, Controls, StdCtrls, Graphics, Dialogs, ExtCtrls, Propedits, RTTICtrls,
-  LazsUtils, LCLIntf,
+  LazsUtils, LCLIntf, LazLogger,
   {$if defined ( windows)}
   Windows, UTF8Process,
   {$else}
@@ -55,9 +55,6 @@ uses
   function EnumWindowsProc(WHandle: HWND; LParM: LParam): LongBool;StdCall;
   function GetTitleOfSelectedWindow(AHandle: HWND): string;
   {$endif}
-//  {$ifdef Chromium}
-//  procedure CloseActiveChromiumBrowsers(StartNode:TDataNode);
-//  {$endif}
 {$else}
 function CreateBasicIFrame(NameSpace,NodeName,MyObjectName:String):TObject;
 procedure DoCreateFrameWidget(MyNode, ParentNode:TDataNode;ScreenObjectName:string;position:integer);
@@ -122,27 +119,19 @@ type
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     destructor Destroy; override;
     procedure DoPollingTimer(Sender: TObject);     virtual;
+
       {$ifdef Chromium}
       procedure myChromiumAfterCreated(Sender: TObject; const browser: ICefBrowser);  virtual;
       procedure myChromiumBeforeClose(Sender: TObject; const browser: ICefBrowser);
       //TOnBeforePopup = procedure(Sender: TObject; const browser: ICefBrowser; const frame: ICefFrame; const targetUrl, targetFrameName: ustring; targetDisposition: TCefWindowOpenDisposition; userGesture: Boolean; const popupFeatures: TCefPopupFeatures; var windowInfo: TCefWindowInfo; var client: ICefClient; var settings: TCefBrowserSettings; var extra_info: ICefDictionaryValue; var noJavascriptAccess: Boolean; var Result: Boolean) of object;
-        procedure myChromiumBeforePopup(Sender: TObject;
+      procedure myChromiumBeforePopup(Sender: TObject;
           const browser: ICefBrowser; const frame: ICefFrame; const targetUrl,
           targetFrameName: ustring; targetDisposition: TCefWindowOpenDisposition;
           userGesture: Boolean; const popupFeatures: TCefPopupFeatures;
           var windowInfo: TCefWindowInfo; var client: ICefClient;
           var settings: TCefBrowserSettings; var extra_info: ICefDictionaryValue; var noJavascriptAccess: Boolean;
           var Result: Boolean);
-//        procedure myChromiumBeforePopup(Sender: TObject;
-//          const browser: ICefBrowser; const frame: ICefFrame; const targetUrl,
-//          targetFrameName: ustring; targetDisposition: TCefWindowOpenDisposition;
-//          userGesture: Boolean; const popupFeatures: TCefPopupFeatures;
-//          var windowInfo: TCefWindowInfo; var client: ICefClient;
-//          var settings: TCefBrowserSettings; var noJavascriptAccess: Boolean;
-//          var Result: Boolean);
-        procedure myChromiumClose(Sender: TObject; const browser: ICefBrowser; var aAction : TCefCloseBrowserAction);
-//        procedure myChromiumClose(Sender: TObject; const browser: ICefBrowser; out Result: Boolean);
-//      TOnClose                        = procedure(Sender: TObject; const browser: ICefBrowser; var aAction : TCefCloseBrowserAction) of object;
+      procedure myChromiumClose(Sender: TObject; const browser: ICefBrowser; var aAction : TCefCloseBrowserAction);
       procedure CEFLoaded(Sender: TObject; const browser: ICefBrowser; const TheFrame:ICefFrame; z:Longint);
       procedure TitleChange(Sender: TObject;const cefBrowser:ICefBrowser;const NewTitle:UString) ;  virtual;
 
@@ -266,6 +255,7 @@ uses
 var
 IFrameDefaultAttribs:TDefaultAttributesArray;
 
+
 procedure TXIFrame.SetMyEventTypes;
 begin
   MyEventTypes.Add('Click');
@@ -281,19 +271,20 @@ begin
  {$endif}
     // inherited from TWrapperPanel, not required here
     RegisterPropertyEditor(TypeInfo(TColor), TXIFrame, 'BgColor', THiddenPropertyEditor);
-    RegisterPropertyEditor(TypeInfo(String), TXIFrame, 'LabelPos', THiddenPropertyEditor);
-    RegisterPropertyEditor(TypeInfo(String), TXIFrame, 'LabelText', THiddenPropertyEditor);
-//    RegisterPropertyEditor(TypeInfo(TXPropertyLink), TXIFrame, 'Link', THiddenPropertyEditor);
+    //RegisterPropertyEditor(TypeInfo(String), TXIFrame, 'LabelPos', THiddenPropertyEditor);
+    //RegisterPropertyEditor(TypeInfo(String), TXIFrame, 'LabelText', THiddenPropertyEditor);
   end;
 
   constructor TXIFrame.Create(TheOwner:TComponent);
   begin
+//    debugln('TXIFrame.Create(TheOwner:TComponent)');
     inherited Create(TheOwner,false);
     DoConstructor(TheOwner,false);
   end;
 
   constructor TXIFrame.Create(TheOwner:TComponent;IsDynamic:Boolean);
   begin
+//    debugln('hello2');
     inherited Create(TheOwner,IsDynamic);
     DoConstructor(TheOwner,IsDynamic);
   end;
@@ -303,7 +294,6 @@ begin
     tmp:TDataNode;
     myMemo:TMemo;
   begin
-
     BrowserLaunched:=false;
     pollingTimer:=TTimer.Create(self);
     pollingTimer.Interval:=500;
@@ -321,7 +311,6 @@ begin
      myChromium.OnBeforeClose:=@self.myChromiumBeforeClose;
      myChromium.OnBeforePopup:=@self.myChromiumBeforePopup;
      myChromium.OnClose:=@self.myChromiumClose;
- //    myChromium.OnTitleChange:=@self.TitleChange;
      myChromium.OnLoadEnd:=@self.CEFLoaded;
 
 
@@ -329,7 +318,8 @@ begin
      TCEFWindowParent(myControl).OnClick:=@self.ParentWindowClick;
      myControl.Parent:=self;
 
-     if not (csDesigning in componentState) then
+     if (not (csDesigning in componentState))
+     and (not (csLoading in componentState)) then
      begin
        self.myStartupTimer:=TTimer.Create(self);
        myStartupTimer.Enabled:=true;
@@ -356,9 +346,7 @@ begin
      // Make sure the embedded component can not be selected/deleted within the IDE
      myControl.ControlStyle := myControl.ControlStyle - [csNoDesignSelectable];
 
-
     self.SetMyEventTypes;
-    //self.myNode:=CreateComponentDataNode(self.Name,'TXIFrame', self.myEventTypes, self,TheOwner,IsDynamic);
     CreateComponentDataNode2(self,'TXIFrame',IFrameDefaultAttribs, self.myEventTypes, TheOwner,IsDynamic);
 
     tmp:=self.myNode;
@@ -378,7 +366,7 @@ end;
 
 procedure TXIframe.ParentWindowClick(Sender:TObject);
 begin
-  showmessage('parent window click');
+  //showmessage('parent window click');
   CallHandleEvent('Click','',self);
 end;
 
@@ -386,7 +374,9 @@ function CreateIFWidget(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;p
 var
   NewNode:TDataNode;
 begin
+  //debugln('CreateIFWidget 1');
   NewNode:=CreateDynamicLazWidget('TXIFrame',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
+  //debugln('CreateIFWidget 2');
   result:=NewNode;
 end;
 
@@ -395,9 +385,10 @@ end;
 
 procedure TXIFrame.myChromiumAfterCreated(Sender: TObject; const browser: ICefBrowser);
 begin
-  if not (csDesigning in componentState) then
+   if (not (csDesigning in componentState))
+   and (not (csLoading in componentState)) then
   // Now the browser is fully initialized we can send a message to the main form to load the initial page.
-    PostMessage(Handle, CEF_AFTERCREATED, 0, 0);
+     PostMessage(Handle, CEF_AFTERCREATED, 0, 0);
 end;
 
 procedure TXIFrame.myChromiumBeforeClose(Sender: TObject; const browser: ICefBrowser);
@@ -410,7 +401,6 @@ procedure TXIFrame.myChromiumBeforePopup(Sender: TObject;
   userGesture: Boolean; const popupFeatures: TCefPopupFeatures;
   var windowInfo: TCefWindowInfo; var client: ICefClient;
   var settings: TCefBrowserSettings; var extra_info: ICefDictionaryValue; var noJavascriptAccess: Boolean;
-//  var settings: TCefBrowserSettings; var noJavascriptAccess: Boolean;
   var Result: Boolean);
 begin
   // For simplicity, this demo blocks all popup windows and new tabs
@@ -424,7 +414,8 @@ end;
 
 procedure TXIFrame.myChromiumClose(Sender: TObject; const browser: ICefBrowser; var aAction : TCefCloseBrowserAction);
 begin
-  if not (csDesigning in componentState) then
+   if (not (csDesigning in componentState))
+   and (not (csLoading in componentState)) then
     PostMessage(Handle, CEF_DESTROY, 0, 0);
   //Result := True;
   aAction:=cbaClose;
@@ -436,11 +427,6 @@ begin
   //showmessage(self.Name+' browser created');
   self.HTMLSource:=self.HTMLSource;
 
-  // temporary lift the suppression, if set
-  glb:=GlobalSuppressFrameDisplay;
-  GlobalSuppressFrameDisplay:=false;
-  self.RedisplayFrame;
-  GlobalSuppressFrameDisplay:=glb;
 end;
 procedure TXIFrame.BrowserDestroyMsg(var aMessage: TMessage);
 begin
@@ -455,8 +441,9 @@ end;
 
 procedure TXIFrame.DoReloadTimerThing(sender:TObject);
 begin
-  if not (csDesigning in componentState) then
-    if (myChromium.Initialized) then
+  if (not (csDesigning in componentState))
+  and (not (csLoading in componentState)) then
+    if (myChromium<>nil) and (myChromium.Initialized) then
     begin
       myReloadTimer.Enabled := false;
 
@@ -468,7 +455,8 @@ procedure TXIFrame.DoCreateBrowser(sender:TObject);
 var
   nm:String;
 begin
-  if not (csDesigning in componentState) then
+  if (not (csDesigning in componentState))
+  and (not (csLoading in componentState)) then
     if GetCurrentThreadID = MainThreadID  then
     begin
       if (myControl=nil)
@@ -477,7 +465,8 @@ begin
       else
       begin
         nm:=self.myNode.NodeName;
-        if not(myChromium.Initialized)
+        if (myChromium<>nil)
+        and not(myChromium.Initialized)
         and not(myChromium.CreateBrowser(TCEFWindowParent(myControl)))  then
           myStartupTimer.Enabled := True
         else
@@ -550,6 +539,7 @@ begin
   end;
 end;
 *)
+
 // loaded from http://lazplanet.blogspot.com/2013/04/get-all-running-windows-titles.html
 // modified to set the windows handle for the TXIFrame external browser
 function EnumWindowsProc(WHandle: HWND; LParM: LParam): LongBool;StdCall; export;
@@ -708,7 +698,6 @@ begin
      // window must have been closed    (or not open yet....)
      if BrowserLaunched=false then
        TTimer(sender).Enabled:=false;
-//     CallHandleEvent('IFrameExternalBrowserClosed','',self);
    end;
 end;
 
@@ -782,7 +771,8 @@ begin
 
   {$ifdef Chromium}
   // refresh the frame contents on timer
-  if not (csDesigning in componentState) then
+  if (not (csDesigning in componentState))
+  and (not (csLoading in componentState)) then
     myReloadTimer.Enabled:=true;
   {$endif}
 end;
@@ -798,28 +788,32 @@ end;
 procedure TXIFrame.WMMove(var aMessage: TWMMove);
 begin
   inherited;
-  if not (csDesigning in componentState) then
+  if (not (csDesigning in componentState))
+  and (not (csLoading in componentState)) then
     if (myChromium <> nil) then myChromium.NotifyMoveOrResizeStarted;
 end;
 
 procedure TXIFrame.WMMoving(var aMessage: TMessage);
 begin
   inherited;
-  if not (csDesigning in componentState) then
+  if (not (csDesigning in componentState))
+  and (not (csLoading in componentState)) then
     if (myChromium <> nil) then myChromium.NotifyMoveOrResizeStarted;
 end;
 
 procedure TXIFrame.WMEnterMenuLoop(var aMessage: TMessage);
 begin
   inherited;
-  if not (csDesigning in componentState) then
+  if (not (csDesigning in componentState))
+  and (not (csLoading in componentState)) then
     if (aMessage.wParam = 0) and (GlobalCEFApp <> nil) then GlobalCEFApp.OsmodalLoop := True;
 end;
 
 procedure TXIFrame.WMExitMenuLoop(var aMessage: TMessage);
 begin
   inherited;
-  if not (csDesigning in componentState) then
+  if (not (csDesigning in componentState))
+  and (not (csLoading in componentState)) then
     if (aMessage.wParam = 0) and (GlobalCEFApp <> nil) then GlobalCEFApp.OsmodalLoop := False;
 end;
 {$endif}
@@ -842,45 +836,6 @@ end;
 //'''''''''''''''''''''''''''''''''''''''''''''''''''
 {$else} //JScript
 
-(*
-function getIframeWindow(iframe_object:TObject):TObject;
-var
-  doc:TObject;
-begin
-asm
-// find the iframe document
-//function getIframeWindow(iframe_object) {
-//  var doc;
-
-  if (iframe_object.contentWindow) {
-    doc= iframe_object.contentWindow.document;
-  }
-
-  if (iframe_object.window) {
-    doc= iframe_object.window.document;
-  }
-
-  if (!doc && iframe_object.contentDocument) {
-    doc = iframe_object.contentDocument;
-  }
-
-  if (!doc && iframe_object.document) {
-    doc = iframe_object.document;
-  }
-
-  if (doc && doc.defaultView) {
-   doc= doc.defaultView;
-  }
-
-  if (doc && doc.parentWindow) {
-    doc= doc.parentWindow;
-  }
-
-  doc= undefined;
-end;
-  result:=doc;
-end;
-*)
 
 function CreateBasicIFrame(NameSpace,NodeName,MyObjectName:String):TObject;
 var
@@ -896,9 +851,10 @@ asm
   ob=null;
   var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'"></label>';
   var FrameString = '<iframe  id='+MyObjectName+' name="'+MyObjectName+ '" '+
+                          'scrolling="no" '+
                           'src="" '+
                           'title="" '+
-                          'style="height:100%;width:100%;border: 1px solid %23444444;" '+
+                          'style="height:100%;width:100%;border: 1px solid #444444;" '+
                           'onresize="resized(this);" '+
                           '>'+
                           '</iframe>';
@@ -1011,7 +967,7 @@ begin
   {$ifndef JScript}
   {$if defined ( windows)}
   if self.BrowserHandle>0 then
-    PostMessage(BrowserHandle, WM_CLOSE, 0, 0);   //!!!! sadly this closes the whole browser (so is ok if we open all frames in sep instances)
+    PostMessage(BrowserHandle, WM_CLOSE, 0, 0);   //!! sadly this closes the whole browser (so is ok if we open all frames in sep instances)
   self.BrowserHandle:=0;
   {$else}
   //!!!!
@@ -1025,24 +981,6 @@ begin
   {$endif}
 end;
 
-//{$ifdef Chromium}
-//procedure CloseActiveChromiumBrowsers(StartNode:TDataNode);
-//var
-//  i:integer;
-//begin
-//  if (StartNode.NodeClass='UI')
-//  and (StartNode.ScreenObject<>nil)
-//  and ((StartNode.NodeType='TXIFrame')
-//    or (StartNode.NodeType='TXSVGContainer')
-//    or (StartNode.NodeType='TXHTMLEditor'))
-//  and (TXIFrame(StartNode.ScreenObject).myChromium<>nil) then
-//      TXIFrame(StartNode.ScreenObject).myChromium.CloseBrowser(true)
-//  else
-//    for i:=0 to length(StartNode.ChildNodes)-1 do
-//      CloseActiveChromiumBrowsers(StartNode.ChildNodes[i]);
-//end;
-//{$endif}
-
   procedure TXIFrame.LoadDataURL(DataString:String);
   var
     tmp:string;
@@ -1051,7 +989,7 @@ end;
     begin
       {$IFndef JScript}
       {$ifdef Chromium}
-      if myChromium.Browser <>nil then
+      if (myChromium<>nil) and (myChromium.Browser<>nil) then
         myChromium.Browser.MainFrame.LoadString(DataString, 'data:text/html');
       {$else}
       if (self.SuspendRefresh=false)
@@ -1072,7 +1010,6 @@ end;
 
   procedure TXIFrame.RunJavaScript(JSString:String);
   var
-  //myurl:Ustring;
   myurl:string;
   begin
     //NB code size is a max of 255 chars ?
@@ -1144,7 +1081,8 @@ begin
   end
   else
   begin
-    //alert('setting data URL');
+    // url is a 'data' type...
+    //showmessage('setting data URL'+AValue);
     // data url
     {$ifndef JScript}
     //if (IsChanged)
@@ -1175,7 +1113,9 @@ begin
 
   if (self.SuspendRefresh)
   {$ifndef JScript}
-  or (GlobalSuppressFrameDisplay)
+  //or (GlobalSuppressFrameDisplay)
+  or (csLoading in componentState)
+  or (csDesigning in componentState)
   {$endif}
   then
     EXIT;
@@ -1200,8 +1140,11 @@ begin
     myNode.SetAttributeValue('SuspendRefresh',myBoolToStr(AValue),'Boolean');
     if AValue=false then
       {$ifndef JScript}
+      //if (not GlobalSuppressFrameDisplay)
+      if (not (csLoading in componentState))
+      and (not (csDesigning in componentState))
       // if the frame is on a visible form...
-      if TXForm(self.myNode.MyForm).Showing <> 'No' then
+      and (TXForm(self.myNode.MyForm).Showing <> 'No') then
       {$endif}
         self.RedisplayFrame;
   end;
@@ -1245,13 +1188,15 @@ end;
 
 procedure TXIFrame.RedisplayFrame;
 var
-  sup:Boolean;
+  sup,AbsoluteURI:Boolean;
   SourceString:String;
 begin
   // nudge an IFrame component into re-displaying (eg after content has changed)
   if (self.SuspendRefresh)
   {$ifndef JScript}
-  or (GlobalSuppressFrameDisplay)
+  //or (GlobalSuppressFrameDisplay)
+  or (csLoading in componentState)
+  or (csDesigning in componentState)
   {$endif}
   then
     EXIT;
@@ -1261,7 +1206,7 @@ begin
   if myControl<>nil then
   begin
     {$ifdef Chromium}
-    if myChromium.Initialized then
+    if (myChromium<>nil) and (myChromium.Initialized) then
     begin
       self.ReLoadURL;
       // do the following to 'wobble' the frame display, forcing (hopefully) a repaint!
@@ -1276,6 +1221,13 @@ begin
     {$endif}
   end;
   {$else}
+  if ((FoundString(SourceString,'://') > 0) and (FoundString(SourceString,'http') = 1))
+  or (FoundString(SourceString,'//') = 1)
+  or (FoundString(SourceString,'about:') = 1) then
+  // eg. URL is absolute; either "http://example.com" or "//example.com"
+    AbsoluteURI:=true
+  else
+    AbsoluteURI:=false;
   sup:=StartingUp;
   asm
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
@@ -1288,8 +1240,14 @@ begin
       var newIframe = pas.XIFrame.CreateBasicIFrame(this.NameSpace,this.NodeName,newFrameId);
       newIframe.id = originalId; // change id back
       ob = document.getElementById(originalId);
-
-      var uri='data:text/html,   ' + encodeURIComponent(SourceString);
+      if (AbsoluteURI)
+      {
+        var uri=SourceString;
+      }
+      else
+      {
+        uri='data:text/html,   ' + encodeURIComponent(SourceString);
+      }
       ob.src=uri;
 
     }
@@ -1379,7 +1337,9 @@ end;
 
 begin
   {$ifndef JScript}
-  GlobalSuppressFrameDisplay:=true;
+//  {$ifndef Chromium}
+  GlobalSuppressFrameDisplay:=true;   // necessary for cef4, when creating new iframe from IDE menu, ....or loading in a Laz project?
+//  {$endif}
   {$endif}
   // this is the set of node attributes that each XIFrame instance will have.
   AddWrapperDefaultAttribs(IFrameDefaultAttribs);
@@ -1409,8 +1369,6 @@ begin
 
   SuppressDesignerProperty('TXIFrame','ContainerHeight');
   SuppressDesignerProperty('TXIFrame','ContainerWidth');
-
-
 
 end.
 
