@@ -800,7 +800,10 @@ begin
   begin
     asm
     try{
-    localStorage.setItem(KeyName,TheData);
+
+    var object = {dataValue: TheData, timestamp: new Date().getTime()}
+    localStorage.setItem(KeyName, JSON.stringify(object));
+//    localStorage.setItem(KeyName,TheData);
     }catch(err) { alert(err.message+'  in HTMLUtils.WriteToLocalStore'); }
     end;
   end;
@@ -815,8 +818,15 @@ begin
   begin
     asm
     try{
-    TheData=localStorage.getItem(KeyName);
-    if (TheData==null) {TheData='';}
+    //    TheData=localStorage.getItem(KeyName);
+    var object = JSON.parse(localStorage.getItem(KeyName));
+    if (object!=null) {
+      if ( object.hasOwnProperty('dataValue') )
+        {TheData = object.dataValue;}
+      else {TheData = object;}
+    }
+//alert(KeyName+'  TheData='+TheData);
+    if ((TheData==null)||(TheData==undefined)) {TheData='';}
     }catch(err) { alert(err.message+'  in HTMLUtils.ReadFromLocalStore'); }
     end;
   end;

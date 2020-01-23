@@ -131,7 +131,7 @@ begin
   // This function is called from a different process.
   // document is only valid inside this function.
   // As an example, this function only writes the document title to the 'debug.log' file.
-  CefDebugLog('document.Title : ' + document.Title);
+ // CefDebugLog('document.Title : ' + document.Title);
 
   //if document.HasSelection then
   //  CefLog('CEF4Delphi', 1, CEF_LOG_SEVERITY_ERROR, 'document.SelectionAsText : ' + quotedstr(document.SelectionAsText))
@@ -168,7 +168,7 @@ begin
   if (browser <> nil) then
     begin
       //CefLog('CEFXUtils OnProcessMessageReceived. ', 1, CEF_LOG_SEVERITY_ERROR, message.name);
-      CefDebugLog('CEFXUtils OnProcessMessageReceived. ');
+      //CefDebugLog('CEFXUtils OnProcessMessageReceived. ');
       if (message.name = XHTMLEDITOR_GETTEXT) then
         begin
           //TempFrame := browser.MainFrame;

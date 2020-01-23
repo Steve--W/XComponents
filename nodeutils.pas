@@ -3331,7 +3331,10 @@ begin
 
   end
   else
+  begin
     ShowMessage('Error .....Unable to load data');
+    showmessage(XMLString);
+  end;
 
 end;
 
