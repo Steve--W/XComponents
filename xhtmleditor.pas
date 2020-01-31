@@ -171,7 +171,6 @@ begin
     XHTMLEDITOR_SEND_TEXT:
     begin
       NewText := message.ArgumentList.GetString(0);
-      //EditAttributeValue('XMemo1','ItemValue',NewText);
       //just set attribute here
       self.myNode.SetAttributeValue('SourceText',NewText);
       //event here (eg) to refresh ob inspector

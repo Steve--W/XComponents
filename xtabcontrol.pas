@@ -1514,7 +1514,6 @@ begin
   AddDefaultAttribute(ControlDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(ControlDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
   AddDefaultAttribute(ControlDefaultAttribs,'TabIndex','Integer','-1','',false);
-  AddDefaultAttribute(ControlDefaultAttribs,'HTMLClasses','String','','',false);
   AddDefaultsToTable('TXTabControl',ControlDefaultAttribs);
 
   // this is the set of node attributes that each TXTabSheet instance will have.

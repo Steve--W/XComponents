@@ -173,18 +173,18 @@ end;
 type
    TXSVGRoundedRect = class(TXSVGWidget)
      private
-       function getrx: String;
-       function getry: String;
-       procedure setrx(AValue:string);
-       procedure setry(AValue:string);
+       function getRx: String;
+       function getRy: String;
+       procedure setRx(AValue:string);
+       procedure setRy(AValue:string);
      public
 
        procedure ConstructXMLString;  override;
        procedure SetDefaultAttribs;   override;
 
      published
-       property rx: String read Getrx write Setrx;
-       property ry: String read Getry write Setry;
+       property Rx: String read GetRx write SetRx;
+       property Ry: String read GetRy write SetRy;
 end;
 
 type
@@ -204,18 +204,18 @@ end;
 type
 TXSVGEllipse = class(TXSVGWidget)
  private
-   function getrx: String;
-   function getry: String;
-   procedure setrx(AValue:string);
-   procedure setry(AValue:string);
+   function getRx: String;
+   function getRy: String;
+   procedure setRx(AValue:string);
+   procedure setRy(AValue:string);
  public
 
    procedure ConstructXMLString;  override;
    procedure SetDefaultAttribs;   override;
 
  published
-   property rx: String read Getrx write Setrx;
-   property ry: String read Getry write Setry;
+   property Rx: String read GetRx write SetRx;
+   property Ry: String read GetRy write SetRy;
 end;
 
 type
@@ -1553,20 +1553,20 @@ begin
 end;
 
 
-function TXSVGRoundedRect.getrx: String;
+function TXSVGRoundedRect.getRx: String;
 begin
    result:=MyNode.getAttribute('Rx',true).AttribValue;
 end;
-function TXSVGRoundedRect.getry: String;
+function TXSVGRoundedRect.getRy: String;
 begin
    result:=MyNode.getAttribute('Ry',true).AttribValue;
 end;
-procedure TXSVGRoundedRect.setrx(AValue:string);
+procedure TXSVGRoundedRect.setRx(AValue:string);
 begin
   myNode.SetAttributeValue('Rx',AValue);
   self.ConstructXMLString;
 end;
-procedure TXSVGRoundedRect.setry(AValue:string);
+procedure TXSVGRoundedRect.setRy(AValue:string);
 begin
   myNode.SetAttributeValue('Ry',AValue);
   self.ConstructXMLString;
@@ -1582,20 +1582,20 @@ begin
   self.ConstructXMLString;
 end;
 
-function TXSVGEllipse.getrx: String;
+function TXSVGEllipse.getRx: String;
 begin
    result:=MyNode.getAttribute('Rx',true).AttribValue;
 end;
-function TXSVGEllipse.getry: String;
+function TXSVGEllipse.getRy: String;
 begin
    result:=MyNode.getAttribute('Ry',true).AttribValue;
 end;
-procedure TXSVGEllipse.setrx(AValue:string);
+procedure TXSVGEllipse.setRx(AValue:string);
 begin
   myNode.SetAttributeValue('Rx',AValue);
   self.ConstructXMLString;
 end;
-procedure TXSVGEllipse.setry(AValue:string);
+procedure TXSVGEllipse.setRy(AValue:string);
 begin
   myNode.SetAttributeValue('Ry',AValue);
   self.ConstructXMLString;

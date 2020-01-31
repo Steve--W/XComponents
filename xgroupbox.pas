@@ -598,7 +598,6 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'BgColor','Color','#555555','',false);
   AddDefaultAttribute(myDefaultAttribs,'Caption','String','Group Caption','',false);
-  AddDefaultAttribute(myDefaultAttribs,'HTMLClasses','String','','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);

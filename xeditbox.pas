@@ -45,11 +45,13 @@ type
     function GetReadOnly:Boolean;
     function GetBoxWidth:string;
     function GetPasswordBox:Boolean;
+    function GetHasFocus:Boolean;
 
     procedure SetItemValue(AValue:string);
     procedure SetReadOnly(AValue:Boolean);
     procedure SetBoxWidth(AValue:string);
     procedure SetPasswordBox(AValue:Boolean);
+    procedure SetHasFocus(AValue:Boolean);
 
   protected
     { Protected declarations }
@@ -76,6 +78,7 @@ type
     property ReadOnly: Boolean read GetReadOnly write SetReadOnly;
     property BoxWidth: String read GetBoxWidth write SetBoxWidth;
     property PasswordBox: Boolean read GetPasswordBox write SetPasswordBox;
+    property HasFocus: Boolean read GetHasFocus write SetHasFocus;
 
     {$ifndef JScript}
     // Events to be visible in Lazarus IDE
@@ -320,6 +323,23 @@ function TXEditBox.GetReadOnly:Boolean;
 begin
   result:=MyStrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
 end;
+function TXEditBox.GetHasFocus:Boolean;
+var
+  fc:Boolean;
+begin
+  fc:=false;
+  {$ifndef JScript}
+  fc:=TEdit(myControl).Focused;
+  {$else}
+  asm
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+    if (ob!=null) {
+        fc = ob.hasFocus();
+      }
+  end;
+  {$endif}
+  myNode.SetAttributeValue('HasFocus',myBoolToStr(fc),'Boolean');
+end;
 function TXEditBox.GetPasswordBox:Boolean;
 var
   tmp:string;
@@ -371,6 +391,37 @@ begin
   {$endif}
 end;
 
+procedure TXEditBox.SetHasFocus(AValue:Boolean);
+begin
+  myNode.SetAttributeValue('HasFocus',myBoolToStr(AValue),'Boolean');
+  if (not StartingUp) then
+  begin
+  {$ifndef JScript}
+  if (not (csDesigning in componentState))
+  and (not (csLoading in componentState)) then
+  begin
+    if AValue=true then
+      //TEdit(myControl).SetFocus
+      self.myNode.MyForm.ActiveControl:=TEdit(myControl)
+    else
+      //self.SetFocus;
+      self.myNode.MyForm.ActiveControl:=self;
+  end;
+  {$else}
+  asm
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+    if (ob!=null) {
+      if (AValue==true) {
+        ob.focus();  }
+      else {
+        ob = document.getElementById(this.NameSpace+this.NodeName);
+        ob.focus();  }
+      }
+  end;
+  {$endif}
+  end;
+end;
+
 procedure TXEditBox.SetPasswordBox(AValue:Boolean);
 begin
   myNode.SetAttributeValue('PasswordBox',myBoolToStr(AValue),'Boolean');
@@ -401,6 +452,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Right','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Edit Box','',false);
   AddDefaultAttribute(myDefaultAttribs,'ReadOnly','Boolean','False','',false);
+  AddDefaultAttribute(myDefaultAttribs,'HasFocus','Boolean','False','',false,false);
   AddDefaultAttribute(myDefaultAttribs,'PasswordBox','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'ItemValue','String','','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);

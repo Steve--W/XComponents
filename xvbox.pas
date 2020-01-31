@@ -232,7 +232,6 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'ContainerHeight','String','','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
-  AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','','',false);
   AddDefaultAttribute(myDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
   AddDefaultAttribute(myDefaultAttribs,'InheritColor','Boolean','False','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
@@ -244,9 +243,9 @@ begin
   AddNodeFuncLookup(MyNodeType,@CreateWidget);
   {$else}
   AddNodeFuncLookup(MyNodeType,@CreateinterfaceObj,@CreateWidget);
+  {$endif}
   SuppressDesignerProperty(MyNodeType,'LabelPos');
   SuppressDesignerProperty(MyNodeType,'LabelText');
-  {$endif}
 end.
 
 

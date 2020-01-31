@@ -244,7 +244,6 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'ContainerHeight','String','300','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
-  AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','','',false);
   AddDefaultAttribute(myDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
   AddDefaultAttribute(myDefaultAttribs,'InheritColor','Boolean','False','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);

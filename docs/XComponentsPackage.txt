@@ -4,7 +4,8 @@ XComponents Package
 Overview
 --------
 
-The package provides a set of Lazarus components which can be used in the IDE to design pages, and are capable of being cross-compiled using the pas2js compiler, to produce an equivalent HTML/Javascript executable.
+The package provides a set of Lazarus components which can be used in the IDE to design pages, 
+and are capable of being cross-compiled using the pas2js compiler, to produce an equivalent HTML/Javascript executable.
 
 
 Installation

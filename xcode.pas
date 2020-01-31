@@ -1035,7 +1035,8 @@ begin
   {$ifndef JScript}
   TheEditor.CaretY:=LineNum;
   TheEditor.CaretX:=CharPos;
-  TheEditor.SetFocus;
+  self.myNode.MyForm.ActiveControl:=TheEditor;
+  //TheEditor.SetFocus;
   {$else}
    asm
 // CharPos here is offset index from start of line (not whole textarea)

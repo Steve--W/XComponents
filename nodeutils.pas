@@ -1931,38 +1931,47 @@ begin
   result:=myself;
 end;
 
-function AttribsFromXML(attributeList:TStringList;offset:integer;var ParentName:String):TNodeAttributesArray;
+function AttribsFromXML(attributeList:TStringList;offset:integer;NodeClass,NodeType:String;var ParentName:String):TNodeAttributesArray;
 var
   myAttribs:TNodeAttributesArray;
   LinkSet,AttribBits, sourceBits:TStringList;
-  i:integer;
-  tmp:String;
+  i,j:integer;
+  tmp,anm:String;
 begin
   //showmessage('AttribsFromXML. count='+inttostr(attributeList.count)+' offset='+inttostr(offset));
   setlength(myAttribs,attributeList.count-offset);
+  j:=-1;
   for i:=offset to attributeList.count-1 do
   begin
     AttribBits :=  stringsplit(attributeList[i],AttribBitsDelimiter);
-    myAttribs[i-offset].AttribName:=TrimWhiteSpace(AttribBits[0]);
-    myAttribs[i-offset].AttribType:=TrimWhiteSpace(AttribBits[1]);
-    myAttribs[i-offset].AttribValue:=  UnSubstituteSpecials(AttribBits[2]);
-    myAttribs[i-offset].AttribReadOnly:=myStrToBool(TrimWhiteSpace(AttribBits[3]));
-    if AttribBits.Count>4 then
+    anm:=TrimWhiteSpace(AttribBits[0]);
+    // if this attribute is not listed in defaults for this nodetype, then ignore it. (unless it's a composite)
+    if (IsADefaultAttrib(NodeType,anm))
+    or (NodeType='TXComposite')
+    or (NodeType='TXCompositeIntf')
+    or (NodeClass<>'UI') then
     begin
-      tmp:=TrimWhiteSpace(AttribBits[4]);
-      sourceBits:= stringsplit(tmp,'.');
-      if sourceBits.Count>0 then
-        if sourceBits[0]<>'' then
-        begin
-          myAttribs[i-offset].AttribSource.InputNodeName:=sourceBits[0];
-          if sourceBits.Count>1 then
-            myAttribs[i-offset].AttribSource.InputAttribName:=sourceBits[1];
-//          showmessage('AttribsFromXML found source data '+ sourceBits[0]+' '+sourceBits[1]+' for '+AttribBits[0]);
-        end;
+      j:=j+1;
+      myAttribs[j].AttribName:=anm;
+      myAttribs[j].AttribType:=TrimWhiteSpace(AttribBits[1]);
+      myAttribs[j].AttribValue:=  UnSubstituteSpecials(AttribBits[2]);
+      myAttribs[j].AttribReadOnly:=myStrToBool(TrimWhiteSpace(AttribBits[3]));
+      if AttribBits.Count>4 then
+      begin
+        tmp:=TrimWhiteSpace(AttribBits[4]);
+        sourceBits:= stringsplit(tmp,'.');
+        if sourceBits.Count>0 then
+          if sourceBits[0]<>'' then
+          begin
+            myAttribs[j].AttribSource.InputNodeName:=sourceBits[0];
+            if sourceBits.Count>1 then
+              myAttribs[j].AttribSource.InputAttribName:=sourceBits[1];
+  //          showmessage('AttribsFromXML found source data '+ sourceBits[0]+' '+sourceBits[1]+' for '+AttribBits[0]);
+          end;
+      end;
+      if myAttribs[j].AttribName='ParentName' then
+        ParentName:=AttribBits[2];
     end;
-
-    if myAttribs[i-offset].AttribName='ParentName' then
-      ParentName:=AttribBits[2];
   end;
 
   result:=myAttribs;
@@ -2082,7 +2091,7 @@ begin
 
    if (NodeClass <> 'Root') then                     // these already exist
    begin
-     myAttribs := AttribsFromXML(attributeList,offset,ParentName);
+     myAttribs := AttribsFromXML(attributeList,offset,NodeClass,ScreenObjectType,ParentName);
      {$ifndef JScript}
      foundNode:=FindDataNodeById(SystemNodeTree,ScreenObjectName,Namespace,false);
      if (foundNode=nil)
@@ -2094,7 +2103,6 @@ begin
      then
      {$endif}
      begin
-       //myAttribs := AttribsFromXML(attributeList,offset,ParentName);
        EventNames:=TStringList.Create;
        myEventHandlers := EventsFromXML(EventsList,EventNames);
 
@@ -2120,7 +2128,7 @@ begin
      myNode:=FindDataNodeById(SystemNodeTree,ScreenObjectName,'',false);
      if myNode<>nil then
      begin
-       myAttribs := AttribsFromXML(attributeList,offset,ParentName);
+       myAttribs := AttribsFromXML(attributeList,offset,NodeClass,ScreenObjectType,ParentName);
        for i:=0 to length(myAttribs)-1 do
        begin
          myNode.SetAttributeValue(myAttribs[i].AttribName,myAttribs[i].AttribValue);
@@ -2228,11 +2236,11 @@ begin
        if (ParentNode.ScreenObject<>nil) then
          InsertUnderParent(TControl(MyNode.ScreenObject),TWinControl(ParentNode.ScreenObject),pos);
        for i:=0 to length(SourceNode.NodeAttributes)-1 do
-       if SourceNode.NodeAttributes[i].AttribReadOnly=false then        //!!!! ? should this be just the 'includeinsave' setting ????
-       begin
-         //mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
-         EditAttributeValue(myNode,SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);     //!!!! are we doing this twice??
-       end;
+         if SourceNode.NodeAttributes[i].AttribReadOnly=false then        //!!!! ? should this be just the 'includeinsave' setting ????
+         begin
+           //mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
+           EditAttributeValue(myNode,SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);     //!!!! are we doing this twice??
+         end;
        if myNode.IsDynamic then
        begin
          myNode.myEventTypes:=SourceNode.myEventTypes;
@@ -2354,7 +2362,7 @@ begin
          pasteTarget.value= '';
          pasteTarget.style.height =  '19px';
          pasteTarget.style.width =  '100px';
-        pasteTarget.focus();
+         pasteTarget.focus();
          alert('After closing this message box, Confirm Paste from clipboard by hitting "Ctrl-V"  Any other action will abandon this paste operation');
 
      } catch(err) { alert(err.message+'  in NodeUtils.myGetClipboardData'); }
@@ -3533,7 +3541,6 @@ end;
 
 procedure InitialiseXComponentsProject;
 begin
-
   // PasteDialog and CompilerLog forms are in XComponents units - need to instantiate the forms here.
   PasteDialogUnit.SetupPasteDialogForm;
   CompilerLogUnit.SetupCompilerLogForm;

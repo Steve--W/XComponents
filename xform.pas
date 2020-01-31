@@ -55,6 +55,8 @@ private
 public
   {$ifndef JScript}
   myEventTypes:TStringList;
+  constructor Create(TheOwner: TComponent); override;
+  constructor CreateNew(AOwner: TComponent; Num: Integer = 0); override;
   procedure FormClose(Sender: TObject; var CloseAction: TCloseAction);  virtual;
   {$else}
   constructor Create(NodeName,NameSpace:String);
@@ -96,7 +98,6 @@ type TOpenXForm = record
   NameSpace:String;
 end;
 var OpenXForms : array of TOpenXForm;
-//var OpenXForms:TStringList;
 
 implementation
 
@@ -149,20 +150,20 @@ end;
 
 {$ifndef JScript}
 
-function FindFormByName(const AName: string): TForm;      //!!!!namespace??
-var
-  i: Integer;
-begin
-  for i := 0 to Screen.FormCount - 1 do
-  begin
-    Result := Screen.Forms[i];
-    if (Result.Name = AName) then
-      Exit;
-  end;
-  Result := nil;
-end;
+//function FindFormByName(const AName: string): TForm;      //!!!!namespace??
+//var
+//  i: Integer;
+//begin
+//  for i := 0 to Screen.FormCount - 1 do
+//  begin
+//    Result := Screen.Forms[i];
+//    if (Result.Name = AName) then
+//      Exit;
+//  end;
+//  Result := nil;
+//end;
 
-function CreateForm(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
+function CreateXForm(ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 // for dynamic creation of a XForm (Desktop) at runtime.
 var
   NewForm:TXForm;
@@ -172,7 +173,6 @@ begin
 
   NewForm :=  TXForm.CreateNew(Application);
   NewForm.name:=ScreenObjectName;
-  NewForm.OnClose:=@NewForm.FormClose;
 
   CreateComponentDataNode2(NewForm,'TXForm',myDefaultAttribs, NewForm.MyEventTypes, NewForm,true);
   NewNode:=NewForm.myNode;
@@ -205,6 +205,16 @@ begin
   end
   else
     ShowMessage('XForm '+XFormID+' not found');
+end;
+
+constructor TXForm.Create(TheOwner: TComponent);
+begin
+  inherited Create(TheOwner);
+end;
+constructor TXForm.CreateNew(AOwner: TComponent; Num: Integer = 0);
+begin
+  inherited CreateNew(AOwner,Num);
+  self.OnClose:=@self.formclose;
 end;
 
 procedure TXForm.FormClose(Sender: TObject; var CloseAction: TCloseAction);
@@ -407,7 +417,7 @@ begin
   if ParentNode<>nil then
     ParentName:=ParentNode.NodeName
   else
-    Parentname:=TXForm(MainForm).myNode.NodeName;
+    Parentname:=UIRootNode.NodeName;     //TXForm(MainForm).myNode.NodeName;
   //showmessage('creating form widget '+ScreenObjectname+' parentName='+ParentName);
   asm
   try{
@@ -547,6 +557,7 @@ begin
     result:=myNode.GetAttribute('Showing',true).AttribValue
   else
     result := 'No';
+  if result='' then result:='No';
 end;
 
 procedure TXForm.SetShowing(AValue:string);
@@ -739,7 +750,7 @@ begin
   setLength(OpenXForms,0);
   {$ifndef JScript}
   RegisterClass(TXForm);
-  AddNodeFuncLookup('TXForm',@CreateForm);
+  AddNodeFuncLookup('TXForm',@CreateXForm);
   {$else}
   AddNodeFuncLookup('TXForm',@CreateinterfaceObj,@CreateWidget);
   {$endif}
