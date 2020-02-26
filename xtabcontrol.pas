@@ -237,6 +237,8 @@ type
 
   end;
 
+procedure RebuildButtons(TCNode:TdataNode);
+
 {$endif}
 
 
@@ -522,7 +524,9 @@ var
 begin
   tc:=TXTabControl(ParentNode.ScreenObject);
   NewWidget:=tc.AddTabSheet;
-  tc.PageIndex:=tc.PageCount-1;
+  if position>-1 then
+    NewWidget.PageIndex:=position;
+  tc.PageIndex:=NewWidget.PageIndex;
   NewWidget.Name:=Namespace+ScreenObjectName;
   NewNode:=NewWidget.myNode;
   NewNode.NodeName:=ScreenObjectName;
@@ -1149,11 +1153,41 @@ begin
     openTab(NodeId,parentNodeId,NameSpace);
 end;
 
+procedure RebuildButtons(TCNode:TdataNode);
+var
+  OnClickString,buttonstring:String;
+  thisTab:TDataNode;
+  cap:string;
+  i:integer;
+begin
+  for i:=0 to length(TCNode.ChildNodes)-1 do
+  begin
+    thisTab:=TCNode.ChildNodes[i];
+    cap:=thisTab.GetAttribute('Caption',false).AttribValue;
+    OnClickString:='onclick="event.stopPropagation();pas.XTabControl.ChangeTabPage('''+thisTab.NodeName+''','''+TCNode.NodeName+''','''+thisTab.NameSpace+'''); '+
+                         'pas.Events.handleEvent(null,''Change'','''+TCNode.NodeName+''','''+thisTab.NameSpace+''','''+thisTab.NodeName+''');' +
+                         'pas.Events.handleEvent(null,''Click'','''+thisTab.NodeName+''','''+thisTab.NameSpace+''', ''''); '+
+                         '" ';
+    buttonstring := buttonstring +
+                  '<button id="'+thisTab.NameSpace+thisTab.NodeName+'Button" class="TabButton '+TCNode.NodeName+'" ' +
+                           OnClickString +
+                           ' style="background:rgb(241, 240, 238);border:none" ' +
+                        '>'+cap+'</button>';
+  end;
+  asm
+  try{
+    var ButtonsDiv = document.getElementById(TCNode.NodeName+'ContentsButtons');
+    if (ButtonsDiv==null) {alert('Cannot find ButtonsDiv '+TCNode.NodeName+'Buttons');}
+    else
+      ButtonsDiv.innerHTML = buttonstring;
+    }catch(err) { alert(err.message+' in XTabControl.RebuildButtons '+TCNode.NodeName);}
+  end;
+end;
 
 function CreateTabSheet(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String): TDataNode;
 var
   ParentName,PageCaption,NodeID,ControlName:string;
-  OnClickString:String;
+  //OnClickString:String;
 begin
   //showmessage('tabsheet createwidget');
   ControlName:=ParentNode.NodeName;
@@ -1164,10 +1198,10 @@ begin
   NodeID:=MyNode.NodeName;
   //showmessage('NodeId='+NodeId);
 
-  OnClickString:='onclick="event.stopPropagation();pas.XTabControl.ChangeTabPage('''+NodeID+''','''+ParentNode.NodeName+''','''+MyNode.NameSpace+'''); '+
-                         'pas.Events.handleEvent(null,''Change'','''+ControlName+''','''+NameSpace+''','''+ScreenObjectName+''');' +
-                         'pas.Events.handleEvent(null,''Click'','''+NodeID+''','''+NameSpace+''', ''''); '+
-                         '" ';
+  //OnClickString:='onclick="event.stopPropagation();pas.XTabControl.ChangeTabPage('''+NodeID+''','''+ParentNode.NodeName+''','''+MyNode.NameSpace+'''); '+
+  //                       'pas.Events.handleEvent(null,''Change'','''+ControlName+''','''+NameSpace+''','''+ScreenObjectName+''');' +
+  //                       'pas.Events.handleEvent(null,''Click'','''+NodeID+''','''+NameSpace+''', ''''); '+
+  //                       '" ';
 
   asm
     try{
@@ -1175,13 +1209,14 @@ begin
 
     var wrapperid = NameSpace+ScreenObjectName;
     var ButtonsDiv = document.getElementById(ParentName+'Buttons');
+    //alert('built ButtonsDiv '+ ParentName+'Buttons');
 
     //var buttonstring ='<button id="'+wrapperid+'Button" class="'+ParentName+'TabButton" ' +
-    var buttonstring ='<button id="'+wrapperid+'Button" class="TabButton '+NameSpace+ControlName+'" ' +
-                             OnClickString +
-                             ' style="background:rgb(241, 240, 238);border:none" ' +
-                          '>'+PageCaption+'</button>';
-    ButtonsDiv.innerHTML = ButtonsDiv.innerHTML + buttonstring;
+//    var buttonstring ='<button id="'+wrapperid+'Button" class="TabButton '+NameSpace+ControlName+'" ' +
+//                             OnClickString +
+//                             ' style="background:rgb(241, 240, 238);border:none" ' +
+//                          '>'+PageCaption+'</button>';
+//    ButtonsDiv.innerHTML = ButtonsDiv.innerHTML + buttonstring;
 
     var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,'TXTabSheet',position);
     wrapper.style.height = '100%';
@@ -1189,7 +1224,6 @@ begin
    // wrapper.className='TabPage  '+ ParentName;
     wrapper.className='TabPage';
 
-    //var TabContentDef ="<div id='" +wrapperid+"Contents'  class='TabPage  vboxNoStretch ' ></div>";
     var TabContentDef ="<div id='" +wrapperid+"Contents'  class='vboxNoStretch "+NameSpace+ScreenObjectName+"' style='height:98%; width:100%' ></div>";
 
     wrapper.innerHTML = wrapper.innerHTML + TabContentDef;
@@ -1201,6 +1235,8 @@ begin
 
   MyNode.ScreenObject:=MyNode;
   RefreshComponentProps(myNode);
+
+  RebuildButtons(ParentNode);
 
   TXTabControl(ParentNode).HTMLClasses := TXTabControl(ParentNode).HTMLClasses;
 

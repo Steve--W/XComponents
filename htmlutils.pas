@@ -477,14 +477,20 @@ end;
 function DeleteScreenObject(MyNode:TDataNode):string;
 var
     ObjName:string;
+    pNode:TdataNode;
 begin
    ObjName:=MyNode.NameSpace+MyNode.NodeName;
-
+   if MyNode.NodeType='TXTabSheet' then
+     pNode:=FindParentOfNode(SystemNodeTree,MyNode);
   asm
     try{
     var ThisObject = document.getElementById(ObjName);
     if (ThisObject!=null) {
        ThisObject.parentNode.removeChild(ThisObject);
+
+       if (MyNode.NodeType=='TXTabSheet') {
+         pas.XTabControl.RebuildButtons(pNode);
+         }
       }
     }catch(err) { alert(err.message+' in HTMLUtils.DeleteScreenObject');}
   end;
@@ -538,6 +544,11 @@ begin
          pos:=-1;
        end;
      end;
+
+     if ParentNode.NodeType='TXTabControl' then
+       if (pos>-1) then
+         pos:=pos+1;  // retain the ButtonsDiv as first child.
+
 
      asm
        try {

@@ -16,7 +16,7 @@ unit XTable;
 
 interface
 uses
-  Classes, SysUtils, TypInfo, NodeUtils, StringUtils,
+  Classes, SysUtils, TypInfo, NodeUtils, StringUtils,EventsInterface,
   {$ifndef JScript}
   fpjson,    jsonparser,
   LResources, Forms, Controls, ComCtrls, StdCtrls, Grids,Graphics, Dialogs, ExtCtrls, Propedits,RTTICtrls,
@@ -66,6 +66,7 @@ type
     function GetSelectedCol:integer;
     function GetSelectedValue:String;
     function GetHasHeaderRow:Boolean;
+    function GetIsNumeric:Boolean;
 
     procedure SetReadOnly(AValue:Boolean);
     procedure SetTableWidth(AValue:string);
@@ -78,6 +79,7 @@ type
     procedure SetNumRows(AValue:integer);
     procedure SetNumCols(AValue:integer);
     procedure SetHasHeaderRow(AValue:Boolean);
+    procedure SetIsNumeric(AValue:Boolean);
   protected
     { Protected declarations }
 //    procedure LinkLoadFromProperty(Sender: TObject);  override;
@@ -101,15 +103,20 @@ type
     {$endif}
     function ConstructDataString:String;
     function ConstructTableStringFromArray(myArray:TTableCellsArray):String;
+    function ConstructTableStringFromNumArray(myArray:T2DNumArray):String;
+    function ConstructTableStringFromExcelCopy(CopiedString:String):String;
+    procedure LoadTableFromExcelCopy(CopiedString:String);
+    procedure LoadTableFromNumArray(NumArray:T2DNumArray);
     function GetCellValue(row,col:integer):string;
     procedure SetCellValue(row,col:integer;AValue:string);
-    function GetCellsAsArray:TTableCellsArray;
+    function GetCellsAsArray(SkipHeader:Boolean):TTableCellsArray;
     procedure AddTableRows(numRows:integer);
     procedure AddTableColumns(numCols:integer);
     procedure DeleteRow(r:integer);
     procedure DeleteColumn(c:integer);
     procedure DeleteSelectedRow;
     procedure DeleteSelectedColumn;
+    function QuoteCellForJSON(cellval:String; rownum:integer):String;
   published
     { Published declarations }
     // Properties defined for this class...
@@ -124,6 +131,7 @@ type
     property NumCols:integer read GetNumCols write SetNumCols;
     property NumRows:integer read GetNumRows write SetNumRows;
     property HasHeaderRow:Boolean read GetHasHeaderRow write SetHasHeaderRow;
+    property IsNumeric:Boolean read GetIsNumeric write SetIsNumeric;
 
     {$ifndef JScript}
     // Events to be visible in Lazarus IDE
@@ -301,15 +309,21 @@ var
   i:integer;
   object_type:string;
 begin
+  // 1-D data is expected...
   for i:=0 to jData.Count-1 do
   begin
     if TStringGrid(myControl).ColCount < (i+1) then
       TStringGrid(myControl).ColCount:=i+1;
     jItem := jData.Items[i];
     object_type := GetEnumName(TypeInfo(TJSONtype), Ord(jItem.JSONType));
-    if object_type='jtString' then
+    if (object_type='jtString')
+    or (object_type='jtNumber') then
     begin
       TStringGrid(myControl).Cells[i,rownum] :=  jItem.AsString;
+    end
+    else if object_type='jtArray' then
+    begin
+      TStringGrid(myControl).Cells[i,rownum] :=  '[array]';   //!! nested arrays are not handled
     end;
   end;
 end;
@@ -319,6 +333,8 @@ var
    jData : TJSONData;
    i,j,RowCount,cw:integer;
 begin
+  // 2-D data is expected...
+  // non-numeric cells must be quoted.
   cw:=self.ColWidth;
   try
     jData := GetJSON(GridString);
@@ -326,6 +342,7 @@ begin
     on E: Exception do
     begin
       showmessage('JSON error: '+e.Message);
+      showmessage(GridString);
       jData := nil;
     end;
   end;
@@ -358,18 +375,27 @@ begin
   self.PopulateMeFromJSONData(gridData);
 end;
 
-function TXTable.GetCellsAsArray:TTableCellsArray;
+function TXTable.GetCellsAsArray(SkipHeader:Boolean):TTableCellsArray;
 var
-  i,j:integer;
+  i,j,r:integer;
   myArray:TTableCellsArray;
 begin
-  SetLength(myArray, TStringGrid(myControl).RowCount);
+  if SkipHeader then
+    SetLength(myArray, TStringGrid(myControl).RowCount-1)
+  else
+    SetLength(myArray, TStringGrid(myControl).RowCount);
+  r:=-1;
   for i:= 0 to TStringGrid(myControl).RowCount-1 do
   begin
-    setlength(myArray[i],TStringGrid(myControl).ColCount);
-    for j:=0 to TStringGrid(myControl).ColCount-1 do
+    if (Skipheader=false)
+    or (i>0) then
     begin
-      myArray[i,j]:=TStringGrid(myControl).Cells[j, i];
+      r:=r+1;
+      setlength(myArray[r],TStringGrid(myControl).ColCount);
+      for j:=0 to TStringGrid(myControl).ColCount-1 do
+      begin
+        myArray[r,j]:=TStringGrid(myControl).Cells[j, i];
+      end;
     end;
   end;
   result:=myArray;
@@ -389,7 +415,7 @@ begin
     for j:=0 to TStringGrid(myControl).ColCount-1 do
     begin
       if j>0 then dataStr:=dataStr+',';
-      dataStr:=dataStr+'"'+TStringGrid(myControl).Cells[j, i]+'"';
+      dataStr:=dataStr+QuoteCellForJSON(TStringGrid(myControl).Cells[j,i],i);
     end;
     dataStr:=dataStr+']';
   end;
@@ -582,7 +608,7 @@ var
   Checked,ReadOnly,LabelText,LabelPos:string;
   OnChangeString, OnFocusOutString, OnClickString, OnKeyString:String;
 begin
-  //showmessage('create table widget');
+  //showmessage('create table widget.  current TableData is '+MyNode.getAttribute('TableData',true).AttribValue);
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
   ReadOnly:= MyNode.getAttribute('ReadOnly',true).AttribValue;
 
@@ -634,8 +660,11 @@ begin
 end;
 
   MyNode.ScreenObject:=MyNode;
+  //showmessage('create table widget - refresh props');
+  //showmessage('current TableData is '+MyNode.getAttribute('TableData',true).AttribValue);
   RefreshComponentProps(myNode);
 
+  //showmessage('create table widget - done');
   result:=myNode;
 end;
 
@@ -664,27 +693,34 @@ begin
 end;
 
 procedure TXTable.SetColWidth(AValue:integer);
+var
+  oldcw:integer;
 begin
   //showmessage('SetColWidth '+inttostr(AValue));
+  oldcw:=self.ColWidth;
   myNode.SetAttributeValue('ColWidth',IntToStr(AValue));
-  //rebuild the data to incorporate col width
-  self.TableData:=self.TableData;
+  if oldcw<>AValue then
+    //rebuild the data to incorporate col width
+    self.TableData:=self.TableData;
 end;
 
-function TXTable.GetCellsAsArray:TTableCellsArray;
+function TXTable.GetCellsAsArray(SkipHeader:Boolean):TTableCellsArray;
 var
-  i,j:integer;
   myArray:TTableCellsArray;
 begin
     asm
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
-    for (var i = 0, row; row = ob.rows[i]; i++) {
-       myArray[i] = [];
-       for (var j = 0, col; col = row.cells[j]; j++) {
-         myArray[i][j] = row.cells[j].innerText;
+      var r=-1;
+      for (var i = 0, row; row = ob.rows[i]; i++) {
+        if ((SkipHeader==false)||(i>0)) {
+          r=r+1;
+          myArray[r] = [];
+          for (var j = 0, col; col = row.cells[j]; j++) {
+            myArray[r][j] = row.cells[j].innerText;
+          }
+        }
       }
-    }
     }
     //alert(myArray);
   end;
@@ -695,7 +731,10 @@ function TXTable.ConstructDataString:String;
 var
     i,j:integer;
     dataStr:String;
+    NumbersOnly,HasHeader:Boolean;
 begin
+  NumbersOnly:=self.IsNumeric;
+  HasHeader:=self.HasHeaderRow;
   dataStr:='[';
   asm
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
@@ -707,7 +746,8 @@ begin
         for (var j = 0, col; col = row.cells[j]; j++) {
           if (j>0) { dataStr=dataStr+','; }
           var str = row.cells[j].innerText;
-          dataStr=dataStr+ '"'+str+'"';
+          str = this.QuoteCellForJSON(str,i);
+          dataStr=dataStr+str;
         }
         dataStr=dataStr+']';
       }
@@ -804,6 +844,17 @@ end;
 
 {$endif}
 
+function TXTable.QuoteCellForJSON(cellval:String; rownum:integer):String;
+begin
+  if (self.IsNumeric=false)
+  or (cellval='')
+  or ((rownum=0) and (self.HasHeaderRow=true))
+  or ((rownum=0) and (IsStrFloatNum(cellVal)=false)) then
+    result:=QuoteIt(cellval)
+  else
+    result:=cellval;
+end;
+
 procedure TXTable.SetCellValue(row,col:integer;AValue:string);
 begin
   if (row>=0) and (col>=0) then
@@ -849,12 +900,112 @@ begin
     for j:=0 to length(myArray[i])-1 do
     begin
       if j>0 then str:=str+',';
-      str:=str+'"'+myArray[i,j]+'"';
+      str:=str+QuoteCellForJSON(myArray[i,j],i);
     end;
     str:=str+']';
   end;
   str:=str+']';
   result:=str;
+end;
+
+function TXTable.ConstructTableStringFromNumArray(myArray:T2DNumarray):String;
+var
+  i,j,r,cols,maxcol:integer;
+  str:string;
+  //'[["a","b","c"],["1","2","3"]]'
+begin
+  str:='[';
+  cols:=self.NumCols;
+  maxcol:=cols;
+  if maxcol > length(myArray[0]) then
+    maxcol:=length(myArray[0]);
+  if self.HasHeaderRow then
+  begin
+    // keep old headings
+    str:=str+'[';
+    for j:=0 to length(myArray[0])-1 do
+    begin
+      if j>0 then str:=str+',';
+      if (j<maxcol)
+      and (self.GetCellValue(0,j)<>'') then
+        str:=str+'"'+self.GetCellValue(0,j)+'"'
+      else
+        str:=str+'"col'+inttostr(j)+'"';
+    end;
+    str:=str+']';
+    r:=0;
+  end
+  else
+    r:=-1;
+
+  for i:= 0 to length(myArray)-1 do
+  begin
+    r:=r+1;
+    if r>0 then str:=str+',';
+    str:=str+'[';
+    for j:=0 to length(myArray[i])-1 do
+    begin
+      if j>0 then str:=str+',';
+      str:=str+QuoteCellForJSON(floattostr(myArray[i,j]),i);
+    end;
+    str:=str+']';
+  end;
+  str:=str+']';
+  result:=str;
+end;
+
+function TXTable.ConstructTableStringFromExcelCopy(CopiedString:String):String;
+var
+  i,j,colcount:integer;
+  rows,cells:TStringList;
+  cstr,str:string;
+  // row1col1value #9 row1col2value #9 row1col3value #13#10  ...etc
+  //'[["a","b","c"],["1","2","3"]]'
+begin
+  colcount:=0;
+//  ShowAllChars('CopiedString: '+CopiedString);
+
+  rows:=StringUtils.stringsplit(CopiedString,LineEnding);
+  str:='[';
+//  showmessage('rows='+inttostr(rows.count));
+  for i:= 0 to rows.count-1 do
+  begin
+    rows[i]:=StringUtils.DelChars(rows[i],chr(13));
+    if (trim(rows[i])<>'')
+    or (i<rows.count-1)
+    or (colcount=1) then
+    begin
+      cells:=StringUtils.stringsplit(rows[i],chr(9),false);
+      if i>0 then str:=str+',';
+      str:=str+'[';
+      if i=0 then colcount:=cells.count;
+      for j:=0 to cells.count-1 do
+      begin
+        if j>0 then str:=str+',';
+        str:=str+QuoteCellForJSON(cells[j],i);
+      end;
+      str:=str+']';
+    end;
+  end;
+  str:=str+']';
+//  ShowAllChars(str);
+  result:=str;
+end;
+
+procedure TXTable.LoadTableFromExcelCopy(CopiedString:String);
+var
+  tdata:String;
+begin
+  tdata:=ConstructTableStringFromExcelCopy(CopiedString);
+  self.TableData:=tdata;
+end;
+
+procedure TXTable.LoadTableFromNumArray(NumArray:T2DNumArray);
+var
+  tdata:String;
+begin
+  tdata:=ConstructTableStringFromNumArray(NumArray);
+  self.TableData:=tdata;
 end;
 
 function TXTable.GetReadOnly:Boolean;
@@ -881,6 +1032,10 @@ end;
 function TXTable.GetHasHeaderRow:Boolean;
 begin
   result:=MyStrToBool(MyNode.getAttribute('HasHeaderRow',true).AttribValue);
+end;
+function TXTable.GetIsNumeric:Boolean;
+begin
+  result:=MyStrToBool(MyNode.getAttribute('IsNumeric',true).AttribValue);
 end;
 
 function TXTable.GetSelectedRow:integer;
@@ -943,7 +1098,13 @@ begin
   self.SetCellValue(self.SelectedRow,self.SelectedCol,AValue);
 end;
 procedure TXTable.SetHasHeaderRow(AValue:Boolean);
+var
+  vchanged:boolean;
 begin
+  if self.HasHeaderRow<>AValue then
+    vchanged:=true
+  else
+    vchanged:=false;
   myNode.SetAttributeValue('HasHeaderRow',MyBoolToStr(AValue),'Boolean');
   {$ifndef JScript}
   if AValue=true then
@@ -951,9 +1112,14 @@ begin
   else
     TStringGrid(myControl).FixedRows:=0;
   {$else}
-    // rebuild the table with no header row
+  if vchanged then
+    // rebuild the table with/without header row
     self.TableData:=self.ConstructDataString;
   {$endif}
+end;
+procedure TXTable.SetIsNumeric(AValue:Boolean);
+begin
+  myNode.SetAttributeValue('IsNumeric',MyBoolToStr(AValue),'Boolean');
 end;
 
 procedure TXTable.AddTableRows(numRows:integer);
@@ -962,7 +1128,7 @@ var
   c,r,r1:integer;
 begin
 
-  TheArray:=self.GetCellsAsArray;
+  TheArray:=self.GetCellsAsArray(false);
   r1:=length(TheArray);
   SetLength(TheArray, length(TheArray)+numRows);
   for r:=r1 to length(TheArray)-1 do
@@ -982,7 +1148,7 @@ var
   TheArray:TTableCellsArray;
   i,j,j0:integer;
 begin
-  TheArray:=self.GetCellsAsArray;
+  TheArray:=self.GetCellsAsArray(false);
   j0:=Length(TheArray[0]);
   for i:=0 to length(TheArray)-1 do
   begin
@@ -1129,7 +1295,7 @@ begin
   {$ifndef JScript}
   self.PopulateStringGrid(AValue);
   {$else}
-  //showmessage('SetTableData : '+AValue);
+  //showmessage(TXTable(self).NameSpace+TXTable(self).NodeName+' SetTableData : '+AValue);
   hasHeaders:=self.HasHeaderRow;
   cw:=myNode.GetAttribute('ColWidth',true).AttribValue;
   //showmessage('settabledata with colwidth '+cw);
@@ -1186,6 +1352,7 @@ begin
   i:=self.NumCols;
   self.NumCols:=self.NumCols;
   self.NumRows:=self.NumRows;
+  //{$ifdef JScript}showmessage(TXTable(self).NameSpace+TXTable(self).NodeName+' SetTableData done ');{$endif}
 end;
 
 begin
@@ -1198,11 +1365,12 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Table','',false);
   AddDefaultAttribute(myDefaultAttribs,'ReadOnly','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'HasHeaderRow','Boolean','True','',false);
+  AddDefaultAttribute(myDefaultAttribs,'IsNumeric','Boolean','False','If true, all cells (except header) must contain numeric data only',false);
   AddDefaultAttribute(myDefaultAttribs,'TableData','String','[["a","b","c"],["1","2","3"]]','',false);
   AddDefaultAttribute(myDefaultAttribs,'SelectedRow','Integer','-1','',false);
   AddDefaultAttribute(myDefaultAttribs,'SelectedCol','Integer','-1','',false);
-  AddDefaultAttribute(myDefaultAttribs,'NumCols','Integer','3','',false);
-  AddDefaultAttribute(myDefaultAttribs,'NumRows','Integer','2','',false);
+  AddDefaultAttribute(myDefaultAttribs,'NumCols','Integer','3','',false,false);
+  AddDefaultAttribute(myDefaultAttribs,'NumRows','Integer','2','',false,false);
   AddDefaultAttribute(myDefaultAttribs,'ColWidth','Integer','40','',false);
   AddDefaultAttribute(myDefaultAttribs,'SelectedValue','String','','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);

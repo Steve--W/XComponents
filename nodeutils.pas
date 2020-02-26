@@ -339,7 +339,7 @@ implementation
 {$ifndef JScript}
 uses LazsUtils,WrapperPanel, XForm, XBitMap, XIFrame, Events, PasteDialogUnit, CompilerLogUnit;
 {$else}
-uses WrapperPanel, XForm, XButton, XBitMap, PasteDialogUnit;
+uses WrapperPanel, XForm, XButton, XBitMap, PasteDialogUnit, HTMLUtils;
 {$endif}
 
 
@@ -369,8 +369,6 @@ end;
 
 
 procedure TDataNode.DeleteMe;
-var
-  NodeString:string;
 begin
   self.ScreenObject:=nil;
   if assigned(self) then
@@ -917,12 +915,21 @@ end;
 procedure RefreshComponentProps(myComponent:TDataNode);
 var
   i:integer;
+  DfltAttrib:TDefaultAttribute;
 begin
   for i:=0 to length(myComponent.NodeAttributes)-1 do
   begin
-    if myComponent.NodeAttributes[i].AttribReadOnly = false then
+    DfltAttrib:=GetDefaultAttrib(myComponent.NodeType,myComponent.NodeAttributes[i].AttribName);
+    if ((myComponent.NodeType='TXForm')
+      or ((DfltAttrib.AttribName<>'')
+        and (DfltAttrib.AttribIncludeInSave = true)))      // other attribs have derived values, so don't need explicit reset
+    and (myComponent.NodeAttributes[i].AttribReadOnly = false)
+    then
     begin
-      SetXObjectProperty(myComponent,myComponent,myComponent.NodeAttributes[i].AttribName,myComponent.NodeAttributes[i].AttribType,myComponent.NodeAttributes[i].AttribValue);
+      SetXObjectProperty(myComponent,myComponent,myComponent.NodeAttributes[i].AttribName,
+                         myComponent.NodeAttributes[i].AttribType,myComponent.NodeAttributes[i].AttribValue);
+      //if myComponent.NodeType='TXForm' then showmessage('Refresh done prop '+myComponent.NodeAttributes[i].AttribName
+      //                                                   +' '+myComponent.NodeAttributes[i].AttribValue);
     end;
   end;
 end;
@@ -1949,6 +1956,7 @@ begin
     if (IsADefaultAttrib(NodeType,anm))
     or (NodeType='TXComposite')
     or (NodeType='TXCompositeIntf')
+    or (NodeType='TXForm')
     or (NodeClass<>'UI') then
     begin
       j:=j+1;
@@ -2288,15 +2296,17 @@ begin
      or ((SourceNode.NodeClass='NV') and (SourceNode.NodeType<>''))
      or (SourceNode.NodeClass = 'SVG') then
      begin
-       //showmessage('setting attribute values');
+       //if SourceNode.NodeType='TXForm' then begin asm console.log(SourceNode.NodeName+' setting attribute values'); end; end;
        for i:=0 to length(SourceNode.NodeAttributes)-1 do
        begin
-         //showmessage(SourceNode.NodeAttributes[i].AttribName);
+         //if SourceNode.NodeType='TXForm' then begin asm console.log(SourceNode.NodeAttributes[i].AttribName+' '+SourceNode.NodeAttributes[i].AttribValue) end; end;
+         //if SourceNode.NodeType='TXTable' then showmessage('call SetAttributeValue for '+SourceNode.NodeName+'.'+SourceNode.NodeAttributes[i].AttribName
+         //                             +' '+SourceNode.NodeAttributes[i].AttribValue);
          mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
          mynode.SetAttributeSource(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribSource.InputNodeName,
                                    SourceNode.NodeAttributes[i].AttribSource.InputAttribName);
        end;
-       //showmessage('done attributes.  Name='+MyNode.NameSpace+'.'+MyNode.NodeName);
+       //if SourceNode.NodeType='TXTable' then showmessage('done attributes.  Name='+MyNode.NameSpace+'.'+MyNode.NodeName);
        if MainForm<>nil then
          mf:=MainForm.Name
        else
@@ -2319,11 +2329,11 @@ begin
        end;
        if myNode=nil then showmessage('oops no node '+SourceNode.NodeType+' '+SourceNode.NameSpace+':'+SourceNode.NodeName);
        // Create a screen object by running the registered instantiation function for the node type
-       //showmessage('calling widget func');
+       //if myNode.NodeType='TXForm' then showmessage('calling widget func');
        fn:=LookupComponentFunc(SourceNode.NodeType);
-       //showmessage('calling fn for: '+SourceNode.NodeType+' '+NewNameSpace+'.'+SourceNode.NodeName);
+       //if myNode.NodeType='TXForm' then showmessage('calling fn for: '+SourceNode.NodeType+' '+NewNameSpace+'.'+SourceNode.NodeName);
        fn(myNode,ParentNode,SourceNode.NodeName,NewNameSpace,pos,'Left');        //!! set initial alignment from source?
-       //showmessage('fn done');
+       //if myNode.NodeType='TXForm' then showmessage('fn done');
      end;
 
      if myNode.HasAttribute('SuspendRefresh') then
@@ -3094,7 +3104,7 @@ end;
 {$else}
 procedure EditAttributeValue2(NodeNameToEdit,NameSpace,AttrNameToEdit,newValue:String); // for direct calls via JS (doesn't handle overloads)
 begin
-  EditAttributeValue(NodeNameToEdit,NameSpace,AttrNameToEdit,newValue);
+  EditAttributeValue(NodeNameToEdit,NameSpace,AttrNameToEdit,newValue,false);
 end;
 {$endif}
 
@@ -3162,24 +3172,24 @@ end;
 
 
 {$Else}
-function DeleteScreenObject(MyNode:TDataNode):string;
-var
-    ObjName:string;
-begin
-   ObjName:=MyNode.NameSpace+MyNode.NodeName;
-
-  asm
-    try{
-    var ThisObject = document.getElementById(ObjName);
-    if (ThisObject!=null) {
-       ThisObject.parentNode.removeChild(ThisObject);
-      }
-    }catch(err) { alert(err.message+' in NodeUtils.DeleteScreenObject');}
-  end;
-
-  NilScreenObject(MyNode);
-
-end;
+//function DeleteScreenObject(MyNode:TDataNode):string;
+//var
+//    ObjName:string;
+//begin
+//   ObjName:=MyNode.NameSpace+MyNode.NodeName;
+//
+//  asm
+//    try{
+//    var ThisObject = document.getElementById(ObjName);
+//    if (ThisObject!=null) {
+//       ThisObject.parentNode.removeChild(ThisObject);
+//      }
+//    }catch(err) { alert(err.message+' in NodeUtils.DeleteScreenObject');}
+//  end;
+//
+//  NilScreenObject(MyNode);
+//
+//end;
 {$endif}
 
 procedure DeleteNodeChildren(ParentNode:TDataNode);
@@ -3542,8 +3552,8 @@ end;
 procedure InitialiseXComponentsProject;
 begin
   // PasteDialog and CompilerLog forms are in XComponents units - need to instantiate the forms here.
-  PasteDialogUnit.SetupPasteDialogForm;
   CompilerLogUnit.SetupCompilerLogForm;
+  PasteDialogUnit.SetupPasteDialogForm;
 end;
 {$endif}
 

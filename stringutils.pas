@@ -17,7 +17,7 @@ unit StringUtils;
 interface
 
 uses
-  Classes, SysUtils, Math, EventsInterface
+  Classes, SysUtils, Math, TypInfo, EventsInterface
   {$ifndef JScript}
   , fpjson  , jsonparser
   , Forms, Dialogs, Controls, Graphics;
@@ -35,10 +35,10 @@ function myStringReplace(Instring,OldString,NewString:String;ReplaceNum,MaxStrin
 function MyBoolToStr(inBool:boolean):string;
 function MyStrToBool(inStr:string):Boolean;
 function TrimWhiteSpace(Instring:string):String;
-function stringsplit(str:string; separator:string):TStringList;
+function stringsplit(str:string; separator:string; skiplast:boolean=true):TStringList;
 function IsInStringList(myList:TStringList;elem:string):boolean;
 function CommaListToStringArray(AValue:String):TStringArray;
-function StringToSubStringList(InString,delimiter:String):TStringList;
+function StringToSubStringList(InString,delimiter:String; skiplast:boolean=true):TStringList;
 function DelChars(Instring,FilterChar:String):String;
 function stripLeadingStringIfPresent(instring,LeadingString:String):String;
 Function confirm(Textmessage:string):boolean;
@@ -46,7 +46,13 @@ Function prompt(TextMessage,promptString:string):string;
 function JSONStringToStringList(JSONString:String):TStringList;
 function StringListToJSONString(StringList:TStringList):String;
 function NumArrayToJSONString(NumArray:TNumArray):String;
-function ImgArrayToJSONString(ImgArray:TImgArray):String;
+//function ImgArrayToJSONString(ImgArray:TImgArray):String;
+function Num2dArrayToString(NumArray:T2dNumArray):String;
+function JsonStringTo3DNumArray(str:String):T3DNumArray;
+function QuoteIt(str:String):String;
+procedure ShowAllChars(str:String);
+function IsStrFloatNum(str: string): Boolean;
+
 
 {$ifndef JScript}
 function ColorToHexRGB(Color: TColor): string;
@@ -61,6 +67,21 @@ var MainUnitName:String;
 implementation
 uses Events;
 
+procedure ShowAllChars(str:String);
+var
+  msg:string;
+  i:integer;
+begin
+  for i:=1 to length(str) do
+  begin
+    if ord(str[i])>31 then
+      msg:=msg+str[i]
+    else
+      msg:=msg+'#'+inttostr(ord(str[i]));
+  end;
+  showmessage('chars='+msg);
+end;
+
 {$ifndef JScript}
 {$else}
 
@@ -72,6 +93,31 @@ begin
 end;
 
 {$endif}
+
+function IsStrFloatNum(str: string): Boolean;
+var
+ dummyNumber:double;
+ posError:integer;
+begin
+ result:=true;
+ val(str, dummyNumber, posError);
+ if poserror>0 then
+   result:=false;
+end;
+
+function QuoteIt(str:String):String;
+begin
+  if trim(str)='' then
+    result:='""'
+  else
+  begin
+    if (str[1]='"')
+    or (str[1]='''') then
+      result:=str
+    else
+      result:='"'+str+'"';
+  end;
+end;
 
 function IsInStringList(myList:TStringList;elem:string):boolean;
 var
@@ -209,14 +255,34 @@ begin
   result :=  newstring;
 end;
 
-function StringToSubStringList(InString,delimiter:String):TStringList;
+function StringToSubStringList(InString,delimiter:String;skiplast:Boolean=true):TStringList;
 var items : TStringList;
+{$ifdef JScript}
+  i:integer;
+  DelimiterAtEnd:boolean;
+  {$endif}
 begin
   items := TstringList.Create;
   items.StrictDelimiter:=true;
-  //items.SkipLastLineBreak:=false;
+  items.SkipLastLineBreak:=skiplast;
   items.LineBreak:=delimiter;
   items.text:= InString;
+
+  {$ifdef JScript}
+  DelimiterAtEnd:=true;
+  if SkipLast=false then
+  if length(InString)>=length(delimiter) then
+  begin
+    for i:=length(InString)-length(Delimiter)+1 to length(InString) do
+      if InString[i]<>Delimiter[i-(length(InString)-length(Delimiter))] then
+        DelimiterAtEnd:=false;
+    if DelimiterAtEnd then
+    begin
+      items.Add('');
+      //showmessage('item added for '+InString);
+    end;
+  end;
+  {$endif}
   StringToSubStringList:=items;
 end;
 
@@ -289,11 +355,11 @@ begin
   result:=strtoFloat(instring);
 end;
 
-function stringsplit(str:string; separator:string):TStringList;
+function stringsplit(str:string; separator:string; skiplast:boolean=true):TStringList;
 var
    localStringList:TStringList;
 begin
-  localStringList:=StringToSubStringList(str,separator);
+  localStringList:=StringToSubStringList(str,separator,skiplast);
   result:=localStringList;
 end;
 
@@ -313,6 +379,21 @@ begin
     arr[i]:=bits[i];
   result:=arr;
   bits.Free;
+end;
+
+function Num2dArrayToString(NumArray:T2dNumArray):String;
+var
+    TempString:String;
+    i:integer;
+begin
+  TempString:='[';
+  for i:=0 to length(NumArray)-1 do
+  begin
+    if i>0 then TempString:=TempString+',';
+    TempString:=TempString+NumArrayToJsonString(NumArray[i]);
+  end;
+  TempString:=TempString+']';
+  result:=TempString;
 end;
 
 {$ifndef JScript}
@@ -342,6 +423,132 @@ begin
   end;
   result:=items;
 end;
+(*
+function JsonStringTo3DNumArray(str:String):T3DNumArray;
+var
+   Data,zData : TJSONData;
+   zCount:integer;
+   arr:T3DNumArray;
+   ArrayStr:String;
+    zItem,yItem,xItem : TJSONData;
+    z,y,x:integer;
+    object_type:string;
+begin
+  Data := GetJSON(str);
+  ArrayStr:= Data.Items[0].AsJSON;         // "[[[...],[...]],[[...]]]"
+  if ArrayStr[1]='"' then
+  begin
+    Delete(ArrayStr,1,1);
+    Delete(ArrayStr,length(ArrayStr),1);
+  end;
+
+  setlength(arr,0);
+  try
+    zData := GetJSON(ArrayStr);
+  except
+    on E: Exception do
+    begin
+      showmessage('JSON error: '+e.Message);
+      zData := nil;
+    end;
+  end;
+  if zData<>nil then
+  begin
+    zcount:=zData.Count;
+    setlength(arr,zCount);
+    for z :=0 to zcount-1 do
+    begin
+      zItem := zData.Items[z];
+      setlength(arr[z],zItem.Count);
+      for y:=0 to zItem.Count-1 do
+      begin
+        yItem := zItem.Items[y];
+        setlength(arr[z,y],yItem.Count);
+        object_type := GetEnumName(TypeInfo(TJSONtype), Ord(yItem.JSONType));
+        if object_type='jtArray' then
+        begin
+          for x:=0 to yItem.Count-1 do
+          begin
+            xItem:= yItem.Items[x];
+            object_type := GetEnumName(TypeInfo(TJSONtype), Ord(xItem.JSONType));
+            if object_type='jtNumber' then
+            begin
+              arr[z,y,x]:=xItem.AsFloat;
+            end
+            else
+              arr[z,y,x]:=0.0;
+          end;
+        end;
+      end;
+    end;
+  end;
+
+  result:=arr;
+end;
+*)
+
+function JsonStringTo3DNumArray(str:String):T3DNumArray;
+var
+   Data,zData : TJSONData;
+   zCount:integer;
+   arr:T3DNumArray;
+   ArrayStr:String;
+    zItem,yItem,xItem : TJSONData;
+    z,y,x:integer;
+    object_type:string;
+begin
+  setlength(arr,0);
+  try
+    Data := GetJSON(str);
+  except
+    on E: Exception do
+    begin
+      showmessage('JSON error: '+e.Message);
+      Data := nil;
+    end;
+  end;
+//  ArrayStr:= Data.AsJSON;         // "[[[...],[...]],[[...]]]"
+//  if ArrayStr[1]='"' then
+//  begin
+//    Delete(ArrayStr,1,1);
+//    Delete(ArrayStr,length(ArrayStr),1);
+//  end;
+  if Data<>nil then
+  begin
+    ArrayStr:=str;
+
+    zData := GetJSON(ArrayStr);
+    zcount:=zData.Count;
+    setlength(arr,zCount);
+    for z :=0 to zcount-1 do
+    begin
+      zItem := zData.Items[z];
+      setlength(arr[z],zItem.Count);
+      for y:=0 to zItem.Count-1 do
+      begin
+        yItem := zItem.Items[y];
+        setlength(arr[z,y],yItem.Count);
+        object_type := GetEnumName(TypeInfo(TJSONtype), Ord(yItem.JSONType));
+        if object_type='jtArray' then
+        begin
+          for x:=0 to yItem.Count-1 do
+          begin
+            xItem:= yItem.Items[x];
+            object_type := GetEnumName(TypeInfo(TJSONtype), Ord(xItem.JSONType));
+            if object_type='jtNumber' then
+            begin
+              arr[z,y,x]:=xItem.AsFloat;
+            end
+            else
+              arr[z,y,x]:=0.0;
+          end;
+        end;
+      end;
+    end;
+  end;
+
+  result:=arr;
+end;
 
 
 function StringListToJsonString(StringList:TStringList):String;
@@ -369,32 +576,32 @@ var
     TempString:String;
     i:integer;
 begin
-  //example optionlist '["Banana","Cherry","Lemon","Carrot","Eggplant","Potato"]'
+  //example '[0,1.2,3.65,8.02]'
   TempString:='[';
-  for i:=0 to length(NumArray)-1 do
-  begin
-    if i>0 then TempString:=TempString+',';
-    TempString:=TempString+floatToStr(NumArray[i]);
-  end;
+  if NumArray<>nil then
+    for i:=0 to length(NumArray)-1 do
+    begin
+      if i>0 then TempString:=TempString+',';
+      TempString:=TempString+floatToStr(NumArray[i]);
+    end;
   TempString:=TempString+']';
   result:=TempString;
 end;
 
-function ImgArrayToJsonString(ImgArray:TImgArray):String;
-var
-    TempString:String;
-    i:integer;
-begin
-  //example optionlist '["Banana","Cherry","Lemon","Carrot","Eggplant","Potato"]'
-  TempString:='[';
-  for i:=0 to length(ImgArray)-1 do
-  begin
-    if i>0 then TempString:=TempString+',';
-    TempString:=TempString+ImgArray[i];
-  end;
-  TempString:=TempString+']';
-  result:=TempString;
-end;
+//function ImgArrayToJsonString(ImgArray:TImgArray):String;
+//var
+//    TempString:String;
+//    i:integer;
+//begin
+//  TempString:='[';
+//  for i:=0 to length(ImgArray)-1 do
+//  begin
+//    if i>0 then TempString:=TempString+',';
+//    TempString:=TempString+ImgArray[i];
+//  end;
+//  TempString:=TempString+']';
+//  result:=TempString;
+//end;
 
 function ColorToHexRGB(Color: TColor): string;
 var
@@ -412,6 +619,7 @@ begin
     IntToHex(Green(N), 2)+
     IntToHex(Blue(N), 2);
 end;
+
 function HexRGBToColor(RGBString: String): TColor;
 type
   T4Byte = array [0 .. 2] of Byte;
@@ -466,7 +674,7 @@ begin
   for i:=0 to StringList.Count-1 do
   begin
     if i>0 then TempString:=TempString+',';
-    TempString:=TempString+'"'+StringList[i]+'"';
+    TempString:=TempString+QuoteIt(StringList[i]);
   end;
   TempString:=TempString+']';
   result:=TempString;
@@ -487,20 +695,20 @@ begin
   result:=TempString;
 end;
 
-function ImgArrayToJsonString(ImgArray:TImgArray):String;
-var
-    TempString:String;
-    i:integer;
-begin
-  TempString:='[';
-  for i:=0 to length(ImgArray)-1 do
-  begin
-    if i>0 then TempString:=TempString+',';
-    TempString:=TempString+ImgArray[i];
-  end;
-  TempString:=TempString+']';
-  result:=TempString;
-end;
+//function ImgArrayToJsonString(ImgArray:TImgArray):String;
+//var
+//    TempString:String;
+//    i:integer;
+//begin
+//  TempString:='[';
+//  for i:=0 to length(ImgArray)-1 do
+//  begin
+//    if i>0 then TempString:=TempString+',';
+//    TempString:=TempString+ImgArray[i];
+//  end;
+//  TempString:=TempString+']';
+//  result:=TempString;
+//end;
 
 procedure HexRGBToColor(RGBString: String; var r,g,b,a:integer);
 type
@@ -533,6 +741,16 @@ begin
       a:=0;
     end;
   end;
+end;
+
+function JsonStringTo3DNumArray(str:String):T3DNumArray;
+var
+arr:T3DNumArray;
+begin
+  asm
+    arr = JSON.parse(str);
+  end;
+  result:=arr;
 end;
 {$endif}
 

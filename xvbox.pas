@@ -45,7 +45,7 @@ type
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
-    constructor Create(MyForm:TForm;NodeName,NameSpace:String);
+    constructor Create(MyForm:TForm;NodeName,NameSpace:String); virtual;
     {$endif}
   published
     { Published declarations }

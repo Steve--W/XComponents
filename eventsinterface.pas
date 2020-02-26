@@ -21,7 +21,11 @@ uses
   Classes, SysUtils, Math;
 
 type TNumArray = Array of real;
-type TImgArray = Array of String;
+type TStringArray = Array of String;
+type T2DNumArray = Array of TNumArray;
+type T3DNumArray = Array of T2DNumArray;
+type T2DStringArray = Array of TStringArray;
+
 type TEventStatus = class(TObject)
 public
   EventType:String;

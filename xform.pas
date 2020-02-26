@@ -335,7 +335,12 @@ begin
   try{
       var modal = document.getElementById(NameSpace+NodeName);
       if (modal!=null) {
-      modal.style.display = 'block';  }
+        // place this form at the end of the forms list so that it appears 'on top' even if
+        // there are other forms already open
+        let pp=modal.parentNode;
+        pp.appendChild(modal);
+        modal.style.display = 'block';
+        }
   }catch(err){alert('Error in XForm.OpenModal '+ err.message);}
   end;
   if (NodeName<>MainForm.Name) or (NameSpace<>'') then
@@ -413,7 +418,7 @@ function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:st
 var
    ParentName:string;
 begin
-  //showmessage('createWidget XForm.  Node type is '+MyNode.ClassName);
+  //showmessage('createWidget XForm.  '+ScreenObjectName);
   if ParentNode<>nil then
     ParentName:=ParentNode.NodeName
   else
@@ -628,6 +633,7 @@ begin
   {$ifndef JScript}
   inherited Height := AValue;
   {$else}
+  //showmessage('TXForm '+myNode.NodeName+' SetHeight '+inttostr(AValue));
   asm
     var ob=document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {

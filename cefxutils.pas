@@ -37,7 +37,7 @@ uses
   XHTMLEditor,
   {$endif}
   {$endif}
-  StringUtils;
+  NodeUtils,StringUtils,LazsUtils,TypInfo;
 
 {$ifndef JScript}
 {$ifdef Chromium}
@@ -74,7 +74,7 @@ begin
 
             while (TempChild <> nil) do
               begin
-                CefLog('CEF4Delphi', 1, CEF_LOG_SEVERITY_ERROR, 'Head child element : ' + TempChild.Name);
+                //CefLog('CEF4Delphi', 1, CEF_LOG_SEVERITY_ERROR, 'Head child element : ' + TempChild.Name);
                 TempChild := TempChild.NextSibling;
               end;
           end;
@@ -93,29 +93,41 @@ var
   TempNode : ICefDomNode;
   str:String;
   i:integer;
+  function ExtractInnerHTML:String;
+  begin
+    str:=TempNode.AsMarkup;   //  ElementInnerText; ??
+    // extract the inner html from the div...
+    i:=FoundString(str,'>');
+    if i>0 then Delete(str,1,i);
+    if str[1]=chr(10) then Delete(str,1,1);
+    i:=FoundString(str,'</div>');
+    if i>0 then Delete(str,i,6);
+    if str[length(str)]=chr(10) then Delete(str,length(str),1);
+    result:=str;
+  end;
+
 begin
   // SimpleNodeSearch looks for the named element within the DOM for the cef4 component.
   try
     if (aDocument <> nil) then
     begin
+     // CefLog('SimpleNodeSearch', 1, CEF_LOG_SEVERITY_INFO, LookFor );
       TempNode := aDocument.GetElementById(LookFor);
       if (TempNode <> nil) then
         begin
-          //CefLog('CEF4Delphi', 1, CEF_LOG_SEVERITY_ERROR, LookFor + ' element name : ' + TempNode.Name);
+         // CefLog('SimpleNodeSearch', 1, CEF_LOG_SEVERITY_INFO, 'found' );
           //CefLog('CEF4Delphi', 1, CEF_LOG_SEVERITY_ERROR, LookFor + ' element value : ' + TempNode.GetValue);
           if NodeType='TXHTMLEditor' then
           begin
-            str:=TempNode.AsMarkup;   //  ElementInnerText; ??
-            // for TXHTMLEditor, have to extract the inner html from the div...
-            i:=FoundString(str,'>');
-            if i>0 then Delete(str,1,i);
-            if str[1]=chr(10) then Delete(str,1,1);
-            i:=FoundString(str,'</div>');
-            if i>0 then Delete(str,i,6);
-            if str[length(str)]=chr(10) then Delete(str,length(str),1);
-            result:=str;
+            result:=ExtractInnerHTML;
+          end
+          else if (NodeType='TXGPUCanvas') then
+          begin
+            result:=ExtractInnerHTML;
           end;
-        end;
+        end
+      else
+        CefLog('SimpleNodeSearch', 1, CEF_LOG_SEVERITY_INFO, 'not found' );
     end;
   except
     on e : exception do
@@ -129,8 +141,8 @@ var
   txt:String;
 begin
   // This function is called from a different process.
-  // document is only valid inside this function.
-  // As an example, this function only writes the document title to the 'debug.log' file.
+  // 'document' is only valid inside this function.
+  // As an example, this function only writes the document title to the 'cefdebug.log' file.
  // CefDebugLog('document.Title : ' + document.Title);
 
   //if document.HasSelection then
@@ -154,21 +166,42 @@ begin
   frame.SendProcessMessage(PID_BROWSER, msg);
 end;
 
+procedure DOMVisitor_OnDocAvailable_TXGPUCanvas(const browser: ICefBrowser; const frame: ICefFrame; const document: ICefDomDocument);
+var
+  msg: ICefProcessMessage;
+  otxt,stxt:String;
+begin
+  otxt:=SimpleNodeSearch(document,'TXGPUCanvas','oarr');
+  stxt:=SimpleNodeSearch(document,'TXGPUCanvas','sarr');
+
+  // Send back results to the browser process
+  // Notice that the 'sendGPUarrays' message name needs to be recognized in
+  // a Chromium OnProcessMessageReceived method
+  msg := TCefProcessMessageRef.New('sendGPUarrays');
+  msg.ArgumentList.SetString(0, otxt);
+  msg.ArgumentList.SetString(1, stxt);
+  frame.SendProcessMessage(PID_BROWSER, msg);
+end;
+
 procedure GlobalCEFApp_OnProcessMessageReceived(const browser       : ICefBrowser;
                                                 const frame       : ICefFrame;
                                                       sourceProcess : TCefProcessId;
-                                                const message       : ICefProcessMessage;
+                                                const message       : ICefProcessMessage;      // params: id, attrib ????
                                                 var   aHandled      : boolean);
 var
   TempFrame   : ICefFrame;
   TempVisitor : TCefFastDomVisitor2;
+  a:integer;
+  arg:String;
+  thisNode:TDataNode;
+  m:TMethod;
 begin
   // Handle messages that are sent INTO this cef renderer
   aHandled := False;
   if (browser <> nil) then
     begin
       //CefLog('CEFXUtils OnProcessMessageReceived. ', 1, CEF_LOG_SEVERITY_ERROR, message.name);
-      //CefDebugLog('CEFXUtils OnProcessMessageReceived. ');
+      //CefDebugLog('CEFXUtils OnProcessMessageReceived.'+message.name);
       if (message.name = XHTMLEDITOR_GETTEXT) then
         begin
           //TempFrame := browser.MainFrame;
@@ -180,18 +213,32 @@ begin
               TempFrame.VisitDom(TempVisitor);
             end;
           aHandled := True;
-    //    end
-    //  else if (message.name = 'getoutputarray')  then
-    //  begin
-    //  TempFrame:=frame;
-    //  if TempFrame<>nil then
-    //  begin
-    //    cefDebugLog('VisitDom...');
-    //    TempVisitor := TCefFastDomVisitor2.Create(browser, TempFrame, @DOMVisitor_OnDocAvailable_TXGPUFrame);
-    //    TempFrame.VisitDom(TempVisitor);
-    //  end;
-    //    aHandled := True;
+        end
+      else if (message.name = 'getGPUData')  then
+      begin
+        TempFrame:=frame;
+        if TempFrame<>nil then
+        begin
+          TempVisitor := TCefFastDomVisitor2.Create(browser, frame, @DOMVisitor_OnDocAvailable_TXGPUCanvas);
+          TempFrame.VisitDom(TempVisitor);
+        end;
+        aHandled := True;
       end;
+
+//      a:=message.ArgumentList.GetSize;
+//      CefDebugLog('message.ArgumentList.GetSize='+inttostr(a));
+//      if message.ArgumentList<>nil then
+//      begin
+//        arg := message.ArgumentList.GetString(0);
+//        CefDebugLog('message.ArgumentList.GetString(0)='+arg);
+//        thisNode:=findDataNodeById(systemnodetree,arg,'',true);
+//        if HasProperty(thisNode.ScreenObject,'DOMVisitor_OnDocAvailable') then
+//        begin
+//          m:=GetMethodProp(thisNode.ScreenObject,'DOMVisitor_OnDocAvailable');
+//        end;
+//      end;
+
+
     end;
 end;
 

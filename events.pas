@@ -277,7 +277,10 @@ begin
   m.Code:=nil;
   //find existing event handler (in the form) for a component created in Lazarus IDE with compiled events...
   if MyNode.MyForm<>nil then
+  begin
+    m.Data := pointer(MyNode.MyForm); //store pointer to form instance  (self of the function)
     m.Code := MyNode.MyForm.MethodAddress(myName+'Handle'+EventType);
+  end;
   if m.Code=nil then
   begin
     // the component may have been created programatically at run-time, while the event handling function already exists in the project,
@@ -303,7 +306,8 @@ begin
   end
   else
   begin
-    m.Data := pointer(MyNode.MyForm); //store pointer to form object instance
+    if m.Data=nil then
+      m.Data := pointer(MyNode.ScreenObject); //store pointer to object instance  (self of the function)
     TEventHandler(m)(e,myName,myValue);
   end;
 end;

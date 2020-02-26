@@ -253,7 +253,7 @@ begin
   and (self.myNode<>nil)
   then
   begin
-    // Send a cef message to fetch the new value of the frame output array
+    // Send a cef message to fetch the new value of the text
     // (Use the ArgumentList property if you need to pass some parameters.)
     TempMsg := TCefProcessMessageRef.New(XHTMLEDITOR_GETTEXT);
     //TempMsg.ArgumentList.SetValue(0,newval);              //  msg.ArgumentList.SetString(0, txt);
