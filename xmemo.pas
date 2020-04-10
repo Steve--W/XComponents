@@ -362,10 +362,16 @@ begin
 end;
 
 procedure TXMemo.SetItemValue(AValue:string);
+var
+  l:integer;
 begin
   myNode.SetAttributeValue('ItemValue',AValue);
   {$ifndef JScript}
-  TMemo(myControl).Text:=AValue;
+  l:=length(AValue);
+  if l > 1000000 then
+    TMemo(myControl).Text:='<<.....text too long to edit here....>>'
+  else
+    TMemo(myControl).Text:=AValue;   //!!!! hanging up when text is very long...
   {$else}
   asm
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');

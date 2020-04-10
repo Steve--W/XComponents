@@ -19,6 +19,7 @@ uses
   {$ifndef JScript}
   LResources, Forms, Controls, StdCtrls, Graphics, Dialogs, ExtCtrls, Propedits,RTTICtrls,
   LazsUtils, Events, SynEdit, SynEditTypes, SynHighlighterPas,
+  SynHighlighterPython,
   {$else}
   HTMLUtils,
   {$endif}
@@ -52,11 +53,13 @@ type
     procedure SetMyEventTypes;
 
     function GetItemValue:string;
+    function GetLanguage:string;
     function GetReadOnly:Boolean;
     function GetMessagesHeight:string;
     function GetMessageLines:string;
 
     procedure SetItemValue(AValue:string);
+    procedure SetLanguage(AValue:string);
     procedure SetReadOnly(AValue:Boolean);
     procedure SetMessagesHeight(AValue:string);
     procedure SetMessageLines(AValue:string);
@@ -65,6 +68,7 @@ type
     { Protected declarations }
     {$ifndef JScript}
     procedure DoConstructor(TheOwner:TComponent;IsDynamic:Boolean);
+    procedure CreateEditor(lang:String);
     property ParentColor;
     {$endif}
   public
@@ -109,6 +113,7 @@ type
 
     // Properties defined for this class...
     property ItemValue: String read GetItemValue write SetItemValue;
+    property Language: String read GetLanguage write SetLanguage;
     property ReadOnly: Boolean read GetReadOnly write SetReadOnly;
     property MessagesHeight: String read GetMessagesHeight write SetMessagesHeight;
     property MessageLines:String read GetMessageLines write SetMessageLines;
@@ -124,6 +129,9 @@ type
 
   {$ifndef JScript}
   procedure Register;
+  var
+    SynPasSynMain: TSynPasSyn;
+    SynPySynMain: TSynPythonSyn;
   {$endif}
 
 
@@ -153,7 +161,6 @@ begin
 end;
 
 {$ifndef JScript}
-var SynPasSynMain: TSynPasSyn;
 
 
 procedure Register;
@@ -178,11 +185,13 @@ begin
   DoConstructor(TheOwner,IsDynamic);
 end;
 
-procedure TXCode.DoConstructor(TheOwner:TComponent;IsDynamic:Boolean);
+procedure TXCode.CreateEditor(lang:String);
 var
   syned:TSynEdit;
-  messgs:TMemo;
 begin
+  if self.TheEditor<>nil then
+    self.TheEditor.Destroy;
+
   if SynPasSynMain=nil then
   begin
     SynPasSynMain:= TSynPasSyn.Create(nil);
@@ -190,6 +199,39 @@ begin
     SynPasSynMain.CommentAttri.Style:=[fsItalic];
     SynPasSynMain.StringAttri.foreground:=clblue;
   end;
+
+  if SynPySynMain=nil then
+  begin
+    SynPySynMain:= TSynPythonSyn.Create(nil);
+    SynPySynMain.CommentAttri.foreground:=clgreen;
+    SynPySynMain.CommentAttri.Style:=[fsItalic];
+    SynPySynMain.StringAttri.foreground:=clblue;
+  end;
+
+  syned:=TSynEdit.Create(self);
+  syned.Parent:=TPanel(myControl);
+  syned.SetSubComponent(true);
+  syned.ControlStyle := syned.ControlStyle - [csNoDesignSelectable];
+
+  syned.OnExit:=@self.MemoChange;
+  syned.OnClick:=@self.MemoClick;
+
+  if lang='Pascal' then
+    syned.Highlighter:= SynPasSynMain
+  else if lang='Python' then
+    syned.Highlighter:= SynPySynMain;
+
+  syned.ScrollBars:=ssAutoBoth;
+  syned.Align:=alClient;      //synedit
+
+  TheEditor:=syned;
+end;
+
+procedure TXCode.DoConstructor(TheOwner:TComponent;IsDynamic:Boolean);
+var
+  syned:TSynEdit;
+  messgs:TMemo;
+begin
 
   self.BorderSpacing.Around:=glbBorderSpacing;
 
@@ -201,19 +243,8 @@ begin
   // Make sure the embedded component can not be selected/deleted within the IDE
   myControl.ControlStyle := myControl.ControlStyle - [csNoDesignSelectable];
 
-  syned:=TSynEdit.Create(self);
-  syned.Parent:=TPanel(myControl);
-  syned.SetSubComponent(true);
-  syned.ControlStyle := syned.ControlStyle - [csNoDesignSelectable];
 
-  syned.OnExit:=@self.MemoChange;
-  syned.OnClick:=@self.MemoClick;
-
-  syned.Highlighter:= SynPasSynMain;
-
-  syned.ScrollBars:=ssAutoBoth;
-
-  TheEditor:=syned;
+  CreateEditor('Pascal');
 
   messgs:=TMemo.Create(self);
   messgs.Parent:=TPanel(myControl);
@@ -224,7 +255,6 @@ begin
   TheMessages:=messgs;
 
   myControl.Align:=alClient;      //panel
-  TheEditor.Align:=alClient;      //synedit
   TheMessages.Align:=alBottom;    //memo
   myControl.Tag:=-1;
 
@@ -351,7 +381,7 @@ asm
   var cp=this.CharPosToYPixel(obj,LinesArray,obj.selectionEnd,
          {get: function () {return xpos;}, set: function (v) {xpos = v;}},
          {get: function () {return ln;}, set: function (v) {ln = v;}});
-  console.log('scrollTop='+obj.scrollTop+' selectionEnd='+obj.selectionEnd + ' cp='+cp);
+  //console.log('scrollTop='+obj.scrollTop+' selectionEnd='+obj.selectionEnd + ' cp='+cp);
   if ((cp-obj.scrollTop)<5) {
     obj.scrollTop=topSave;
     }
@@ -607,19 +637,6 @@ begin
   if myNode<>nil then
   begin
   asm
-  //alert('DoKeyDown');
-//  function CursorGotoXY(x,y)
-//  {  var charcount = 0;
-//     const mydoc = document.getElementById(myId+"Real");
-//     var stringArray = mydoc.value.split("\n");
-//     for (var j = 0; j < stringArray.length; j++)
-//     {
-//       if (j< y){ charcount = charcount + stringArray[j].length +1;};
-//     }
-//     charcount = charcount + x;
-//     mydoc.focus();
-//     mydoc.setSelectionRange(charcount,(charcount + 1));
-//  }
 
   function SuppressTabKey(event)
   // code to suppress the tab key default behavior on KeyDown
@@ -639,9 +656,11 @@ begin
   end;
 end;
 
+
 procedure DoKeyUp(myId:String;NodeId,NameSpace:String;event:TObject);
 var
   myNode:TXCode;
+  lang:String;
 // This does the text syntax colouring...
 // assume all reserved words start and end with a space
 begin
@@ -649,356 +668,417 @@ begin
 
   if myNode<>nil then
   begin
-  asm
-  //alert('DoKeyUp.  Id='+myId);
-  var ReservedWords = [];
-  // assume all reserved words start and end with a space
-  ReservedWords[1] = ["absolute", "abstract", "alias", "and", "array", "as", "asm", "assembler"];
-  ReservedWords[2] = ["begin", "break"];
-  ReservedWords[3] = ["case", "cdecl", "class", "const", "constructor", "continue", "cppdecl"];
-  ReservedWords[4] = ["default", "destructor", "dispose", "div", "do", "downto"];
-  ReservedWords[5] = ["else", "end", "except", "exit", "export", "exports", "external"];
-  ReservedWords[6] = ["false", "file", "for", "forward", "function"];
-  ReservedWords[7] = ["generic", "goto"];
-  ReservedWords[8] = [""];
-  ReservedWords[9] = ["if", "implementation", "in", "index", "inherited", "initialization", "inline", "interface", "is"];
-  ReservedWords[10] = [""];
-  ReservedWords[11] = [""];
-  ReservedWords[12] = ["label", "library", "local"];
-  ReservedWords[13] = ["mod"];
-  ReservedWords[14] = ["name", "new", "nil", "nostackframe", "not"];
-  ReservedWords[15] = ["object", "of", "oldfpccall", "on", "operator", "or", "out", "override"];
-  ReservedWords[16] = ["packed", "private", "procedure", "program", "property", "protected", "published"];
-  ReservedWords[17] = [""];
-  ReservedWords[18] = ["raise", "read", "record", "register", "repeat"];
-  ReservedWords[19] = ["safecall", "self", "set", "shl", "shr", "softfloat", "specialize", "stdcall", "string"];
-  ReservedWords[20] = ["then", "threadvar", "to", "true", "try", "type"];
-  ReservedWords[21] = ["unit", "until", "uses"];
-  ReservedWords[22] = ["var", "virtual"];
-  ReservedWords[23] = ["while", "with", "write"];
-  ReservedWords[24] = ["xor"];
-  ReservedWords[25] = [""];
-  ReservedWords[26] = [""];
+    lang:=myNode.GetAttribute('Language',true).AttribValue;
+    asm
+    var ReservedWords = [];
+    var StringDelimiter = "'";
+    var EndOfLine = "\n";
+    var StartOfSingleLineCommentdelimiter = "";
+    var StartOfMultiLineComment = "";
+    var EndOfMultiLineComment = "";
 
-  var StringDelimiter = "'";
-  var StartOfSingleLineCommentdelimiter = "/";
-  var StartOfMultiLineComment = "{";
-  var EndOfMultiLineComment = "}";
-  var EndOfLine = "\n";
-
-  function isDelimiter(inChar)
-  {
-      var isadelimiter = false;
-      if ((inChar == " ") || (inChar == ";") || (inChar == "=") || (inChar == "(") || (inChar == "-") || (inChar == "/") || (inChar == "*") ||
-          (inChar == ")") || (inChar == "}") || (inChar == "]") || (inChar == "+") || (inChar == "{") || (inChar == "[") ||
-          (inChar == "&") || (inChar == "|") || (inChar == "!") ) {
-          isadelimiter = true;        }
-      return isadelimiter;
-  }
-
-  function matchReservedWord(lineString, firstcharpos, charindex) {
-      var ReservedWordlength = 0;
-      var foundstring = "";
-      try {
-          // for all reserved words starting with the first letter
-          for (var k = 0; k < ReservedWords[charindex].length; k++) {
-              var testWord = ReservedWords[charindex][k];
-              var followingChar = firstcharpos + testWord.length;
-              if (isDelimiter(lineString[followingChar])){
-                  var match = true;
-                  for (var m = 0; m < testWord.length; m++) {
-                      if (lineString[firstcharpos + m] != testWord[m]) { match = false; };
-                  }
-                  if (match == true) { ReservedWordlength = testWord.length; foundstring = testWord};
-              }
-          }
-      }
-      catch (err) { alert("Error -- " + err.message); };
-      return ReservedWordlength;
-  };
-
-  //-------------------------------------------------------------------------------------------------------------------------
-  //                  core line parser called by both ParseThisLine(....) and ParseWholeDocumaent();
-  //-------------------------------------------------------------------------------------------------------------------------
-
-  function ParseLine(j,line,localcontext,SyntaxText)
-  {
-              var IsInSingleLineCommentString = false;
-              var IsInStringLiteral = false;
-              var ReservedWordCharCount = 0;
-              var SavedIsInMultiLineCommentString=localcontext.IsInMultiLineCommentString;
-
-              for (var i =0; i < line.length; i++)
-              {
-                  //---------------------------------------------------------
-                  //          Find start and end of comments and asm blocks
-                  //---------------------------------------------------------
-
-                  if (IsInStringLiteral==false)
-                  {
-      					// find multi line comment markers
-      					if (IsInSingleLineCommentString == false)
-      					{
-      						// Note there are two types of multi line marker and they need to be matched up
-      					    if ((localcontext.IsInAltMultiLineCommentString == false)&&(localcontext.IsInASMMultiLineCommentString == false))
-      					    {
-      							if(line[i] == EndOfMultiLineComment)
-      							{ localcontext.IsInMultiLineCommentString = false; }
-      							if (line[i] == StartOfMultiLineComment)
-      							{ localcontext.IsInMultiLineCommentString = true;}
-      						};
-      					    if (localcontext.IsInAltMultiLineCommentString == true)
-      					    {
-      							if((line[i] == "*")&&(line[i+1] == ")"))
-      							{ localcontext.IsInMultiLineCommentString = false;
-      							  localcontext.IsInAltMultiLineCommentString = false;
-      							}
-      						};
-
-      					    if (localcontext.IsInASMMultiLineCommentString == true)
-      					    {
-      							if((line[i] == "e")&&(line[i+1] == "n")&&(line[i+2] == "d")&&(line[i+3] == ";") )
-      							{ localcontext.IsInMultiLineCommentString = false;
-      							  localcontext.IsInASMMultiLineCommentString = false;
-      							}
-      						};
-
-      						if (localcontext.IsInMultiLineCommentString == false)
-      						{
-      							if((line[i] == "(")&&(line[i+1] == "*"))
-      							{ localcontext.IsInMultiLineCommentString = true;
-      							  localcontext.IsInAltMultiLineCommentString = true;
-      							}
-
-      							if((line[i-4] == " ")&&(line[i-3] == "a")&&(line[i-2] == "s")&&(line[i-1] == "m")&&(line[i] == " ") )
-      							{ localcontext.IsInMultiLineCommentString = true;
-      							  localcontext.IsInASMMultiLineCommentString = true;
-      							}
-      						}
-      					}
-
-      					if (localcontext.IsInMultiLineCommentString == false)
-      					{
-      						  // find single line comment marker pair "//"
-      						  if((line[i] == StartOfSingleLineCommentdelimiter)&&(line[i + 1] == StartOfSingleLineCommentdelimiter))
-      							{ IsInSingleLineCommentString = true };
-      					}
-                  }
-
-                  //---------------------------------------------------------
-                  // mark the chars with the appropriate colour highlighting
-                  //---------------------------------------------------------
-
-                  if ((localcontext.IsInMultiLineCommentString == true)||(IsInSingleLineCommentString == true))
-                      { SyntaxText.newgreenline = SyntaxText.newgreenline + line[i] }
-                      else { SyntaxText.newgreenline = SyntaxText.newgreenline + " " };
-
-                  if ((localcontext.IsInMultiLineCommentString == false) && (IsInSingleLineCommentString == false)&& (IsInStringLiteral == false)&&(ReservedWordCharCount<1))
-                      { SyntaxText.newblackline = SyntaxText.newblackline + line[i] }
-                      else { SyntaxText.newblackline = SyntaxText.newblackline + " " };
-
-                  if ((localcontext.IsInMultiLineCommentString == false) && (IsInSingleLineCommentString == false) && (IsInStringLiteral == false)&&(ReservedWordCharCount>0))
-                      { SyntaxText.newboldline = SyntaxText.newboldline + line[i]}
-                      else { SyntaxText.newboldline = SyntaxText.newboldline + " " };
-
-                  if (IsInStringLiteral == true)
-                      { SyntaxText.newblueline = SyntaxText.newblueline + line[i] }
-                      else {  SyntaxText.newblueline = SyntaxText.newblueline + " " } ;
-
-                  //---------------------------------------------------------
-                  //          Find strings and reserved words
-                  //---------------------------------------------------------
-
-                  if ((localcontext.IsInMultiLineCommentString == false) && (IsInSingleLineCommentString == false))
-                  {
-                     // find start and end of string
-                     if(line[i] == StringDelimiter)
-                     {
-                       if (IsInStringLiteral == false)
-                       {
-                         IsInStringLiteral = true;
-                       }
-                       else { IsInStringLiteral = false };
-                     }
-
-                     // find reserved words
-                     if (ReservedWordCharCount > 0) { ReservedWordCharCount = ReservedWordCharCount - 1; };
-                     var lowercaseline = line.toLowerCase() + " ";
-                     if ((IsInStringLiteral == false)&& isDelimiter(line[i])
-                         && (lowercaseline.charCodeAt(i + 1) > 96) && (lowercaseline.charCodeAt(i + 1) < 123)) // space follwed by a lower case letter
-                     {
-                         var charindex = lowercaseline.charCodeAt(i + 1) - 96;
-                         ReservedWordCharCount = matchReservedWord(lowercaseline, i + 1, charindex);
-                     }
-                  }
-              }
-              var MultilineChanges = true;
-              if (SavedIsInMultiLineCommentString == localcontext.IsInMultiLineCommentString){MultilineChanges = false};
-              localcontext.MultiLineCommentChangedStatus=MultilineChanges;
-       return  MultilineChanges; // true if any of the changes on this line have consequences for the next line(s)
-  }
-
-  function ParseThisLine(startAtLine,mycontext,
-       blackoutline,boldoutline,redoutline,greenoutline, blueoutline)  // the string arrays for each colour
-  // function to parse the document if the number of lines change has not changed so we can limit our changes to a subset of the lines in the document
-  {
-      try {
-           var mylocalContext= JSON.parse(JSON.stringify(mycontext));
-          var blackstring = "";
-          var boldstring = "";
-          var redstring = "";
-          var greenstring = "";
-          var bluestring = "";
-          var linenumoutline = [""];
-
-          var stringArray = document.getElementById(myId+"Real").value.split("\n");
-          for (var j = startAtLine; j < stringArray.length; j++)
-          {
-              var MultiLineCommentChangedStatus = mylocalContext.MultiLineCommentChangedStatus;
-              var line =" "+ stringArray[j]; // add a leading space so all reserved words always have a space in front of them
-              var SyntaxText ={ newblackline : "", newboldline : "",newredline : "", newgreenline : "", newblueline : ""};
-
-              // parse the line
-              MultiLineCommentChangedStatus=ParseLine(j,line,mylocalContext,SyntaxText );
-              mylocalContext.MultiLineCommentChangedStatus = MultiLineCommentChangedStatus;
-              // save the new context and savee its old value to see if we need to do the next lines or not
-              if (myNode.SavedLineContextArray[j+1] != undefined)
-              {var oldcontext = JSON.parse(JSON.stringify(myNode.SavedLineContextArray[j+1]));}
-              else {var oldcontext = JSON.parse(JSON.stringify(myNode.SavedLineContextArray[j]));}; // this is just to keep the compiler happy
-              myNode.SavedLineContextArray[j+1]= JSON.parse(JSON.stringify(mylocalContext));
-
-              // take away the leading char padding each line (which is there to make sure reserved words have a space preceeding them)
-              blackoutline[j] = SyntaxText.newblackline.slice(1);
-              boldoutline[j] = SyntaxText.newboldline.slice(1);
-              redoutline[j] = SyntaxText.newredline.slice(1);
-              greenoutline[j] = SyntaxText.newgreenline.slice(1);
-              blueoutline[j] = SyntaxText.newblueline.slice(1);
-         //     myNode.SavedLineContextArray[j]
-             if (mylocalContext.IsInMultiLineCommentString == oldcontext.IsInMultiLineCommentString)
-                {  break; }
-          }
-          // avoid repainting between updating the different layers
-          document.getElementById(myId+"Real").style.visibility="hidden";
-
-          document.getElementById(myId+"Black").value =blackoutline.join("\n");
-          document.getElementById(myId+"Bold").value = boldoutline.join("\n");
-          document.getElementById(myId+"Red").value = redoutline.join("\n");
-          document.getElementById(myId+"Green").value = greenoutline.join("\n");
-          document.getElementById(myId+"Blue").value = blueoutline.join("\n");
-
-          // restore having avoided repainting between updating the different layers
-          document.getElementById(myId+"Real").style.visibility="visible";
-
-      }
-      catch(err) {  alert("Error in ParseThisLine syntax highlighting -- "+ err.message); };
-  }
-
-
-  // code to apply syntax highlighting .... myTextArea (the bottom one) holds the full text...the overlays only have the non standard chars
-  // Remember to synchronize the scroll position for all the edit boxes
-
-  function ParseWholeDocument()
-  // function to parse the document if the number of lines change (or this is the first pass)
-  {
-      try {
-          var blackstring = "";
-          var boldstring = "";
-          var redstring = "";
-          var greenstring = "";
-          var bluestring = "";
-
-          myNode.blackoutline = [];
-          myNode.boldoutline =  [];
-          myNode.redoutline = [];
-          myNode.greenoutline =  [];
-          myNode.blueoutline =  [];
-
-          var linenumoutline = [""];
-
-          myNode.context.IsInMultiLineCommentString=false;
-          myNode.context.IsInAltMultiLineCommentString=false;
-          myNode.context.IsInASMMultiLineCommentString=false;
-
-          var stringArray = document.getElementById(myId+"Real").value.split("\n");
-          for (var j = 0; j < stringArray.length; j++)
-          {
-              var line =" "+ stringArray[j]+" "; // add a leading and trailing space so all reserved words always have a space in front of them (and after them if they are at the end of a line)
-              var SyntaxText ={ newblackline : "", newboldline : "",newredline : "", newgreenline : "", newblueline : ""};
-              myNode.SavedLineContextArray[j] = JSON.parse(JSON.stringify(myNode.context));
-
-              ParseLine(j,line,myNode.context,SyntaxText );
-
-              // take away the leading char padding each line (which is there to make sure reserved words have a space preceeding them)
-              myNode.blackoutline[j] = SyntaxText.newblackline.slice(1);
-              myNode.boldoutline[j] = SyntaxText.newboldline.slice(1);
-              myNode.redoutline[j] = SyntaxText.newredline.slice(1);
-              myNode.greenoutline[j] = SyntaxText.newgreenline.slice(1);
-              myNode.blueoutline[j] = SyntaxText.newblueline.slice(1);
-          }
-          // avoid repainting between updating the different layers
-          document.getElementById(myId+"Real").style.visibility="hidden";
-
-          document.getElementById(myId+"Black").value =myNode.blackoutline.join("\n");
-          document.getElementById(myId+"Bold").value = myNode.boldoutline.join("\n");
-          document.getElementById(myId+"Red").value = myNode.redoutline.join("\n");
-          document.getElementById(myId+"Green").value = myNode.greenoutline.join("\n");
-          document.getElementById(myId+"Blue").value = myNode.blueoutline.join("\n");
-
-          // restore having avoided repainting between updating the different layers
-          document.getElementById(myId+"Real").style.visibility="visible";
-
-          // now add line numbers
-          for (var j = 0; j < stringArray.length; j++)
-          {
-              linenumoutline[j] = (j+1).toString();
-              var strLen = 4 - linenumoutline[j].length;
-              for (var k = 0; k < strLen; k++) { linenumoutline[j] = " "+ linenumoutline[j]; };
-          }
-          document.getElementById(myId+"LineNumbers").value = linenumoutline.join("\n");
-      }
-      catch(err) {  alert("Error in ParseWholeDocument syntax highlighting --- "+ err.message); };
-  }
-
-  function CurrentLine()
-  {
-     var CursorPosition = document.getElementById(myId+"Real").selectionStart;
-     var stringarray = document.getElementById(myId+"Real").value.substring(0,CursorPosition).split("\n");
-     return stringarray.length -1;
-  }
-
-  function chooseParser(event)
-  {
-  //alert('chooseParser');
-     if (event!=null)
-       {var x = event.which || event.keyCode; }// firefox does not support event.which but it does suppoert event.keyCode;
-     else
-       {x = 0; myNode.IsInitalised = false;}
-
-     //detect backspace,CursorUp,CursorDown,delete,return and cntrl V keys or non zero range - then redo the whole document as it could have changed the number of lines
-     if ((myNode.IsInitalised == false) ||(x==8)||(x==38)||(x==40) ||(x==46) ||(x==13) ||(x==86)||(myNode.LengthOfRangeSelected !=0))
-     {
-     //alert('parse whole document');
-         myNode.IsInitalised = true;
-         ParseWholeDocument();
+    function SetPasReserved() {
+     //alert('DoKeyUp.  Id='+myId);
+     ReservedWords = [];
+     // assume all reserved words start and end with a space
+     ReservedWords[1] = ["absolute", "abstract", "alias", "and", "array", "as", "asm", "assembler"];
+     ReservedWords[2] = ["begin", "break"];
+     ReservedWords[3] = ["case", "cdecl", "class", "const", "constructor", "continue", "cppdecl"];
+     ReservedWords[4] = ["default", "destructor", "dispose", "div", "do", "downto"];
+     ReservedWords[5] = ["else", "end", "except", "exit", "export", "exports", "external"];
+     ReservedWords[6] = ["false", "file", "for", "forward", "function"];
+     ReservedWords[7] = ["generic", "goto"];
+     ReservedWords[8] = [""];
+     ReservedWords[9] = ["if", "implementation", "in", "index", "inherited", "initialization", "inline", "interface", "is"];
+     ReservedWords[10] = [""];
+     ReservedWords[11] = [""];
+     ReservedWords[12] = ["label", "library", "local"];
+     ReservedWords[13] = ["mod"];
+     ReservedWords[14] = ["name", "new", "nil", "nostackframe", "not"];
+     ReservedWords[15] = ["object", "of", "oldfpccall", "on", "operator", "or", "out", "override"];
+     ReservedWords[16] = ["packed", "private", "procedure", "program", "property", "protected", "published"];
+     ReservedWords[17] = [""];
+     ReservedWords[18] = ["raise", "read", "record", "register", "repeat"];
+     ReservedWords[19] = ["safecall", "self", "set", "shl", "shr", "softfloat", "specialize", "stdcall", "string"];
+     ReservedWords[20] = ["then", "threadvar", "to", "true", "try", "type"];
+     ReservedWords[21] = ["unit", "until", "uses"];
+     ReservedWords[22] = ["var", "virtual"];
+     ReservedWords[23] = ["while", "with", "write"];
+     ReservedWords[24] = ["xor"];
+     ReservedWords[25] = [""];
+     ReservedWords[26] = [""];
+     StartOfSingleLineCommentdelimiter = "/";
+     StartOfMultiLineComment = "{";
+     EndOfMultiLineComment = "}";
      }
-     else
-     {
-     //alert('parse one line');
-         var Selectedline = CurrentLine();
-         //alert('Selectedline='+Selectedline);
-         ParseThisLine(Selectedline,
-                         myNode.SavedLineContextArray[Selectedline],
-                         myNode.blackoutline,  // the string arrays for each colour
-         	         myNode.boldoutline,
-         	         myNode.redoutline,
-         	         myNode.greenoutline,
-                         myNode.blueoutline);
-     };
-     myNode.LengthOfRangeSelected = 0;
-     //alert('SyncScroll');
-     pas.XCode.SyncScroll(myId);
-  }
-  chooseParser(event);
+     function SetPyReserved() {
+      ReservedWords = [];
+      // assume all reserved words start and end with a space
+      ReservedWords[1] = ["and", "as", "assert"];
+      ReservedWords[2] = ["break"];
+      ReservedWords[3] = ["class","continue"];
+      ReservedWords[4] = ["def", "del"];
+      ReservedWords[5] = ["else", "elif","except"];
+      ReservedWords[6] = ["false", "for","from","finally"];
+      ReservedWords[7] = ["global"];
+      ReservedWords[8] = [""];
+      ReservedWords[9] = ["if", "in", "import", "is"];
+      ReservedWords[10] = [""];
+      ReservedWords[11] = [""];
+      ReservedWords[12] = ["lambda"];
+      ReservedWords[13] = ["mod"];
+      ReservedWords[14] = ["none", "nonlocal", "not"];
+      ReservedWords[15] = ["or"];
+      ReservedWords[16] = ["pass"];
+      ReservedWords[17] = [""];
+      ReservedWords[18] = ["raise", "return"];
+      ReservedWords[19] = [""];
+      ReservedWords[20] = ["true", "try"];
+      ReservedWords[21] = ["unit", "until", "uses"];
+      ReservedWords[22] = ["var", "virtual"];
+      ReservedWords[23] = ["while", "with"];
+      ReservedWords[24] = [""];
+      ReservedWords[25] = ["yield"];
+      ReservedWords[26] = [""];
+      StartOfSingleLineCommentdelimiter = "#";
+      StartOfMultiLineComment = "";
+      EndOfMultiLineComment = "";
+      }
+
+    if (lang=='Pascal') {
+      SetPasReserved();
+      }
+    else {
+      SetPyReserved();
+      }
+
+    function isDelimiter(inChar)
+    {
+        var isadelimiter = false;
+        if (lang=='Pascal') {
+        if ((inChar == " ") || (inChar == ";") || (inChar == "=") || (inChar == "(") || (inChar == "-") || (inChar == "/") || (inChar == "*") ||
+            (inChar == ")") || (inChar == "}") || (inChar == "]") || (inChar == "+") || (inChar == "{") || (inChar == "[") ||
+            (inChar == "&") || (inChar == "|") || (inChar == "!") ) {
+            isadelimiter = true;        }
+        }
+        else if (lang=='Python') {
+        if ((inChar == " ") || (inChar == "=") || (inChar == "<") || (inChar == "-") || (inChar == "/") || (inChar == "*") ||
+             (inChar == ")") || (inChar == ">") || (inChar == "+") || (inChar == "!") || (inChar == "%") ||
+             (inChar == "&") || (inChar == "|") || (inChar == "^") ) {
+             isadelimiter = true;        }
+        }
+        return isadelimiter;
+    }
+
+    function matchReservedWord(lineString, firstcharpos, charindex) {
+        var ReservedWordlength = 0;
+        var foundstring = "";
+        try {
+            // for all reserved words starting with the first letter
+            for (var k = 0; k < ReservedWords[charindex].length; k++) {
+                var testWord = ReservedWords[charindex][k];
+                var followingChar = firstcharpos + testWord.length;
+                if (isDelimiter(lineString[followingChar])){
+                    var match = true;
+                    for (var m = 0; m < testWord.length; m++) {
+                        if (lineString[firstcharpos + m] != testWord[m]) { match = false; };
+                    }
+                    if (match == true) { ReservedWordlength = testWord.length; foundstring = testWord};
+                }
+            }
+        }
+        catch (err) { alert("Error -- " + err.message); };
+        return ReservedWordlength;
+    };
+
+    //-------------------------------------------------------------------------------------------------------------------------
+    //                  core line parser called by both ParseThisLine(....) and ParseWholeDocumaent();
+    //-------------------------------------------------------------------------------------------------------------------------
+
+    function ParseLine(j,line,localcontext,SyntaxText)
+    {
+                var IsInSingleLineCommentString = false;
+                var IsInStringLiteral = false;
+                var ReservedWordCharCount = 0;
+                var SavedIsInMultiLineCommentString=localcontext.IsInMultiLineCommentString;
+
+                for (var i =0; i < line.length; i++)
+                {
+                    //---------------------------------------------------------
+                    //          Find start and end of comments and asm blocks
+                    //---------------------------------------------------------
+
+                    if (IsInStringLiteral==false)
+                    {
+      					  // find multi line comment markers
+      					  if (IsInSingleLineCommentString == false)
+      					  {
+      						  // Note there are two types of multi line marker and they need to be matched up
+      					      if ((localcontext.IsInAltMultiLineCommentString == false)&&(localcontext.IsInASMMultiLineCommentString == false))
+      					      {
+      							  if(line[i] == EndOfMultiLineComment)
+      							  { localcontext.IsInMultiLineCommentString = false; }
+      							  if (line[i] == StartOfMultiLineComment)
+      							  { localcontext.IsInMultiLineCommentString = true;}
+      						  };
+      					      if (localcontext.IsInAltMultiLineCommentString == true)
+      					      {
+      							  if((line[i] == "*")&&(line[i+1] == ")"))
+      							  { localcontext.IsInMultiLineCommentString = false;
+      							    localcontext.IsInAltMultiLineCommentString = false;
+      							  }
+      						  };
+
+      					      if (localcontext.IsInASMMultiLineCommentString == true)
+      					      {
+      							  if((line[i] == "e")&&(line[i+1] == "n")&&(line[i+2] == "d")&&(line[i+3] == ";") )
+      							  { localcontext.IsInMultiLineCommentString = false;
+      							    localcontext.IsInASMMultiLineCommentString = false;
+      							  }
+      						  };
+
+      						  if (localcontext.IsInMultiLineCommentString == false)
+      						  {
+      							  if((line[i] == "(")&&(line[i+1] == "*"))
+      							  { localcontext.IsInMultiLineCommentString = true;
+      							    localcontext.IsInAltMultiLineCommentString = true;
+      							  }
+
+      							  if((line[i-4] == " ")&&(line[i-3] == "a")&&(line[i-2] == "s")&&(line[i-1] == "m")&&(line[i] == " ") )
+      							  { localcontext.IsInMultiLineCommentString = true;
+      							    localcontext.IsInASMMultiLineCommentString = true;
+      							  }
+      						  }
+      					  }
+
+      					  if (localcontext.IsInMultiLineCommentString == false)
+      					  {
+      						    // find single line comment marker pair "//"
+                                                    if (lang=='Pascal') {
+      						    if((line[i] == StartOfSingleLineCommentdelimiter)&&(line[i + 1] == StartOfSingleLineCommentdelimiter))
+      							  { IsInSingleLineCommentString = true };
+                                                    }
+                                                    else if (lang=='Python') {
+      						    if (line[i] == StartOfSingleLineCommentdelimiter)
+      							  { IsInSingleLineCommentString = true };
+                                                    }
+      					  }
+                    }
+
+                    //---------------------------------------------------------
+                    // mark the chars with the appropriate colour highlighting
+                    //---------------------------------------------------------
+
+                    if ((localcontext.IsInMultiLineCommentString == true)||(IsInSingleLineCommentString == true))
+                        { SyntaxText.newgreenline = SyntaxText.newgreenline + line[i] }
+                        else { SyntaxText.newgreenline = SyntaxText.newgreenline + " " };
+
+                    if ((localcontext.IsInMultiLineCommentString == false) && (IsInSingleLineCommentString == false)&& (IsInStringLiteral == false)&&(ReservedWordCharCount<1))
+                        { SyntaxText.newblackline = SyntaxText.newblackline + line[i] }
+                        else { SyntaxText.newblackline = SyntaxText.newblackline + " " };
+
+                    if ((localcontext.IsInMultiLineCommentString == false) && (IsInSingleLineCommentString == false) && (IsInStringLiteral == false)&&(ReservedWordCharCount>0))
+                        { SyntaxText.newboldline = SyntaxText.newboldline + line[i]}
+                        else { SyntaxText.newboldline = SyntaxText.newboldline + " " };
+
+                    if (IsInStringLiteral == true)
+                        { SyntaxText.newblueline = SyntaxText.newblueline + line[i] }
+                        else {  SyntaxText.newblueline = SyntaxText.newblueline + " " } ;
+
+                    //---------------------------------------------------------
+                    //          Find strings and reserved words
+                    //---------------------------------------------------------
+
+                    if ((localcontext.IsInMultiLineCommentString == false) && (IsInSingleLineCommentString == false))
+                    {
+                       // find start and end of string
+                       if(line[i] == StringDelimiter)
+                       {
+                         if (IsInStringLiteral == false)
+                         {
+                           IsInStringLiteral = true;
+                         }
+                         else { IsInStringLiteral = false };
+                       }
+
+                       // find reserved words
+                       if (ReservedWordCharCount > 0) { ReservedWordCharCount = ReservedWordCharCount - 1; };
+                       var lowercaseline = line.toLowerCase() + " ";
+                       if ((IsInStringLiteral == false)&& isDelimiter(line[i])
+                           && (lowercaseline.charCodeAt(i + 1) > 96) && (lowercaseline.charCodeAt(i + 1) < 123)) // space follwed by a lower case letter
+                       {
+                           var charindex = lowercaseline.charCodeAt(i + 1) - 96;
+                           ReservedWordCharCount = matchReservedWord(lowercaseline, i + 1, charindex);
+                       }
+                    }
+                }
+                var MultilineChanges = true;
+                if (SavedIsInMultiLineCommentString == localcontext.IsInMultiLineCommentString){MultilineChanges = false};
+                localcontext.MultiLineCommentChangedStatus=MultilineChanges;
+         return  MultilineChanges; // true if any of the changes on this line have consequences for the next line(s)
+    }
+
+    function ParseThisLine(startAtLine,mycontext,
+         blackoutline,boldoutline,redoutline,greenoutline, blueoutline)  // the string arrays for each colour
+    // function to parse the document if the number of lines change has not changed so we can limit our changes to a subset of the lines in the document
+    {
+        try {
+             var mylocalContext= JSON.parse(JSON.stringify(mycontext));
+            var blackstring = "";
+            var boldstring = "";
+            var redstring = "";
+            var greenstring = "";
+            var bluestring = "";
+            var linenumoutline = [""];
+
+            var stringArray = document.getElementById(myId+"Real").value.split("\n");
+            for (var j = startAtLine; j < stringArray.length; j++)
+            {
+                var MultiLineCommentChangedStatus = mylocalContext.MultiLineCommentChangedStatus;
+                var line =" "+ stringArray[j]; // add a leading space so all reserved words always have a space in front of them
+                var SyntaxText ={ newblackline : "", newboldline : "",newredline : "", newgreenline : "", newblueline : ""};
+
+                // parse the line
+                MultiLineCommentChangedStatus=ParseLine(j,line,mylocalContext,SyntaxText );
+                mylocalContext.MultiLineCommentChangedStatus = MultiLineCommentChangedStatus;
+                // save the new context and savee its old value to see if we need to do the next lines or not
+                if (myNode.SavedLineContextArray[j+1] != undefined)
+                {var oldcontext = JSON.parse(JSON.stringify(myNode.SavedLineContextArray[j+1]));}
+                else {var oldcontext = JSON.parse(JSON.stringify(myNode.SavedLineContextArray[j]));}; // this is just to keep the compiler happy
+                myNode.SavedLineContextArray[j+1]= JSON.parse(JSON.stringify(mylocalContext));
+
+                // take away the leading char padding each line (which is there to make sure reserved words have a space preceeding them)
+                blackoutline[j] = SyntaxText.newblackline.slice(1);
+                boldoutline[j] = SyntaxText.newboldline.slice(1);
+                redoutline[j] = SyntaxText.newredline.slice(1);
+                greenoutline[j] = SyntaxText.newgreenline.slice(1);
+                blueoutline[j] = SyntaxText.newblueline.slice(1);
+           //     myNode.SavedLineContextArray[j]
+               if (mylocalContext.IsInMultiLineCommentString == oldcontext.IsInMultiLineCommentString)
+                  {  break; }
+            }
+            // avoid repainting between updating the different layers
+            document.getElementById(myId+"Real").style.visibility="hidden";
+
+            document.getElementById(myId+"Black").value =blackoutline.join("\n");
+            document.getElementById(myId+"Bold").value = boldoutline.join("\n");
+            document.getElementById(myId+"Red").value = redoutline.join("\n");
+            document.getElementById(myId+"Green").value = greenoutline.join("\n");
+            document.getElementById(myId+"Blue").value = blueoutline.join("\n");
+
+            // restore having avoided repainting between updating the different layers
+            document.getElementById(myId+"Real").style.visibility="visible";
+
+        }
+        catch(err) {  alert("Error in ParseThisLine syntax highlighting -- "+ err.message); };
+    }
+
+
+    // code to apply syntax highlighting .... myTextArea (the bottom one) holds the full text...the overlays only have the non standard chars
+    // Remember to synchronize the scroll position for all the edit boxes
+
+    function ParseWholeDocument()
+    // function to parse the document if the number of lines change (or this is the first pass)
+    {
+        try {
+            var blackstring = "";
+            var boldstring = "";
+            var redstring = "";
+            var greenstring = "";
+            var bluestring = "";
+
+            myNode.blackoutline = [];
+            myNode.boldoutline =  [];
+            myNode.redoutline = [];
+            myNode.greenoutline =  [];
+            myNode.blueoutline =  [];
+
+            var linenumoutline = [""];
+
+            myNode.context.IsInMultiLineCommentString=false;
+            myNode.context.IsInAltMultiLineCommentString=false;
+            myNode.context.IsInASMMultiLineCommentString=false;
+
+            var stringArray = document.getElementById(myId+"Real").value.split("\n");
+            for (var j = 0; j < stringArray.length; j++)
+            {
+                var line =" "+ stringArray[j]+" "; // add a leading and trailing space so all reserved words always have a space in front of them (and after them if they are at the end of a line)
+                var SyntaxText ={ newblackline : "", newboldline : "",newredline : "", newgreenline : "", newblueline : ""};
+                myNode.SavedLineContextArray[j] = JSON.parse(JSON.stringify(myNode.context));
+
+                ParseLine(j,line,myNode.context,SyntaxText );
+
+                // take away the leading char padding each line (which is there to make sure reserved words have a space preceeding them)
+                myNode.blackoutline[j] = SyntaxText.newblackline.slice(1);
+                myNode.boldoutline[j] = SyntaxText.newboldline.slice(1);
+                myNode.redoutline[j] = SyntaxText.newredline.slice(1);
+                myNode.greenoutline[j] = SyntaxText.newgreenline.slice(1);
+                myNode.blueoutline[j] = SyntaxText.newblueline.slice(1);
+            }
+            // avoid repainting between updating the different layers
+            document.getElementById(myId+"Real").style.visibility="hidden";
+
+            document.getElementById(myId+"Black").value =myNode.blackoutline.join("\n");
+            document.getElementById(myId+"Bold").value = myNode.boldoutline.join("\n");
+            document.getElementById(myId+"Red").value = myNode.redoutline.join("\n");
+            document.getElementById(myId+"Green").value = myNode.greenoutline.join("\n");
+            document.getElementById(myId+"Blue").value = myNode.blueoutline.join("\n");
+
+            // restore having avoided repainting between updating the different layers
+            document.getElementById(myId+"Real").style.visibility="visible";
+
+            // now add line numbers
+            for (var j = 0; j < stringArray.length; j++)
+            {
+                linenumoutline[j] = (j+1).toString();
+                var strLen = 4 - linenumoutline[j].length;
+                for (var k = 0; k < strLen; k++) { linenumoutline[j] = " "+ linenumoutline[j]; };
+            }
+            document.getElementById(myId+"LineNumbers").value = linenumoutline.join("\n");
+        }
+        catch(err) {  alert("Error in ParseWholeDocument syntax highlighting --- "+ err.message); };
+    }
+
+    function CurrentLine()
+    {
+       var CursorPosition = document.getElementById(myId+"Real").selectionStart;
+       var stringarray = document.getElementById(myId+"Real").value.substring(0,CursorPosition).split("\n");
+       return stringarray.length -1;
+    }
+
+    function chooseParser(event)
+    {
+    //alert('chooseParser');
+       if (event!=null)
+         {var x = event.which || event.keyCode; }// firefox does not support event.which but it does suppoert event.keyCode;
+       else
+         {x = 0; myNode.IsInitalised = false;}
+
+       //detect backspace,CursorUp,CursorDown,delete,return and cntrl V keys or non zero range - then redo the whole document as it could have changed the number of lines
+       if ((myNode.IsInitalised == false) ||(x==8)||(x==38)||(x==40) ||(x==46) ||(x==13) ||(x==86)||(myNode.LengthOfRangeSelected !=0))
+       {
+       //alert('parse whole document');
+           myNode.IsInitalised = true;
+           ParseWholeDocument();
+       }
+       else
+       {
+       //alert('parse one line');
+           var Selectedline = CurrentLine();
+           //alert('Selectedline='+Selectedline);
+           ParseThisLine(Selectedline,
+                           myNode.SavedLineContextArray[Selectedline],
+                           myNode.blackoutline,  // the string arrays for each colour
+         	           myNode.boldoutline,
+         	           myNode.redoutline,
+         	           myNode.greenoutline,
+                           myNode.blueoutline);
+       };
+       myNode.LengthOfRangeSelected = 0;
+       //alert('SyncScroll');
+       pas.XCode.SyncScroll(myId);
+    }
+    chooseParser(event);
 
   end;
   end;
@@ -1040,7 +1120,7 @@ begin
   {$else}
    asm
 // CharPos here is offset index from start of line (not whole textarea)
-//     alert('LineNum='+LineNum+' CharPos='+CharPos+' looking for '+this.NodeName+'ContentsReal');
+     //alert('LineNum='+LineNum+' CharPos='+CharPos+' looking for '+this.NodeName+'ContentsReal');
        var elem = document.getElementById(this.NameSpace+this.NodeName+'ContentsReal');
 
        if(elem != null) {
@@ -1266,6 +1346,10 @@ function TXCode.GetItemValue:string;
 begin
   result:=MyNode.getAttribute('ItemValue',true).AttribValue;
 end;
+function TXCode.GetLanguage:string;
+begin
+  result:=MyNode.getAttribute('Language',true).AttribValue;
+end;
 function TXCode.GetReadOnly:Boolean;
 begin
   result:=MyStrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
@@ -1313,6 +1397,29 @@ begin
 //    LinkSaveToProperty(self);
     {$endif}
 
+  end;
+end;
+
+procedure TXCode.SetLanguage(AValue:string);
+var
+  oldval:String;
+begin
+  if myNode<>nil then
+  begin
+    oldval:=MyNode.GetAttribute('Language',true).AttribValue;
+    myNode.SetAttributeValue('Language',AValue);
+    if (oldval<>AValue) then
+    begin
+      {$ifndef JScript}
+      CreateEditor(AValue);
+      // reset the editor content
+      self.ItemValue := self.ItemValue;
+      {$else}
+      asm
+      pas.XCode.DoKeyUp(this.NodeName+'Contents',this.NodeName,this.NameSpace,null);
+      end;
+      {$endif}
+    end;
   end;
 end;
 
@@ -1390,6 +1497,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Code Editor','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Top','',false);
+  AddDefaultAttribute(myDefaultAttribs,'Language','String','Pascal','',false);
   AddDefaultAttribute(myDefaultAttribs,'ItemValue','String','...text...','',false);
   AddDefaultAttribute(myDefaultAttribs,'MessagesHeight','String','1','',false);
   AddDefaultAttribute(myDefaultAttribs,'ReadOnly','Boolean','False','',false);
@@ -1398,9 +1506,11 @@ begin
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);
   AddAttribOptions(MyNodeType,'LabelPos',LabelPosOptions);
+  AddAttribOptions(MyNodeType,'Language',LanguageOptions);
   {$ifndef JScript}
   RegisterClass(TXCode);
   AddNodeFuncLookup(MyNodeType,@CreateWidget);
+  RegisterPropertyEditor (TypeInfo(string), TXCode, 'Language', TLanguageProperty);
   {$else}
   AddNodeFuncLookup(MyNodeType,@CreateinterfaceObj,@CreateWidget);
   {$endif}

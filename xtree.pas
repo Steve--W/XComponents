@@ -1766,8 +1766,8 @@ var
   ParentId:String;
 begin
 asm
+//alert('GetParentOfNode '+nodeid);
   var ob=document.getElementById(nodeid);
-  //alert('selected='+SelectedNodeId);
   // expected to be a SUMMARY element
   // parent will be a DETAILS element
   // parent will be a DIV element

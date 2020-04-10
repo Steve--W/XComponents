@@ -51,6 +51,12 @@ type
     function GetAttributes: TPropertyAttributes; override;
     procedure GetValues(Proc: TGetStrProc); override;
   end;
+type
+  TLanguageProperty = class (TStringProperty)
+  public
+    function GetAttributes: TPropertyAttributes; override;
+    procedure GetValues(Proc: TGetStrProc); override;
+  end;
 
 
   const DotStr:String='.';
@@ -342,6 +348,17 @@ begin
   Proc (LabelPosOptions[1]);
   Proc (LabelPosOptions[2]);
   Proc (LabelPosOptions[3]);
+end;
+function TLanguageProperty.GetAttributes: TPropertyAttributes;
+begin
+  // editor, sorted list
+  //Result := [paDialog, paValueList, paSortList];
+  Result := [paValueList, paSortList, paPickList];
+end;
+procedure TLanguageProperty.GetValues(Proc: TGetStrProc);
+begin
+  Proc (LanguageOptions[0]);
+  Proc (LanguageOptions[1]);
 end;
 function TAlignmentProperty.GetAttributes: TPropertyAttributes;
 begin

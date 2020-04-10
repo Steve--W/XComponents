@@ -988,18 +988,18 @@ end;
     if DataString<>'' then
     begin
       {$IFndef JScript}
-      {$ifdef Chromium}
-      if (myChromium<>nil) and (myChromium.Browser<>nil) then
-        myChromium.Browser.MainFrame.LoadString(DataString, 'data:text/html');
-      {$else}
-      if (self.SuspendRefresh=false)
-      and (not GlobalSuppressFrameDisplay)
-      and (DataString<>'') then
-      begin
-         CloseBrowserWindow;
-         launchBrowserData(DataString);
-      end;
-      {$endif}
+        {$ifdef Chromium}
+        if (myChromium<>nil) and (myChromium.Browser<>nil) then
+          myChromium.Browser.MainFrame.LoadString(DataString, 'data:text/html');
+        {$else}
+        if (self.SuspendRefresh=false)
+        and (not GlobalSuppressFrameDisplay)
+        and (DataString<>'') then
+        begin
+           CloseBrowserWindow;
+           launchBrowserData(DataString);
+        end;
+        {$endif}
       {$else}
       myNode.SetAttributeValue('HTMLSource',DataString);
       //showmessage('calling RedisplayFrame');
@@ -1063,7 +1063,6 @@ begin
       myChromium.LoadURL(UTF8Decode(AValue));
     end;
     {$else}
-    //if IsChanged then
     begin
       ClosebrowserWindow;
       LaunchBrowserAbs(AValue);
@@ -1151,8 +1150,9 @@ begin
 end;
 
 procedure TXIFrame.SetFrameWidth(AValue:string);
-{$ifndef JScript}
 var
+  w:integer;
+{$ifndef JScript}
   tc:TControl;
 {$endif}
 begin
@@ -1166,11 +1166,14 @@ begin
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
   {$endif}
+  // refresh the actualwidth attribute
+  w:=self.ActualWidth;
 end;
 
 procedure TXIFrame.SetFrameHeight(AValue:string);
-{$ifndef JScript}
 var
+  h:integer;
+{$ifndef JScript}
   tc:TControl;
 {$endif}
 begin
@@ -1184,12 +1187,15 @@ begin
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
   end;
   {$endif}
+  // refresh the actualheight attribute
+  h:=self.ActualHeight;
 end;
 
 procedure TXIFrame.RedisplayFrame;
 var
   sup,AbsoluteURI:Boolean;
   SourceString:String;
+  lGPUStageArray:String;
 begin
   // nudge an IFrame component into re-displaying (eg after content has changed)
   if (self.SuspendRefresh)
@@ -1229,6 +1235,11 @@ begin
   else
     AbsoluteURI:=false;
   sup:=StartingUp;
+  if self.myNode.NodeType='TXGPUCanvas' then
+  begin
+    EditAttributeValue('XMemo1','','ItemValue',SourceString,false);
+    lGPUStageArray:=StringUtils.DelChars(TdataNode(self).GetAttribute('InitStageData',false).AttribValue,'"');
+  end;
   asm
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
@@ -1240,6 +1251,7 @@ begin
       var newIframe = pas.XIFrame.CreateBasicIFrame(this.NameSpace,this.NodeName,newFrameId);
       newIframe.id = originalId; // change id back
       ob = document.getElementById(originalId);
+      //alert('refreshing frame canvas '+SourceString);
       if (AbsoluteURI)
       {
         var uri=SourceString;
@@ -1251,10 +1263,11 @@ begin
       ob.src=uri;
 
     }
-    //else {if (sup==false) {alert('cannot find object '+this.NodeName+'Contents');}}
   end;
-  //self.ApplyHTMLSource(SourceString);
   self.LabelText:=self.LabelText;
+
+
+
 
   {$endif}
 end;

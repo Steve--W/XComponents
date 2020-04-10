@@ -249,13 +249,13 @@ begin
 
   if MyLibC<>dynlibs.NilHandle then
   begin
-
+    glbEvent:=e;
     fn:= TMyFunc(GetProcedureAddress(MyLibC,procname));
     if Assigned(fn) then
       if Params.Count=2 then
       begin
         try
-          fn (e,Params[0],Params[1]);   //Executes the function
+          fn (e,Params[0],Params[1]);   //Executes the event handler function
         except
           on ex:exception do
             showmessage('Error raised in event function '+procname+': '+ex.Message);
@@ -390,6 +390,7 @@ var
   UnitName:String;
   fn:TObject;
 begin
+  glbEvent:=e;
   //showmessage('RunComponentEvent '+EventType+' '+MyNode.NodeName);
   UnitName:=MainUnitname+'Events';
   fn:=FindEventFunction(NameSpace,myName,EventType,MyNode,true);
@@ -490,6 +491,7 @@ begin
        CurrentNode:=GetDataNodeFromTreeNode(nodeID,NameSpace);
      end
      else
+       //asm console.log('handleEvent '+MyEventType+' '+nodeID+' '+NameSpace); end;
        CurrentNode:=FindDataNodeById(SystemNodeTree,nodeID,NameSpace,false);
      {$endif}
 
@@ -517,6 +519,7 @@ begin
          end;
 
      end;
+
      {$ifndef JScript}
      Screen.Cursor:=sc;
      {$endif}

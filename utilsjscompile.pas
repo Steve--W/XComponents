@@ -29,8 +29,9 @@ uses
 procedure AddRequiredFile(ResourceName,ResourcePath:String);
 procedure InitialiseCompilerResources(ProgramName,ProgPath:string);
 function CreateHTMLWrapper(ProgramName,DeployMode:String; embedJS:Boolean; JSString:String):String;
-procedure TranspileMyProgram(ProgramName,ProgPath,ProjectPath:string; UseCodeEditor:TXCode; NoOptimise:Boolean);
-procedure CompileJSandExecute(ProjectPath:String);
+procedure TranspileMyProgram(ProgramName,ProgPath,ProjectPath:string; UseCodeEditor:TXCode; NoOptimise:Boolean; ExtraDirectives:TStringList);
+procedure CompileJSandExecute(ProjectPath:String;ExtraDirectives,ExtraHTML:TStringList);  overload;
+procedure CompileJSandExecute(ProjectPath:String);  overload;
 procedure WriteResourceFiles(ProgramName,ProgPath:String);
 
 type
@@ -97,6 +98,7 @@ begin
   if not DirectoryExists(ProgPath+'resources/project')  then ForceDirectories(ProgPath+'resources/project');
   if not DirectoryExists(ProgPath+'resources/xcomponents')  then ForceDirectories(ProgPath+'resources/xcomponents');
   if not DirectoryExists(ProgPath+'resources/pas2jstranspiler')  then ForceDirectories(ProgPath+'resources/pas2jstranspiler');
+  if not DirectoryExists(ProgPath+'resources/pyodide')  then ForceDirectories(ProgPath+'resources/pyodide_local');
 
   for i:=0 to RequiredFolders.Count-1 do
   begin
@@ -226,7 +228,7 @@ begin
   WriteResourceFiles(ProgramName,ProgPath);
 end;
 
-procedure TranspileMyProgram(ProgramName,ProgPath,ProjectPath:string; UseCodeEditor:TXCode; NoOptimise:Boolean);
+procedure TranspileMyProgram(ProgramName,ProgPath,ProjectPath:string; UseCodeEditor:TXCode; NoOptimise:Boolean; ExtraDirectives:TStringList);
 // Compile a .pas file to generate a .js file.
 // This does the cross-compile by running the internal pas2js compiler
 var
@@ -244,6 +246,9 @@ begin
   {$ifdef Chromium}
   myParams.Add('-dChromium');
   {$endif}
+  if ExtraDirectives<>nil then
+    for i:=0 to ExtraDirectives.Count-1 do
+      myParams.Add(ExtraDirectives[i]);
   // required for compilation of embedded pas2jscompiler
   myParams.Add('-Tnodejs');
   myParams.Add('-Pecmascript5');
@@ -364,17 +369,20 @@ begin
     +'  <head >'  +LineEnding
     +'   <meta charset="utf-8"> '  +LineEnding
     +'   <title>'+docTitle+'</title>'  +LineEnding
-    +'    <!_ load the javascript libraries _>'  +LineEnding
+    +'    <!_ load the javascript libraries _>'  +LineEnding;
 
-    +'    <script type="application/javascript" ';
-    if embedJS then
-      BatchString:=BatchString+'>'+JSString
-    else
-      BatchString:=BatchString+' src="'+ProgramName+'.js">';
 
+//    if embedJS then
+//      BatchString:=BatchString+'>'+JSString
+//    else
+//      BatchString:=BatchString+' src="'+ProgramName+'.js">';
+
+    BatchString:=BatchString+JSString;
+
+    BatchString:=BatchString + '<script type="application/javascript" >'+LineEnding;
     Batchstring:=BatchString + '/*Deployment1*/var myDeployedMode = '''+DeployMode+''';/*Deployment2*/'+LineEnding;
-
     BatchString:=BatchString+'</script>' +LineEnding
+
     +'    <Style> html {height: 100%;} ' +LineEnding
     +'            body { height:100%; min-height: 100%;} ' +LineEnding
     +'    </Style>' +LineEnding
@@ -384,33 +392,32 @@ begin
     +'       .normal-border { border:solid 1px gray; outline:none;}'  +LineEnding
     +'       .no-border { border:none 1px gray; outline:none;}'  +LineEnding
     +'    </Style>  '  +LineEnding
-    +AdditionalScript
-    +'    <script > '  +LineEnding
-    +'  var testnum = 666; ' + LineEnding
-    +'          function  StartupCode(){ ' +LineEnding
-    +'          try{'  +LineEnding
-    +'             rtl.run("'+ProgramName+'"); ' +LineEnding
-    +'             pas.'+ProgramName+'.InitialisePage();'  +LineEnding
+    +AdditionalScript  +LineEnding
+    +'<script > '  +LineEnding
+    +'function  StartupCode(){ ' +LineEnding
+    +'  try{'  +LineEnding
+    +'    rtl.run("'+ProgramName+'"); ' +LineEnding
+    +'    pas.'+ProgramName+'.InitialisePage();'  +LineEnding
     +IFrameMessageHandler
-    +'             }catch(err) {alert("Error in StartupCode ---"+err.message);}; '  +LineEnding
-    +'          };  '   +LineEnding
-    +'    </script>  '   +LineEnding
-    +'  </head> '  +LineEnding
-    +'  <body style="margin:0px; font:normal 12px Verdana, Arial, sans-serif;"'
+    +'  }catch(err) {alert("Error in StartupCode ---"+err.message);}; '  +LineEnding
+    +'};  '   +LineEnding
+    +'</script>  '   +LineEnding
+    +'</head> '  +LineEnding
+    +'<body style="margin:0px; font:normal 12px Verdana, Arial, sans-serif;"'
     +'        onload = " StartupCode();" ' +LineEnding
     +'> '  +LineEnding
-    +'     <div  id = "'+SystemRootName+'" class="vbox" style="height:100%; width:100%;top:0px;left:0px; position:relative; z-index:0;"> '  +LineEnding
-    +'       <div  id = "'+MainForm.Name+'" class="vbox" style="height:100%; width:100%;top:0px;left:0px"> '  +LineEnding
-    +'       </div> '  +LineEnding
-    +'     </div> '  +LineEnding
-    +'  </body>'   +LineEnding
+    +'  <div  id = "'+SystemRootName+'" class="vbox" style="height:100%; width:100%;top:0px;left:0px; position:relative; z-index:0;"> '  +LineEnding
+    +'    <div  id = "'+MainForm.Name+'" class="vbox" style="height:100%; width:100%;top:0px;left:0px"> '  +LineEnding
+    +'    </div> '  +LineEnding
+    +'  </div> '  +LineEnding
+    +'</body>'   +LineEnding
     +'</html> ' +LineEnding  ;
 
   result:=batchstring;
 end;
 
 
-procedure CompileJSandExecute(ProjectPath:String);
+procedure CompileJSandExecute(ProjectPath:String; ExtraDirectives,ExtraHTML:TStringList);
 var
   ProgramName,DefaultFontString,HTMLString:String;
   i:integer;
@@ -429,7 +436,7 @@ begin
 
     // now cross compile from a saved copy of this source with the conditional define
     // switch (JScript) set to compile the JS version instead of the Lazarus version
-    TranspileMyProgram(ProgramName,ProjectDirectory,ProjectPath,nil,false);   //'resources/project/'
+    TranspileMyProgram(ProgramName,ProjectDirectory,ProjectPath,nil,false, ExtraDirectives);   //'resources/project/'
 
 
     // if the JS file exists, run the html file on browser...
@@ -437,6 +444,14 @@ begin
     begin
       TheLines.Clear;
       TheLines.LoadFromFile(ProjectDirectory+ProgramName+'.js');
+      TheLines.insert(0,'    <script type="application/javascript" >');
+      TheLines.add('   </script>  ');
+
+      if ExtraHTML<>nil then
+        for i:=0 to ExtraHTML.Count-1 do
+          TheLines.insert(i,ExtraHTML[i]);
+
+
       HTMLString:=CreateHTMLWrapper(ProgramName,'FromLaz',true,TheLines.Text);
       WriteToFile(ProgramName+'.html',HTMLString);
 
@@ -444,6 +459,10 @@ begin
     end;
 
     FreeAndNil(TheLines);
+end;
+procedure CompileJSandExecute(ProjectPath:String);
+begin
+  CompileJSandExecute(ProjectPath,nil,nil);
 end;
 
 {$endif}

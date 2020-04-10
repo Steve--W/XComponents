@@ -67,6 +67,7 @@ type
     function GetSelectedValue:String;
     function GetHasHeaderRow:Boolean;
     function GetIsNumeric:Boolean;
+    function GetIncludeDataInSave:Boolean;
 
     procedure SetReadOnly(AValue:Boolean);
     procedure SetTableWidth(AValue:string);
@@ -80,6 +81,7 @@ type
     procedure SetNumCols(AValue:integer);
     procedure SetHasHeaderRow(AValue:Boolean);
     procedure SetIsNumeric(AValue:Boolean);
+    procedure SetIncludeDataInSave(AValue:Boolean);
   protected
     { Protected declarations }
 //    procedure LinkLoadFromProperty(Sender: TObject);  override;
@@ -132,6 +134,7 @@ type
     property NumRows:integer read GetNumRows write SetNumRows;
     property HasHeaderRow:Boolean read GetHasHeaderRow write SetHasHeaderRow;
     property IsNumeric:Boolean read GetIsNumeric write SetIsNumeric;
+    property IncludeDataInSave:Boolean read GetIncludeDataInSave write SetIncludeDataInSave;
 
     {$ifndef JScript}
     // Events to be visible in Lazarus IDE
@@ -850,9 +853,13 @@ begin
   or (cellval='')
   or ((rownum=0) and (self.HasHeaderRow=true))
   or ((rownum=0) and (IsStrFloatNum(cellVal)=false)) then
-    result:=QuoteIt(cellval)
+  begin
+    result:=QuoteIt(cellval);
+  end
   else
+  begin
     result:=cellval;
+  end;
 end;
 
 procedure TXTable.SetCellValue(row,col:integer;AValue:string);
@@ -900,7 +907,14 @@ begin
     for j:=0 to length(myArray[i])-1 do
     begin
       if j>0 then str:=str+',';
+      {$ifndef JScript}
       str:=str+QuoteCellForJSON(myArray[i,j],i);
+      {$else}
+      asm
+        //console.log('i='+i+' j='+j+' cell='+myArray[i][j]);
+        str=str+this.QuoteCellForJSON(myArray[i][j].toString(),i);
+      end;
+      {$endif}
     end;
     str:=str+']';
   end;
@@ -1037,6 +1051,10 @@ function TXTable.GetIsNumeric:Boolean;
 begin
   result:=MyStrToBool(MyNode.getAttribute('IsNumeric',true).AttribValue);
 end;
+function TXTable.GetIncludeDataInSave:Boolean;
+begin
+  result:=MyStrToBool(MyNode.getAttribute('IncludeDataInSave',true).AttribValue);
+end;
 
 function TXTable.GetSelectedRow:integer;
 var
@@ -1120,6 +1138,10 @@ end;
 procedure TXTable.SetIsNumeric(AValue:Boolean);
 begin
   myNode.SetAttributeValue('IsNumeric',MyBoolToStr(AValue),'Boolean');
+end;
+procedure TXTable.SetIncludeDataInSave(AValue:Boolean);
+begin
+  myNode.SetAttributeValue('IncludeDataInSave',MyBoolToStr(AValue),'Boolean');
 end;
 
 procedure TXTable.AddTableRows(numRows:integer);
@@ -1373,6 +1395,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'NumRows','Integer','2','',false,false);
   AddDefaultAttribute(myDefaultAttribs,'ColWidth','Integer','40','',false);
   AddDefaultAttribute(myDefaultAttribs,'SelectedValue','String','','',false);
+  AddDefaultAttribute(myDefaultAttribs,'IncludeDataInSave','Boolean','True','If false, the table contents will be excluded from saved system data',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
 

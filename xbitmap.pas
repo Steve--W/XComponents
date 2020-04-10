@@ -331,7 +331,7 @@ begin
           //alert('ImageData length='+RawImageData.data.length);
 
           var pixelchars=this.fColorsLookup[0].PixelType.length;      // number or characters in the color strings
-          console.log('pixelchars='+pixelchars);
+          //console.log('pixelchars='+pixelchars);
 
           function SetRawPixel(x,y,r,g,b,a)
 	  {
@@ -825,7 +825,7 @@ begin
     SetLength(fMapPixelArray,0);
 
     i:=myxpmArray.count;
-    {$ifdef JScript} asm console.log('myxpmarray.Count='+i); end; {$endif}  //529
+    //{$ifdef JScript} asm console.log('myxpmarray.Count='+i); end; {$endif}  //529
 
     i:=c+1;
     while i < myxpmarray.Count do
@@ -842,7 +842,7 @@ begin
       end
       else
       begin
-        {$ifdef JScript} asm console.log('skip '+i); end; {$endif}  //529
+        //{$ifdef JScript} asm console.log('skip '+i); end; {$endif}  //529
         if length(myxpmarray[i])<lengthOfPixelsLine then
         begin
           // add this to the next one

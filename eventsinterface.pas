@@ -39,6 +39,7 @@ public
   ValueObject:TObject;
   constructor Create(EvType,NdId:String);
   function EventHasWaitingAsyncProcs():Boolean;
+  function ClearAsync(ProcName:string):Boolean;
 
 end;
 type TNodeEventValue = class(TObject)
@@ -46,16 +47,18 @@ type TNodeEventValue = class(TObject)
   SourceName,SrcText,DstText:String;
   myNode:TObject;
 end;
+var
+  glbEvent:TEventStatus;
 
 implementation
 
 constructor TEventStatus.Create(EvType,NdId:String);
 begin
   self.InitRunning:=false;
-  self.AsyncProcsRunning:=TStringList.Create;
   self.ContinueAfterTrappers:=true;
   self.EventType:=EvType;
   self.NodeId:=NdId;
+  self.AsyncProcsRunning:=TStringList.Create;
 end;
 
 function TEventStatus.EventHasWaitingAsyncProcs():Boolean;
@@ -64,6 +67,19 @@ begin
     result:=true
   else
     result:=false;
+end;
+function TEventStatus.ClearAsync(ProcName:string):Boolean;
+// remove a async job name from the list in this event record.
+var
+  i:integer;
+begin
+  result:=false;
+  i:=self.AsyncProcsRunning.IndexOf(ProcName);
+  if i>-1 then
+  begin
+    self.AsyncProcsRunning.Delete(i);
+    result:=true;
+  end;
 end;
 
 end.

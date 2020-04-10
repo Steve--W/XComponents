@@ -163,6 +163,7 @@ type   TDataNode = class(TForm)         // <- TObject
 
 const AlignmentOptions:Array[0..4] of string = ('Left','Right','Centre','Top','Bottom');
 const LabelPosOptions:Array[0..3] of string = ('Top','Bottom','Left','Right');
+const LanguageOptions:Array[0..1] of string = ('Pascal','Python');
 const ScrollBarsOptions:Array[0..2] of string = ('Bottom','Right','Both');
 type TAttribOptionsRec = record
       ComponentType:String;
@@ -337,9 +338,9 @@ const AttributeTypes:String = '["String","Integer","Boolean","Color","TableStrin
 
 implementation
 {$ifndef JScript}
-uses LazsUtils,WrapperPanel, XForm, XBitMap, XIFrame, Events, PasteDialogUnit, CompilerLogUnit;
+uses LazsUtils,WrapperPanel, XForm, XBitMap, XIFrame, XTable, Events, PasteDialogUnit, CompilerLogUnit;
 {$else}
-uses WrapperPanel, XForm, XButton, XBitMap, PasteDialogUnit, HTMLUtils;
+uses WrapperPanel, XForm, XButton, XBitMap, XTable, PasteDialogUnit, HTMLUtils;
 {$endif}
 
 
@@ -1309,6 +1310,9 @@ begin
           DfltAttrib.AttribIncludeInSave:=true;
         if (FindSuppressedProperty(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName)<0)
         and (DfltAttrib.AttribIncludeInSave = true)
+        and ((CurrentItem.NodeType<>'TXTable')
+             or ((CurrentItem.NodeType='TXTable') and (CurrentItem.NodeAttributes[i].AttribName<>'TableData'))
+             or ((CurrentItem.NodeType='TXTable') and (CurrentItem.NodeAttributes[i].AttribName='TableData') and (TXTable(CurrentItem.ScreenObject).IncludeDataInSave=true)))
         and (CurrentItem.NodeAttributes[i].AttribName<>'ParentName')        // is re-generated on load
         and ((CurrentItem.NodeAttributes[i].AttribName<>'XMLString')
              or ((CurrentItem.NodeAttributes[i].AttribName='XMLString') and (CurrentItem.IsDynamic=false))) then
@@ -2069,6 +2073,7 @@ begin
 
    // first find the node class, type and name
    ScreenObjectType:=attributeList[0];
+   if ScreenObjectType='RawUnit' then ScreenObjectType:='PasUnit';
 
    NameValuePair :=  stringsplit(attributeList[1],NameValuePairdelimiter);
    NodeClass := TrimWhiteSpace(NameValuePair[1]);
@@ -2184,7 +2189,9 @@ begin
    //showmessage('Building from SourceNode '+SourceNode.NodeType+' '+SourceNode.NameSpace+':'+SourceNode.NodeName);
    if (Not ExpandingComposite)
    or ((SourceNode.NodeType<>'TXMenuItem')
-      and (SourceNode.NodeType<>'RawUnit')
+      and (SourceNode.NodeType<>'RawUnit')   // deprecated
+      and (SourceNode.NodeType<>'PasUnit')
+      and (SourceNode.NodeType<>'PythonScript')
       and (SourceNode.NodeClass<>'RUI')) then
    begin
      ScreenObjectName:=SourceNode.NodeName;

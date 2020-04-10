@@ -867,7 +867,7 @@ begin
       var style = window.getComputedStyle(ob);
       var hh = style.height;
       h = parseInt(hh, 10);
-  //     alert('calculated height='+h);
+      //console.log('calculated height='+h);
       }
   end;
   result:=h;
@@ -884,7 +884,7 @@ begin
       var style = window.getComputedStyle(ob);
       var ww = style.width;
       w = parseInt(ww, 10);
-  //      alert('calculated Width='+w);
+      //console.log('calculated Width='+w);
       }
   end;
   result:=w;
