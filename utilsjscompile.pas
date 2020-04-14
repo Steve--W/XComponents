@@ -98,7 +98,6 @@ begin
   if not DirectoryExists(ProgPath+'resources/project')  then ForceDirectories(ProgPath+'resources/project');
   if not DirectoryExists(ProgPath+'resources/xcomponents')  then ForceDirectories(ProgPath+'resources/xcomponents');
   if not DirectoryExists(ProgPath+'resources/pas2jstranspiler')  then ForceDirectories(ProgPath+'resources/pas2jstranspiler');
-  if not DirectoryExists(ProgPath+'resources/pyodide')  then ForceDirectories(ProgPath+'resources/pyodide_local');
 
   for i:=0 to RequiredFolders.Count-1 do
   begin
