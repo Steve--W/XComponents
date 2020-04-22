@@ -24,6 +24,7 @@ uses
   EventsInterface
   ;
 
+type TIntArray = Array of integer;
 type TDataNode = class;  //forward
 
 type TCodeInputRec = record

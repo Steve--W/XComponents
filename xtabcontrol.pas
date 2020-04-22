@@ -1171,7 +1171,7 @@ begin
     buttonstring := buttonstring +
                   '<button id="'+thisTab.NameSpace+thisTab.NodeName+'Button" class="TabButton '+TCNode.NodeName+'" ' +
                            OnClickString +
-                           ' style="background:rgb(241, 240, 238);border:none" ' +
+                           ' style="background:rgb(241, 240, 238);border:none; padding:5px" ' +
                         '>'+cap+'</button>';
   end;
   asm

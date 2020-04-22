@@ -229,9 +229,6 @@ type
 
 {$endif}
 
- type TIntArray = Array of integer;
-
-
 
 {$ifndef JScript}
 {$if defined ( windows)}
