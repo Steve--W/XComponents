@@ -147,6 +147,7 @@ type
       procedure PendingInvalidateMsg(var aMessage : TMessage); message CEF_PENDINGINVALIDATE;
 
       procedure DoCreateBrowser(sender:TObject);
+      procedure Wobble;
       {$endif}
 
     procedure SetSuspendRefresh(AValue: Boolean); virtual;
@@ -443,8 +444,8 @@ begin
     if (myChromium<>nil) and (myChromium.Initialized) then
     begin
       myReloadTimer.Enabled := false;
-
-      self.ReLoadURL;    // svg reload
+      if self.myNode.NodeType='TXSVGContainer' then
+        self.ReLoadURL;    // svg reload
     end;
 end;
 
@@ -987,7 +988,11 @@ end;
       {$IFndef JScript}
         {$ifdef Chromium}
         if (myChromium<>nil) and (myChromium.Browser<>nil) then
-          myChromium.Browser.MainFrame.LoadString(DataString, 'data:text/html');
+        begin
+          tmp:=myChromium.Browser.MainFrame.GetUrl;
+          myChromium.Browser.MainFrame.LoadString(DataString, 'data:text/html');        //wobble??
+ //         //self.Wobble;
+        end;
         {$else}
         if (self.SuspendRefresh=false)
         and (not GlobalSuppressFrameDisplay)
@@ -1188,11 +1193,24 @@ begin
   h:=self.ActualHeight;
 end;
 
+{$ifndef JScript}
+{$ifdef Chromium}
+procedure TXIFrame.Wobble;
+begin
+  // do the following to 'wobble' the frame display, forcing (hopefully) a repaint!
+  ShowHideSelectedBorder(self.myNode,(not self.IsSelected));
+  Repaint;
+  ShowHideSelectedBorder(self.myNode,self.IsSelected);
+  Repaint;
+end;
+{$endif}
+{$endif}
+
+
 procedure TXIFrame.RedisplayFrame;
 var
   sup,AbsoluteURI:Boolean;
   SourceString:String;
-  lGPUStageArray:String;
 begin
   // nudge an IFrame component into re-displaying (eg after content has changed)
   if (self.SuspendRefresh)
@@ -1213,10 +1231,7 @@ begin
     begin
       self.ReLoadURL;
       // do the following to 'wobble' the frame display, forcing (hopefully) a repaint!
-      ShowHideSelectedBorder(self.myNode,(not self.IsSelected));
-      Repaint;
-      ShowHideSelectedBorder(self.myNode,self.IsSelected);
-      Repaint;
+      self.Wobble;
     end;
     {$else}
     self.myNode.SetAttributeValue('HTMLSource','');
@@ -1232,11 +1247,6 @@ begin
   else
     AbsoluteURI:=false;
   sup:=StartingUp;
-  if self.myNode.NodeType='TXGPUCanvas' then
-  begin
-    EditAttributeValue('XMemo1','','ItemValue',SourceString,false);
-    lGPUStageArray:=StringUtils.DelChars(TdataNode(self).GetAttribute('InitStageData',false).AttribValue,'"');
-  end;
   asm
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {

@@ -324,6 +324,7 @@ begin
      MyCompilerObj.Free;
 
   end;
+   myParams.free;
 end;
 
 function CreateHTMLWrapper(ProgramName,DeployMode:String; embedJS:Boolean; JSString:String):String;
@@ -337,9 +338,6 @@ begin
                   + '  if (ev.data.mtype=="titleChange") { '+lineEnding
                   + '    pas.XHTMLEditor.HandleTXHTMLMessage(ev.data);  '+lineEnding   // htmleditor text change
                   + '   } '
-//                  + '  else { '
-//                  + '    pas.XGPUCanvas.HandleGPUMessage(ev.data); '+lineEnding
-//                  + '  } '
                   + '} });'  +LineEnding;
 
 //  AsyncDelayFunc:=

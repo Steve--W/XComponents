@@ -254,6 +254,7 @@ GlobalCEFApp.FrameworkDirPath:=CEFLibDir;
 GlobalCEFApp.ResourcesDirPath:=CEFLibDir;
 GlobalCEFApp.LocalesDirPath:=CEFLibDir+'\locales';
 GlobalCEFApp.EnableGPU := True;                    // Enable hardware acceleration
+DeleteFile('cefdebug.log');
 GlobalCEFApp.LogFile              := 'cefdebug.log';
 GlobalCEFApp.LogSeverity          := LOGSEVERITY_INFO;  //LOGSEVERITY_VERBOSE;
 

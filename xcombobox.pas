@@ -381,13 +381,8 @@ procedure TXComboBox.SetItemValue(AValue:string);
 var
   i:integer;
   options:TStringList;
- // tmp:string;
 begin
-  //tmp:=self.OptionList;
-  //options:=ListStringToStringList(self.OptionList);
   options:=JSONStringToStringList(self.OptionList);
-  //json test...
-  //tmp:=StringListToJsonString(options);
 
   i:=options.IndexOf(AValue);
   self.ItemIndex:=i;
@@ -414,6 +409,8 @@ begin
   {$ifndef JScript}
   //TComboBox(myControl).items:=ListStringToStringList(AValue);
   TComboBox(myControl).items:=JSONStringToStringList(AValue);
+  if self.ItemIndex>-1 then
+    self.ItemIndex:=self.ItemIndex;   // to reset the displayed itemvalue
   {$else}
   asm
     function removeOptions(selectbox)

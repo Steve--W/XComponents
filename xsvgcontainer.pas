@@ -371,9 +371,11 @@ begin
     end
     else
       result:=nil;
+    FreeAndNil(items);
   end
   else
     result:=nil;
+  FreeAndNil(bits);
 end;
 
 {$ifndef JScript}

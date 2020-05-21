@@ -72,7 +72,7 @@ type
     procedure SetReadOnly(AValue:Boolean);
     procedure SetTableWidth(AValue:string);
     procedure SetTableHeight(AValue:string);
-    procedure SetTableData(AValue:string);
+    procedure SetTableData(const AValue:string);
     procedure SetColWidth(AValue:integer);
     procedure SetSelectedRow(AValue:integer);
     procedure SetSelectedCol(AValue:integer);
@@ -365,6 +365,7 @@ begin
       TStringGrid(myControl).FixedRows:=1
     else
       TStringGrid(myControl).FixedRows:=0;
+    jData.Free;
   end
   else
     TStringGrid(myControl).ColCount:=0;
@@ -1003,6 +1004,8 @@ begin
   end;
   str:=str+']';
 //  ShowAllChars(str);
+  rows.Free;
+  cells.Free;
   result:=str;
 end;
 
@@ -1306,7 +1309,7 @@ begin
   {$endif}
 end;
 
-procedure TXTable.SetTableData(AValue:String);
+procedure TXTable.SetTableData(const AValue:String);
 var
   cw:String;
   hasHeaders:Boolean;

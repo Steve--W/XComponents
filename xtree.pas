@@ -913,9 +913,9 @@ begin
         i:=i+1;
       end;
       self.ExpandTreeNodes(openlvl);
+      jData.Free;
     end;
   end;
-  jData.Free;
 end;
 
 procedure TXTree.TreeClick(Sender: TObject) ;

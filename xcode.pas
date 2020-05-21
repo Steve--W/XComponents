@@ -294,7 +294,7 @@ begin
       MessageFound:=true;
     end;
   finally
-    List1.Free;
+    FreeAndNil(List1);
   end;
   result:=resultstring;
 end;
@@ -1336,8 +1336,8 @@ begin
         MessageFound:=true;
     end;
   finally
-    List1.Free;
-    List2.Free;
+    FreeAndNil(List1);
+    FreeAndNil(List2);
   end;
 end;
 
@@ -1396,7 +1396,7 @@ begin
     end;
 //    LinkSaveToProperty(self);
     {$endif}
-
+    FreeAndNil(items);
   end;
 end;
 
@@ -1469,6 +1469,7 @@ procedure TXCode.SetMessageLines(AValue:string);
        ob.value=AValue;  }
   end;
   {$endif}
+  FreeAndNil(lines);
 end;
 
 

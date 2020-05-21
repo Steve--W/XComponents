@@ -29,6 +29,10 @@ uses
 type AnsiString = String;
 {$endif}
 
+type TStringArray = Array of String;
+type T2DStringArray = Array of TStringArray;
+type T3DStringArray = Array of T2DStringArray;
+
 function FoundString(inString,searchString:string):integer;  // find first occurrence of "searchString"
 function FoundStringCI(inString,searchString:string):integer;  // case-insensitive
 function myStringReplace(Instring,OldString,NewString:String;ReplaceNum,MaxStringLength:integer):String;
@@ -43,12 +47,12 @@ function DelChars(Instring,FilterChar:String):String;
 function stripLeadingStringIfPresent(instring,LeadingString:String):String;
 Function confirm(Textmessage:string):boolean;
 Function prompt(TextMessage,promptString:string):string;
-function JSONStringToStringList(JSONString:String):TStringList;
+function JSONStringToStringList(const JSONString:String):TStringList;
 function StringListToJSONString(StringList:TStringList):String;
 function NumArrayToJSONString(NumArray:TNumArray):String;
-//function ImgArrayToJSONString(ImgArray:TImgArray):String;
+function Num3DArrayToJsonString(arr:T3DNumArray):String;
 function Num2dArrayToString(NumArray:T2dNumArray):String;
-function JsonStringTo3DNumArray(str:String):T3DNumArray;
+function JsonStringTo3DNumArray(const str:String):T3DNumArray;
 function QuoteIt(str:String):String;
 procedure ShowAllChars(str:String);
 function IsStrFloatNum(str: string): Boolean;
@@ -284,6 +288,7 @@ begin
   end;
   {$endif}
   StringToSubStringList:=items;
+  //items.free;
 end;
 
 function TrimWhiteSpace(Instring:string):String;
@@ -396,8 +401,25 @@ begin
   result:=TempString;
 end;
 
+function Num3DArrayToJsonString(arr:T3DNumArray):String;
+var
+    z:integer;
+    str:String;
+begin
+  str:='';
+  for z:=0 to length(arr)-1 do
+  begin
+    if z>0 then
+      str:=str+',';
+    str:=str+Num2DArrayToString(arr[z]);
+  end;
+  result:='['+str+']';
+end;
+
+
+
 {$ifndef JScript}
-function JSONStringToStringList(JSONString:String):TStringList;
+function JSONStringToStringList(const JSONString:String):TStringList;
 var
   jData : TJSONData;
   i:integer;
@@ -420,74 +442,13 @@ begin
   begin
     for i:=0 to jData.Count-1 do
       items.Add(jData.Items[i].AsString);
+    jData.free;
   end;
   result:=items;
 end;
-(*
-function JsonStringTo3DNumArray(str:String):T3DNumArray;
-var
-   Data,zData : TJSONData;
-   zCount:integer;
-   arr:T3DNumArray;
-   ArrayStr:String;
-    zItem,yItem,xItem : TJSONData;
-    z,y,x:integer;
-    object_type:string;
-begin
-  Data := GetJSON(str);
-  ArrayStr:= Data.Items[0].AsJSON;         // "[[[...],[...]],[[...]]]"
-  if ArrayStr[1]='"' then
-  begin
-    Delete(ArrayStr,1,1);
-    Delete(ArrayStr,length(ArrayStr),1);
-  end;
 
-  setlength(arr,0);
-  try
-    zData := GetJSON(ArrayStr);
-  except
-    on E: Exception do
-    begin
-      showmessage('JSON error: '+e.Message);
-      zData := nil;
-    end;
-  end;
-  if zData<>nil then
-  begin
-    zcount:=zData.Count;
-    setlength(arr,zCount);
-    for z :=0 to zcount-1 do
-    begin
-      zItem := zData.Items[z];
-      setlength(arr[z],zItem.Count);
-      for y:=0 to zItem.Count-1 do
-      begin
-        yItem := zItem.Items[y];
-        setlength(arr[z,y],yItem.Count);
-        object_type := GetEnumName(TypeInfo(TJSONtype), Ord(yItem.JSONType));
-        if object_type='jtArray' then
-        begin
-          for x:=0 to yItem.Count-1 do
-          begin
-            xItem:= yItem.Items[x];
-            object_type := GetEnumName(TypeInfo(TJSONtype), Ord(xItem.JSONType));
-            if object_type='jtNumber' then
-            begin
-              arr[z,y,x]:=xItem.AsFloat;
-            end
-            else
-              arr[z,y,x]:=0.0;
-          end;
-        end;
-      end;
-    end;
-  end;
 
-  result:=arr;
-end;
-*)
-
-function JsonStringTo3DNumArray(str:String):T3DNumArray;
+function JsonStringTo3DNumArray(const str:String):T3DNumArray;
 var
    Data,zData : TJSONData;
    zCount:integer;
@@ -546,6 +507,8 @@ begin
       end;
     end;
   end;
+  Data.Free;
+  zData.Free;
 
   result:=arr;
 end;
@@ -568,6 +531,7 @@ begin
   s := jData.AsJSON;
   // output as nicely formatted JSON
   //s := jData.FormatJSON;
+  jData.Free;
   result:=s;
 end;
 
@@ -587,6 +551,7 @@ begin
   TempString:=TempString+']';
   result:=TempString;
 end;
+
 
 //function ImgArrayToJsonString(ImgArray:TImgArray):String;
 //var
@@ -647,7 +612,7 @@ begin
   end;
 end;
 {$else}
-function JSONStringToStringList(JSONString:String):TStringList;
+function JSONStringToStringList(const JSONString:String):TStringList;
 var items : TStringList;
     TempString:String;
 begin
@@ -743,7 +708,7 @@ begin
   end;
 end;
 
-function JsonStringTo3DNumArray(str:String):T3DNumArray;
+function JsonStringTo3DNumArray(const str:String):T3DNumArray;
 var
 arr:T3DNumArray;
 begin

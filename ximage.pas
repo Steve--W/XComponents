@@ -270,6 +270,10 @@ begin
 end;
 
 procedure TXImage.SetSource(AValue:string);
+{$ifndef JScript}
+var
+  strm:TStringStream;
+{$endif}
 begin
   myNode.SetAttributeValue('Source',AValue);
   {$ifndef JScript}
@@ -281,10 +285,11 @@ begin
          TImage(myControl).Picture.LoadFromFile(self.Source);
        except
          on e:exception do
-         begin
-           TImage(myControl).Picture.LoadFromLazarusResource('dfltImage');
-           showmessage('Unable to load specified image file '+AValue);
-         end;
+           begin
+             TImage(myControl).Picture.LoadFromLazarusResource('dfltImage');
+             showmessage('Unable to load specified image file '+AValue);
+           end;
+
        end;
 
      end

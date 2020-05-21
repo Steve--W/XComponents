@@ -146,9 +146,9 @@ type   TDataNode = class(TForm)         // <- TObject
           function GetAttributeAnyCase(AttrName:string;AllowSpace:boolean):TNodeAttribute;   overload;
           function GetAttributeAnyCase(AttrName:string):TNodeAttribute;   overload;
           procedure AddAttribute(AttributeName,AttributeType,AttributeValue:string;AttributeReadOnly:boolean);
-          procedure SetAttributeValue(AttrName:string;NewValue,AttrType:string;AttribReadOnly:Boolean);  overload;
-          procedure SetAttributeValue(AttrName:string;NewValue,AttrType:string);  overload;
-          procedure SetAttributeValue(AttrName:string;NewValue:string); overload;
+          procedure SetAttributeValue(AttrName:string;const NewValue,AttrType:string;AttribReadOnly:Boolean);  overload;
+          procedure SetAttributeValue(AttrName:string;const NewValue,AttrType:string);  overload;
+          procedure SetAttributeValue(AttrName:string;const NewValue:string); overload;
           procedure SetAttributeSource(AttrName:string;SourceNodeName,SourceAttribName:string);
           function GetChildIndex(ChildNode:TDataNode):integer;
           procedure RemoveChildNode(ChildNode:TDataNode);
@@ -594,7 +594,7 @@ begin
     SortAttribs(self.NodeAttributes);
 end;
 
-procedure TDataNode.SetAttributeValue(AttrName:string;NewValue,AttrType:string;AttribReadOnly:Boolean); // overload;
+procedure TDataNode.SetAttributeValue(AttrName:string;const NewValue,AttrType:string;AttribReadOnly:Boolean); // overload;
 var
   foundAttrib:TNodeAttribute;
   myAttribs:TNodeAttributesArray;
@@ -628,12 +628,12 @@ begin
   end;
 end;
 
-procedure TDataNode.SetAttributeValue(AttrName:string;NewValue,AttrType:string); // overload;
+procedure TDataNode.SetAttributeValue(AttrName:string;const NewValue,AttrType:string); // overload;
 begin
   self.SetAttributeValue(AttrName,NewValue,AttrType,false);
 end;
 
-procedure TDataNode.SetAttributeValue(AttrName:string;NewValue:string); //overload;
+procedure TDataNode.SetAttributeValue(AttrName:string;const NewValue:string); //overload;
 begin
   self.SetAttributeValue(AttrName,NewValue,'');
 end;
