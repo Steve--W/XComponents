@@ -5,7 +5,8 @@ Pre-Requisites
 --------------
 
 1  Pas2JS
-   XComponents projects require access to pas2js source units pas2jsCompiler etc.  A default working set of these is provided in the subfolder pas2js0. 
+   XComponents projects require access to pas2js source units pas2jsCompiler etc.  
+   A default working set of these is already provided in the XComponents subfolder pas2js0. 
  
 2  CEF (Chromium Embedded Framework)
    Use of CEF is optional.  To use ‘CEF’ based components on the desktop, download the cef4delphi_lazarus package and cef4 framework 

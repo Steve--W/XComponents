@@ -23,7 +23,7 @@ Compile and install the package into Lazarus IDE.
 
 The supplied XComponents will be available in the ‘XComponents’ tab in the IDE.
 
-See XComponentsProjectNotes.txt for usage of XComponents in a Lazarus project.
+See docs/XComponentsProjectNotes.md for how to use XComponents in a Lazarus project.
 
 
 
