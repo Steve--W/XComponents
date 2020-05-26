@@ -59,7 +59,7 @@ type
   end;
 
 
-  const DotStr:String='.';
+
 {$endif}
 
 {$ifndef JScript}

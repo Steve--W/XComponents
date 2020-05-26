@@ -284,6 +284,7 @@ end;
 
 var MainForm:TForm;
 SuppressEvents:Boolean;
+SuppressUserEvents:Boolean;
 AttribOptionsArray:TAttribOptionsArray;
 ProjectDirectory:String;
 DefaultAttribsByType:TDefaultAttribsTable;
@@ -3572,6 +3573,7 @@ begin
   SetLength(SourcedAttribs,0);
   InitSystemNodeTree;
   SuppressEvents:=false;
+  SuppressUserEvents:=true;
 
   {$ifndef JScript}
   if not DirectoryExists('tempinc') then

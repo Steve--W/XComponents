@@ -537,7 +537,7 @@ end;
 
 function NumArrayToJsonString(NumArray:TNumArray):String;
 var
-    TempString:String;
+    TempString,cval:String;
     i:integer;
 begin
   //example '[0,1.2,3.65,8.02]'
@@ -546,27 +546,14 @@ begin
     for i:=0 to length(NumArray)-1 do
     begin
       if i>0 then TempString:=TempString+',';
-      TempString:=TempString+floatToStr(NumArray[i]);
+      cval:=floatToStr(NumArray[i]);
+      if cval='' then cval:='0';
+      TempString:=TempString+cval;
     end;
   TempString:=TempString+']';
   result:=TempString;
 end;
 
-
-//function ImgArrayToJsonString(ImgArray:TImgArray):String;
-//var
-//    TempString:String;
-//    i:integer;
-//begin
-//  TempString:='[';
-//  for i:=0 to length(ImgArray)-1 do
-//  begin
-//    if i>0 then TempString:=TempString+',';
-//    TempString:=TempString+ImgArray[i];
-//  end;
-//  TempString:=TempString+']';
-//  result:=TempString;
-//end;
 
 function ColorToHexRGB(Color: TColor): string;
 var
@@ -647,14 +634,16 @@ end;
 
 function NumArrayToJsonString(NumArray:TNumArray):String;
 var
-    TempString:String;
+    TempString,cval:String;
     i:integer;
 begin
   TempString:='[';
   for i:=0 to length(NumArray)-1 do
   begin
     if i>0 then TempString:=TempString+',';
-    TempString:=TempString+floatToStr(NumArray[i]);
+    cval:=floatToStr(NumArray[i]);
+    if cval='' then cval:='0';
+    TempString:=TempString+cval;
   end;
   TempString:=TempString+']';
   result:=TempString;

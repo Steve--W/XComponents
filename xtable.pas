@@ -410,6 +410,7 @@ function TXTable.ConstructDataString:String;
 var
     i,j:integer;
     dataStr:String;
+    cval:String;
 begin
   dataStr:='[';
   for i:= 0 to TStringGrid(myControl).RowCount-1 do
@@ -418,8 +419,9 @@ begin
     dataStr:=dataStr+'[';
     for j:=0 to TStringGrid(myControl).ColCount-1 do
     begin
+      cval:=TStringGrid(myControl).Cells[j,i];
       if j>0 then dataStr:=dataStr+',';
-      dataStr:=dataStr+QuoteCellForJSON(TStringGrid(myControl).Cells[j,i],i);
+      dataStr:=dataStr+QuoteCellForJSON(cval,i);
     end;
     dataStr:=dataStr+']';
   end;
@@ -897,7 +899,7 @@ end;
 function TXTable.ConstructTableStringFromArray(myArray:TTableCellsArray):String;
 var
   i,j:integer;
-  str:string;
+  str,cval:string;
   //'[["a","b","c"],["1","2","3"]]'
 begin
   str:='[';
@@ -909,7 +911,8 @@ begin
     begin
       if j>0 then str:=str+',';
       {$ifndef JScript}
-      str:=str+QuoteCellForJSON(myArray[i,j],i);
+      cval:=QuoteCellForJSON(myArray[i,j],i);
+      str:=str+cval;
       {$else}
       asm
         //console.log('i='+i+' j='+j+' cell='+myArray[i][j]);
@@ -1238,8 +1241,10 @@ begin
   c:=self.SelectedCol;
   if (r<0) or (c<0) then
     showmessage('DeleteSelectedRow - row not selected')
-  else if r<1 then
-    showmessage('DeleteSelectedRow - cannot delete header row')
+  else if (r<1) and (self.HasHeaderRow) then
+      showmessage('DeleteSelectedRow - cannot delete header row')
+  else if (r<1) and (self.NumRows=1) then
+      showmessage('DeleteSelectedRow - cannot delete all rows')
   else
   begin
     self.deleteRow(r);

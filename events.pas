@@ -291,7 +291,8 @@ begin
   begin
 
     if ((MyNode.IsDynamic) or (myNode=UIRootNode))
-    and (MyNode.HasUserEventCode(EventType)) then
+    and (MyNode.HasUserEventCode(EventType))
+    and (not SuppressUserEvents) then
     begin
       // third option - a dynamically created component with dynamically created event code (eg. created in XIDE project)...
       // in this case the code will have been compiled into the events dll
@@ -315,10 +316,12 @@ end;
 function FindEventFunction(NameSpace,myName,EventType:string;MyNode:TDataNode;DoBind:Boolean):TObject;
 var
   UnitName:String;
+  AllowUserEvents:Boolean;
   fn:TObject;
 begin
   UnitName:=MainUnitname+'Events';
   fn:=nil;
+  AllowUserEvents:=not SuppressUserEvents;
 asm
 try {
 //alert('FindEventFunction NS='+NameSpace+' myName='+myName+' MyNode='+MyNode.NameSpace+'.'+MyNode.NodeName);
@@ -342,7 +345,7 @@ try {
   }
 
   // THIRD ......
-  if (fn==null) {
+  if ((fn==null)&&(AllowUserEvents==true)) {
   // the component may have been created dynamically at run-time
   // with dynamically added event code (eg. using the XIDE project)
   // in which case look for the event handler in module XIDEMainEvents
@@ -362,7 +365,7 @@ try {
     }
 
     // FOURTH ......
-    if (fn==null) {
+    if ((fn==null)&&(AllowUserEvents==true)) {
     // the event we seek may be a thread event, for a TXThreads component.
     // These events are compiled into a separate unit (MainUnitName+'EventsThreads')
 
@@ -462,7 +465,9 @@ var
   {$endif}
 begin
 
-  if StartingUp = false then
+  if (StartingUp = false)
+  and (not SuppressEvents) //!! check this !!!!
+  then
   begin
 
     if e=nil then

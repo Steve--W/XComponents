@@ -182,7 +182,8 @@ procedure TXNumberSpinner.SpinnerChange(Sender: TObject) ;
  begin
     Spinner := TSpinEdit(sender) ;
     self.ItemValue:=Spinner.Value;
-    CallHandleEvent('Change',IntToStr(Spinner.Value),Sender);
+    if not (csDesigning in componentState) then
+      CallHandleEvent('Change',IntToStr(Spinner.Value),Sender);
  end;
 
 

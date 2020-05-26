@@ -297,13 +297,28 @@ end;
 
 
 procedure TXEditBox.SetBoxWidth(AValue:string);
+var
+  perc:Boolean;
 begin
   //showmessage('memo width='+AValue);
   myNode.SetAttributeValue('BoxWidth',AValue);
+  if FoundString(AValue,'%')>0 then
+    perc:=true
+  else
+    perc:=false;
   asm
-  var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
-  //  if (ob==null) {alert(this.NodeName+'Contents'+'  not found');}
-  pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+  // px width must apply to the edit box (id=name+'Contents'),
+  // but a percentage width must apply to the container (id=name)
+  var con = document.getElementById(this.NameSpace+this.NodeName);
+  var box = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+  if (perc==true) {
+    pas.HTMLUtils.SetHeightWidthHTML(this,con,'W',AValue);
+    pas.HTMLUtils.SetHeightWidthHTML(this,box,'W','100%');
+  }
+  else {
+    pas.HTMLUtils.SetHeightWidthHTML(this,con,'W','');
+    pas.HTMLUtils.SetHeightWidthHTML(this,box,'W',AValue);
+  }
   end;
 end;
 
