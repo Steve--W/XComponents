@@ -244,7 +244,6 @@ procedure EditAttributeValue2(NodeNameToEdit,NameSpace,AttrNameToEdit,newValue:S
 
 procedure EditAttributeValueIndexed(NodeNameToEdit,NameSpace,AttrNameToEdit:String;newValue:TStringArray; x,y:integer);
 
-function FindCompositeContainer(StartNode:TDataNode):TdataNode;
 function FindInterfaceNode(StartNode:TDataNode;NameSpace:String;PropName:String):TdataNode;
 
 procedure PushSourceToAttributes(SourceNode:TDataNode; SourceAttrib:TNodeAttribute);
@@ -1905,7 +1904,7 @@ begin
         //if SourceNode.NodeType='TXSVGContainer' then showmessage('InsertSystemNode 1');
         myself:=AddDynamicWidget(SourceNode.NodeType,ParentNode.MyForm,ParentNode,SourceNode.NodeName,SourceNode.NameSpace,'Left',position);
         // if SourceNode.NodeType='TXSVGContainer' then showmessage('InsertSystemNode 2');
-       myself.NameSpace:=SourceNode.NameSpace;
+        myself.NameSpace:=SourceNode.NameSpace;
         CopyEventHandlers(myself,SourceNode,(SourceNode.NodeType='TXCompositeIntf'));
         // if SourceNode.NodeType='TXSVGContainer' then showmessage('InsertSystemNode 3');
         for i:=0 to length(SourceNode.NodeAttributes)-1 do
@@ -1930,7 +1929,7 @@ begin
       end;
     end
     else if (SourceNode.NodeClass = 'Code')
-      or (SourceNode.NodeClass = 'RUI') then        // for composite resources
+      or (SourceNode.NodeClass = 'RUI') then        // for composite resources  ????
     begin
       myself:=SourceNode;
       myself.IsDynamic:=true;
@@ -2191,16 +2190,21 @@ begin
    //showmessage('Building from SourceNode '+SourceNode.NodeType+' '+SourceNode.NameSpace+':'+SourceNode.NodeName);
    if (Not ExpandingComposite)
    or ((SourceNode.NodeType<>'TXMenuItem')
-      and (SourceNode.NodeType<>'RawUnit')   // deprecated
-      and (SourceNode.NodeType<>'PasUnit')
-      and (SourceNode.NodeType<>'PythonScript')
+      //and (SourceNode.NodeType<>'RawUnit')   // deprecated       //!! what to do with code units loaded from composites ????
+      //and (SourceNode.NodeType<>'PasUnit')
+      //and (SourceNode.NodeType<>'PythonScript')
       and (SourceNode.NodeClass<>'RUI')) then
    begin
      ScreenObjectName:=SourceNode.NodeName;
      ScreenObjectType:=SourceNode.NodeType;
      ParentNode:=nil;
 
-     if ParentName<>'' then
+     if (SourceNode.NodeClass='Code')
+     and (ExpandingComposite) then                  // code units loaded from composites - add to the composite node
+     begin
+       ParentNode:=DefaultParent;
+     end
+     else if ParentName<>'' then
      begin
        ParentNode:=FindDataNodeByID(SystemNodeTree,ParentName,BaseNameSpace,false);
 
@@ -2223,8 +2227,10 @@ begin
 
      if ParentNode=nil then
        ParentNode:=DefaultParent;   //UIRootNode;  // (eg. for TXForms)
-     if (BaseNameSpace<>'') then
-       if (ParentNode.NameSpace<>BaseNameSpace) and (ParentNode.NodeType<>'TXComposite') then
+     if (BaseNameSpace<>'')
+     and (Parentname<>'CodeUnits')
+     and (ParentNode.NameSpace<>BaseNameSpace)
+     and (ParentNode.NodeType<>'TXComposite') then
          ParentNode:=DefaultParent;
      if (SourceNode.NodeClass='NV') and (SourceNode.NameSpace='') then
        ParentNode:=DefaultParent;
@@ -2808,30 +2814,6 @@ begin
   end;
 end;
 
-function FindCompositeContainer(StartNode:TDataNode):TdataNode;
-var
-  SearchNode, CompositeNode:TDataNode;
-  ok:Boolean;
-begin
-  // find the container of this composite namespace
-   ok:=false;
-   SearchNode:=StartNode;
-   while (ok=false) do
-   begin
-     SearchNode:=FindParentOfnode(SystemNodeTree,SearchNode);
-     if (SearchNode.NodeType<>'TXComposite')
-     or (SearchNode.NameSpace<>'') then
-       ok:=false
-     else
-     begin
-       ok:=true;
-       CompositeNode:=SearchNode;
-     end;
-   end;
-   // find the container of this composite namespace
-   //CompositeNode:=FindDataNodeById(SystemNodeTree,EventNode.NameSpace,'',true);       //!!!!deeper levels??
-   result:=CompositeNode;
-end;
 
 function FindInterfaceNode(StartNode:TDataNode;NameSpace:String;PropName:String):TdataNode;
 var

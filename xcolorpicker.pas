@@ -44,11 +44,11 @@ type
      procedure SetMyEventTypes;
 
      function GetItemValue:string;
-     function GetReadOnly:Boolean;
+//     function GetReadOnly:Boolean;
      function GetBoxWidth:string;
 
      procedure SetItemValue(AValue:string);
-     procedure SetReadOnly(AValue:Boolean);
+//     procedure SetReadOnly(AValue:Boolean);
      procedure SetBoxWidth(AValue:string);
 
    protected
@@ -76,7 +76,7 @@ type
 
      // Properties defined for this class...
      property ItemValue: String read GetItemValue write SetItemValue;
-     property ReadOnly: Boolean read GetReadOnly write SetReadOnly;
+//     property ReadOnly: Boolean read GetReadOnly write SetReadOnly;
      property BoxWidth: String read GetBoxWidth write SetBoxWidth;
 
      {$ifndef JScript}
@@ -265,12 +265,12 @@ end;
 function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   ItemValue,LabelText,LabelPos:string;
-  ReadOnly:Boolean;
+//  ReadOnly:Boolean;
   OnChangeString, OnClickString:String;
 begin
   ItemValue:= MyNode.getAttribute('ItemValue',true).AttribValue;
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
-  ReadOnly:= StrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
+//  ReadOnly:= StrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
 
   OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value.toString());" ';
   OnChangeString:= 'onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''','''+NameSpace+''',''ItemValue'',this.value.toString()); '+
@@ -285,14 +285,14 @@ begin
     var wrapperid =  NameSpace+ScreenObjectName;
     var MyObjectName=wrapperid+'Contents';
 
-    var ReadOnlyString = '';
-    if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
+//    var ReadOnlyString = '';
+//    if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
 
     var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
     var PickerString = '<input type="color"  id='+MyObjectName+' '+
                         OnClickString +
                         OnChangeString +
-                       ' style="display: inline-block; padding:0px;" value='+ItemValue+' '+ReadOnlyString+'> ';
+                       ' style="display: inline-block; padding:0px;" value='+ItemValue+' > ';
 
     HTMLString = labelstring+PickerString;
 
@@ -354,10 +354,10 @@ function TXColorPicker.GetItemValue:string;
 begin
   result:=MyNode.getAttribute('ItemValue',true).AttribValue;
 end;
-function TXColorPicker.GetReadOnly:Boolean;
-begin
-  result:=MyStrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
-end;
+//function TXColorPicker.GetReadOnly:Boolean;
+//begin
+//  result:=MyStrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
+//end;
 
 procedure TXColorPicker.SetItemValue(AValue:string);
 begin
@@ -376,19 +376,19 @@ begin
   {$endif}
 end;
 
-procedure TXColorPicker.SetReadOnly(AValue:Boolean);
-begin
-  myNode.SetAttributeValue('ReadOnly',myBoolToStr(AValue),'Boolean');
-  {$ifndef JScript}
-  TColorBox(TheBox).ReadOnly:=AValue;
-  {$else}
-  asm
-    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
-    if (ob!=null) {
-      ob.readOnly = AValue  }
-  end;
-  {$endif}
-end;
+//procedure TXColorPicker.SetReadOnly(AValue:Boolean);
+//begin
+//  myNode.SetAttributeValue('ReadOnly',myBoolToStr(AValue),'Boolean');
+//  {$ifndef JScript}
+//  TColorBox(TheBox).ReadOnly:=AValue;
+//  {$else}
+//  asm
+//    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+//    if (ob!=null) {
+//      ob.readOnly = AValue  }
+//  end;
+//  {$endif}
+//end;
 
 
 begin
@@ -399,7 +399,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Right','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Colour Picker','',false);
-  AddDefaultAttribute(myDefaultAttribs,'ReadOnly','Boolean','False','',false);
+//  AddDefaultAttribute(myDefaultAttribs,'ReadOnly','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'ItemValue','String','','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 

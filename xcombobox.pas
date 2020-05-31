@@ -42,13 +42,13 @@ type
 
     function GetItemIndex:integer;
     function GetItemValue:string;
-    function GetReadOnly:Boolean;
+    //function GetReadOnly:Boolean;
     function GetBoxWidth:string;
     function GetOptionList:string;
 
     procedure SetItemIndex(AValue:integer);
     procedure SetItemValue(AValue:string);
-    procedure SetReadOnly(AValue:Boolean);
+    //procedure SetReadOnly(AValue:Boolean);
     procedure SetBoxWidth(AValue:string);
     procedure SetOptionList(AValue:string);
 
@@ -76,7 +76,7 @@ type
     // Properties defined for this class...
     property ItemIndex: Integer read GetItemIndex write SetItemIndex;
     property ItemValue: String read GetItemValue write SetItemValue;
-    property ReadOnly: Boolean read GetReadOnly write SetReadOnly;
+    //property ReadOnly: Boolean read GetReadOnly write SetReadOnly;
     property BoxWidth: String read GetBoxWidth write SetBoxWidth;
     property OptionList: String read GetOptionList write SetOptionList;
     property PriorIndex:integer read fPriorIndex write fPriorIndex;
@@ -215,14 +215,14 @@ end;
 function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   ItemIndex,LabelText,LabelPos,OptionList:string;
-  ReadOnly:Boolean;
+//  ReadOnly:Boolean;
   OnChangeString, OnClickString:String;
 begin
 //showmessage('createwidget combobox '+ScreenObjectName);
   OptionList:= MyNode.getAttribute('OptionList',true).AttribValue;
   ItemIndex:= MyNode.getAttribute('ItemIndex',true).AttribValue;
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
-  ReadOnly:= StrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
+//  ReadOnly:= StrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
 
   OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
   OnChangeString:= 'onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''','''+NameSpace+''',''ItemIndex'',pas.SysUtils.IntToStr(this.selectedIndex)); '+
@@ -239,14 +239,14 @@ begin
     var wrapperid =  NameSpace+ScreenObjectName;
     var MyObjectName=wrapperid+'Contents';
 
-    var ReadOnlyString = '';
-    if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
+ //   var ReadOnlyString = '';
+ //   if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
 
     var TypeString = 'text';
 
     var inputtext= ItemIndex;
     var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
-    var ComboString = '<select id="'+MyObjectName+'" ' + ReadOnlyString +
+    var ComboString = '<select id="'+MyObjectName+'" ' +
                   OnChangeString +
                   OnClickString +
                   ' class="widgetinner '+wrapperid+'" ' +
@@ -355,10 +355,10 @@ begin
     result:=val;
   end;
 end;
-function TXComboBox.GetReadOnly:Boolean;
-begin
-  result:=MyStrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
-end;
+//function TXComboBox.GetReadOnly:Boolean;
+//begin
+//  result:=MyStrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
+//end;
 
 procedure TXComboBox.SetItemIndex(AValue:integer);
 begin
@@ -389,19 +389,19 @@ begin
 end;
 
 
-procedure TXComboBox.SetReadOnly(AValue:Boolean);
-begin
-  myNode.SetAttributeValue('ReadOnly',myBoolToStr(AValue),'Boolean');
-  {$ifndef JScript}
-  TLabeledEdit(myControl).ReadOnly:=AValue;
-  {$else}
-  asm
-    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
-    if (ob!=null) {
-      ob.readOnly = AValue  }
-  end;
-  {$endif}
-end;
+//procedure TXComboBox.SetReadOnly(AValue:Boolean);
+//begin
+//  myNode.SetAttributeValue('ReadOnly',myBoolToStr(AValue),'Boolean');
+//  {$ifndef JScript}
+//  TLabeledEdit(myControl).ReadOnly:=AValue;
+//  {$else}
+//  asm
+//    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+//    if (ob!=null) {
+//      ob.readOnly = AValue  }
+//  end;
+//  {$endif}
+//end;
 
 procedure TXComboBox.SetOptionList(AValue:String);
 begin
@@ -450,7 +450,6 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Right','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Combo Box','',false);
-  AddDefaultAttribute(myDefaultAttribs,'ReadOnly','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'ItemIndex','Integer','-1','',false);
   AddDefaultAttribute(myDefaultAttribs,'OptionList','String','["Option 1","Option 2","Option 3"]','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);

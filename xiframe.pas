@@ -114,6 +114,7 @@ type
       myReloadTimer:TTimer;
       myChromium:TChromium;
       brw:iCefBrowser;
+      ForceReload:Boolean;
       {$endif}
     constructor Create(TheOwner: TComponent); override;
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
@@ -299,6 +300,7 @@ begin
     pollingTimer.OnTimer:=@self.DoPollingTimer;
 
     {$ifdef Chromium}
+     self.ForceReload:=false;
      self.myReloadTimer:=TTimer.Create(self);
      myReloadTimer.Enabled:=false;
      myReloadTimer.Interval:=200;
@@ -423,8 +425,9 @@ var
   glb:Boolean;
 begin
   //showmessage(self.Name+' browser created');
+  self.ForceReload:=true;
   self.HTMLSource:=self.HTMLSource;
-
+  self.ForceReload:=false;
 end;
 procedure TXIFrame.BrowserDestroyMsg(var aMessage: TMessage);
 begin
@@ -1110,6 +1113,12 @@ begin
  // LazsUtils.writeTOfile('new.txt',AValue);
   if AValue<>myNode.GetAttribute('HTMLSource',true).AttribValue then
     IsChanged:=true;
+  {$ifndef JScript}
+  {$ifdef Chromium}
+  if self.ForceReload=true then
+    IsChanged:=true;
+  {$endif}
+  {$endif}
   myNode.SetAttributeValue('HTMLSource',AValue);
 
   if (self.SuspendRefresh)
@@ -1141,7 +1150,6 @@ begin
     myNode.SetAttributeValue('SuspendRefresh',myBoolToStr(AValue),'Boolean');
     if AValue=false then
       {$ifndef JScript}
-      //if (not GlobalSuppressFrameDisplay)
       if (not (csLoading in componentState))
       and (not (csDesigning in componentState))
       // if the frame is on a visible form...

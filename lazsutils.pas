@@ -916,14 +916,15 @@ begin
   end;
 
   // special case - TabSheet (have to refresh border settings on the parent tabcontrol as well)
-  if myComponent.ClassName = 'TXTabSheet' then
-  begin
-    p:=myComponent.parent;
-    TCustomControl(myComponent.parent).BorderStyle:=bsSingle;
-    TCustomControl(myComponent.parent).BorderWidth:=glbBorderWidth;
-    TCustomControl(myComponent.parent).BorderStyle:=bsNone;
-    TCustomControl(myComponent.parent).BorderWidth:=0;
-  end;
+// 29/5/2020 deleted this as it makes cef components disappear!
+//  if myComponent.ClassName = 'TXTabSheet' then
+//  begin
+//    p:=myComponent.parent;
+//    TCustomControl(myComponent.parent).BorderStyle:=bsSingle;
+//    TCustomControl(myComponent.parent).BorderWidth:=glbBorderWidth;
+//    TCustomControl(myComponent.parent).BorderStyle:=bsNone;
+//    TCustomControl(myComponent.parent).BorderWidth:=0;
+//  end;
 end;
 
 
