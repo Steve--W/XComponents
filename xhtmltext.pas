@@ -8,6 +8,15 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************
+
+ This component depends on the Lazarus package FrameViewer09 to
+ provide the TFrameviewer widget in the desktop environment.
+
+ Downloadable from https://github.com/BerndGabriel/HtmlViewer
+ The original Delphi code on which this port is based has been released by
+ Dave Baldwin into the public domain. Additional code supplied with this port
+ is released under the MPL 1.1 license.
+ Also see https://wiki.lazarus.freepascal.org/THtmlPort
  *)
 unit XHTMLText;
 
@@ -22,7 +31,11 @@ uses
     UtilsJSCompile, XForm, XCode, XButton, XVBox, XTabControl, XMemo, EventsInterface,
     {$ifndef JScript}
     LResources, Forms, Controls, StdCtrls, Graphics, Dialogs, ExtCtrls, Propedits, RTTICtrls,
-    LazsUtils, LCLIntf, Ipfilebroker, IpHtml,IpMsg,
+    LazsUtils, LCLIntf, LazHelpHTML,
+    {$if defined ( windows)}
+    UTF8Process,
+    {$endif}
+    framView,
     LCLType, gettext,
   {$else}
   HTMLUtils,
@@ -33,16 +46,6 @@ uses
 procedure Register;
 {$endif}
 
-{$ifdef JScript}
-type TXHTMLMessage = record
-  objid:String;
-  NameSpace:String;
-  mtype:String;
-  mdata:String;
-end;
-procedure HandleTXHTMLMessage(msg:TXHTMLMessage);
-{$endif}
-
 type
   {$ifndef JScript}
   TXHTMLText = class(TWrapperPanel)
@@ -51,7 +54,10 @@ type
   {$endif}
   private
     {$ifndef JScript}
-    myDataProvider: TIpHtmlDataProvider;
+    myReloadTimer:TTimer;
+    myTimerCount:integer;
+    fHandleButtonClick:TEventHandler;
+    procedure DoReloadTimerThing(sender:TObject);
     function GetFrameWidth:string;
     function GetFrameHeight:string;
     function GetHTMLSource:string;
@@ -59,18 +65,17 @@ type
     procedure SetFrameHeight(AValue:string);
     procedure SetHTMLSource(AValue:string);
     procedure HandleClick(Sender:TObject);
+    procedure HandleHotSpotClick(Sender:TObject; const Target:UnicodeString; const AnURL:UnicodeString; var Handled:boolean);
     procedure ShowHTML(Src: string);
+    procedure WinLaunchBrowser(URL:String; var Handled:Boolean);
     {$endif}
 
-    function GetIsEditable:Boolean;
     function GetSourceText:String;
-    function GetHeaderHTML:String;
-    function GetFooterHTML:String;
+    function GetActualWidth:integer;
+    function GetActualHeight:integer;
 
-    procedure SetIsEditable(AValue:Boolean);
     procedure SetSourceText(AValue:String);
-    procedure SetHeaderHTML(AValue:String);
-    procedure SetFooterHTML(AValue:String);
+    procedure SetBgColor(AValue:TColor); override;
 
   protected
 
@@ -83,22 +88,26 @@ type
     constructor Create(MyForm:TForm;NodeName,NameSpace:String);  override;
     {$endif}
     function CreateTextURL(txt:String):tstringlist;
-    function ExtractTextFromTitle(message:String):String;
     procedure SetMyEventTypes;
 
 
   published
-    property IsEditable: Boolean read GetIsEditable write SetIsEditable;
     property SourceText: String read GetSourceText write SetSourceText;
-    property HeaderHTML: String read GetHeaderHTML write SetHeaderHTML;
-    property FooterHTML: String read GetFooterHTML write SetFooterHTML;
+    property ActualHeight:integer read GetActualHeight;
+    property ActualWidth:integer read GetActualWidth;
 
     {$ifndef JScript}
     property FrameHeight: String read GetFrameHeight write SetFrameHeight;
     property FrameWidth: String read GetFrameWidth write SetFrameWidth;
     property HTMLSource: String read GetHTMLSource write SetHTMLSource;
+    // Events to be visible in Lazarus IDE
+    property HandleButtonClick: TEventHandler read FHandleButtonClick write FHandleButtonClick;
     {$endif}
   end;
+
+  {$ifdef JScript}
+  procedure ResetHTMLText(nm,ns:String);
+  {$endif}
 
 implementation
 
@@ -110,27 +119,6 @@ procedure TXHTMLText.SetMyEventTypes;
 begin
   MyEventTypes.Add('Click');
 //  MyEventTypes.Add('HTMLTextBrowserClosed');
-end;
-
-function  TXHTMLText.ExtractTextFromTitle(message:String):String;
-var
-  str:String;
-  StartPos,EndPos:integer;
-begin
-  str:=message;
-  StartPos:=Pos('Z!Z!Z',str);
-  if StartPos>0 then
-  begin
-    str:=copy(str, StartPos+5 ,999999);
-
-    EndPos:=Pos('Z!Z!Z',str);
-    if endpos>0      // end marker might be missing if the OS has truncated the title string -- now checked for in the browser code
-    then
-      str:=copy(str,1 ,EndPos-1);
-  end
-  else
-    str:='Z!Z!Z';
-  result:=str;
 end;
 
 {$ifndef JScript}
@@ -153,17 +141,22 @@ begin
 
   self.BorderSpacing.Around:=glbBorderSpacing;
 
-  myControl:=TIpHtmlPanel.Create(self);  //ipro panel
+  myControl:=TFrameViewer.Create(self);
   myControl.Parent:=self;
-
-  myDataProvider:=TIpHtmlDataProvider.Create(self);  //ipro html provider
 
   myControl.SetSubComponent(true);  // Tell the IDE to store the modified properties
   // Make sure the embedded component can not be selected/deleted within the IDE
   myControl.ControlStyle := myControl.ControlStyle - [csNoDesignSelectable];
 
-  TIpHtmlPanel(myControl).OnClick:=@self.HandleClick;
-  TIpHtmlPanel(myControl).DataProvider:=myDataProvider;
+  self.myReloadTimer:=TTimer.Create(self);
+  myReloadTimer.Enabled:=false;
+  myReloadTimer.Interval:=200;
+  myReloadTimer.OnTimer:=@self.DoReloadTimerThing;
+  myTimerCount:=0;
+
+  TFrameViewer(myControl).OnHotSpotTargetClick:=@self.HandleHotSpotClick;
+  TFrameViewer(myControl).OnClick:=@self.HandleClick;
+  TFrameViewer(myControl).DefBackground:=clWhite;
 
   self.SetMyEventTypes;
   CreateComponentDataNode2(self,MyNodeType,myDefaultAttribs, self.myEventTypes, TheOwner,IsDynamic);
@@ -190,6 +183,64 @@ procedure TXHTMLText.HandleClick(Sender:TObject);
 begin
   if not (csDesigning in componentState) then
      CallHandleEvent('Click',self.myNode.NodeName,self);
+end;
+
+procedure TXHTMLText.WinLaunchBrowser(URL:String; var Handled:Boolean);
+var
+  v: THTMLBrowserHelpViewer;
+  BrowserPath, BrowserParams: string;
+  p: LongInt;
+  BrowserProcess: TProcessUTF8;
+begin
+  Handled:=false;
+  // procedure to open a fresh browser instance on the desktop, and load the URL
+  //!! if 2 of these in quick succession, we still get one browser instance with 2 tabs...
+  {$if defined ( windows)}
+  v:=THTMLBrowserHelpViewer.Create(nil);
+  try
+    v.FindDefaultBrowser(BrowserPath,BrowserParams);
+
+//    URL:='http://www.lazarus.freepascal.org';
+    p:=System.Pos('%s', BrowserParams);
+    System.Delete(BrowserParams,p,2);
+    System.Insert(URL,BrowserParams,p);
+
+    // start browser
+    BrowserParams:='--new-window "'+URL+'"';       //!! works for Chrome...
+    BrowserProcess:=TProcessUTF8.Create(nil);
+    try
+      BrowserProcess.CommandLine:=BrowserPath+BrowserParams;
+      BrowserProcess.Execute;
+      Handled:=true;
+    finally
+      BrowserProcess.Free;
+    end;
+  finally
+    v.Free;
+  end;
+  {$endif}
+end;
+
+procedure TXHTMLText.HandleHotSpotClick(Sender:TObject;  const Target:UnicodeString; const AnURL:UnicodeString; var Handled:boolean);
+begin
+  // expecting this is a URL link to web page...
+  // pop up a separate browser (works for windows...)
+  if ((FoundString(AnURL,'://') > 0) and (FoundString(AnURL,'http') = 1)) then
+    WinLaunchBrowser(AnURL,Handled);
+  if not Handled then
+    TFrameViewer(self.myControl).HotSpotClick(Sender,AnURL,Handled);
+end;
+
+procedure TXHTMLText.DoReloadTimerThing(sender:TObject);
+begin
+  myReloadTimer.Enabled := false;
+  myTimerCount:=myTimerCount+1;
+  if (not (csDesigning in componentState))
+  and (not (csLoading in componentState))
+  and (myTimerCount=1) then
+    begin
+        self.SourceText:=self.SourceText;    // html reload
+    end;
 end;
 
 function TXHTMLText.GetFrameHeight:string;
@@ -224,7 +275,7 @@ end;
 
 procedure TXHTMLText.SetHTMLSource(AValue:string);
 begin
-  if AValue<>myNode.GetAttribute('HTMLSource',true).AttribValue then
+  //if AValue<>myNode.GetAttribute('HTMLSource',true).AttribValue then
   begin
     myNode.SetAttributeValue('HTMLSource',AValue);
     self.ShowHTML(AValue);
@@ -264,61 +315,11 @@ begin
   result:=TObject(TXHTMLText.Create(MyForm,NodeName,NameSpace));
 end;
 
-procedure HandleTXHTMLMessage(msg:TXHTMLMessage);
-var
-  ItemNode:TdataNode;
-  message:string;
-begin
-  if (msg.objid<>'') then
-  begin
-    //showmessage('HandleTXHTMLMessage: '+msg.objid+' '+msg.mtype);
-     //this is a notification sent out from within a HTMLText frame.
-     ItemNode:=findDataNodeById(systemnodetree,msg.objid,msg.NameSpace,false);
-     if ItemNode<>nil then
-     begin
-        if msg.mtype='titleChange' then
-        begin
-           //showmessage('message is titleChange');
-           message:=msg.mdata;
-           if message<>'' then
-           begin
-             message:= TXHTMLText(ItemNode).ExtractTextFromTitle(message);
-             // now save the help text to the SourceText property
-             if (length(trim(message))>0) then // and (StartPos>0)
-             begin
-                TXHTMLText(ItemNode).SourceText:= message;
-             end;
-           end;
-        end;
-     end;
-  end;
-end;
-
 {$endif}
 
-function TXHTMLText.GetIsEditable:Boolean;
-begin
-  result:=myStrToBool(myNode.getAttribute('IsEditable',true).AttribValue);
-end;
 function TXHTMLText.GetSourceText:String;
 begin
   result:=myNode.getAttribute('SourceText',true).AttribValue;
-end;
-function TXHTMLText.GetHeaderHTML:String;
-begin
-  result:=myNode.getAttribute('HeaderHTML',true).AttribValue;
-end;
-function TXHTMLText.GetFooterHTML:String;
-begin
-  result:=myNode.getAttribute('FooterHTML',true).AttribValue;
-end;
-
-procedure TXHTMLText.SetIsEditable(AValue:Boolean);
-begin
-  if myNode<>nil then
-  begin
-    myNode.SetAttributeValue('IsEditable',myBoolToStr(AValue),'Boolean');
-  end;
 end;
 
 procedure TXHTMLText.SetSourceText(AValue:String);
@@ -326,47 +327,34 @@ Var
   URLStringList:TStringList;
 begin
   if myNode<>nil then
-  begin
     myNode.SetAttributeValue('SourceText',AValue,'String');
-    begin
-      URLStringList:=CreateTextURL(AValue);
-      self.HTMLSource:=URLStringList.Text;
-    end;
+  {$ifndef JScript}
+  if (not (csDesigning in componentState))
+  and (not (csLoading in componentState)) then
+  {$endif}
+  if myNode<>nil then
+  begin
+    URLStringList:=CreateTextURL(AValue);
+    self.HTMLSource:=URLStringList.Text;
     URLStringList.Free;
-  end;
-end;
 
-procedure TXHTMLText.SetHeaderHTML(AValue:String);
-begin
+    {$ifndef JScript}
+    // ReLoad the HTML (later, to ensure the frame has been rendered first)
+    if mytimerCount=0 then
+      self.myReloadTimer.Enabled := True
+    else
+      myTimerCount:=0;
+    {$endif}
 
-  if myNode<>nil then
-  begin
-    if AValue <> myNode.getAttribute('HeaderHTML',false).AttribValue then
-    begin
-      myNode.SetAttributeValue('HeaderHTML',AValue,'String');
-      self.SourceText:=self.SourceText;
-    end;
-  end;
-end;
-
-procedure TXHTMLText.SetFooterHTML(AValue:String);
-begin
-  if myNode<>nil then
-  begin
-    if AValue <> myNode.getAttribute('FooterHTML',false).AttribValue then
-    begin
-      myNode.SetAttributeValue('FooterHTML',AValue,'String');
-      self.SourceText:=self.SourceText;
-    end;
   end;
 end;
 
 function TXHTMLText.CreateTextURL(txt:String):tstringlist;
 var WYSIWYGHEADER,WYSIWYGFOOTER,TheText,OutputStringList: TStringList;
   startstring, endstring:String;
-  InnerStartLength,InnerEndLength:integer;
-  ActionBarClass:String;
+  BgCol:String;
 begin
+  BgCol:=MyNode.GetAttribute('BgColor',true).AttribValue;
 
 WYSIWYGHEADER:= TStringList.Create;
 WYSIWYGFOOTER:= TStringList.Create;
@@ -374,11 +362,8 @@ TheText:= TStringList.Create;
 OutputStringList:= TStringList.Create;
 
 //Initalise the the header, footer and text strings
-startstring:='<div contenteditable="false" class="wysiwyg-content">';
+startstring:='<div contenteditable="false" >';
 endstring := '</div>' ;
-
-InnerStartLength:=length(startstring);
-InnerEndLength:=length(endstring );
 
 TheText.Add(startstring);
 TheText.Add(txt);
@@ -393,14 +378,13 @@ WYSIWYGHEADER.Add('');
 WYSIWYGHEADER.Add('<title>TXHTMLText '+self.myNode.NodeName+'</title>');
 WYSIWYGHEADER.Add('</head>');
 
-WYSIWYGHEADER.Add('<body>');
+WYSIWYGHEADER.Add('<body style="margin:0px; background-color:'+BgCol+'">');
 WYSIWYGHEADER.Add('');
-WYSIWYGHEADER.Add('<div id="FrameContent" class="content" style="background-color:powderblue; ">');
-WYSIWYGHEADER.Add(myNode.GetAttribute('HeaderHTML',false).AttribValue);
-WYSIWYGHEADER.Add('      <div id="thetext" class="wysiwyg" style="height: 100%; width: 100%; background-color:white; border-style: solid;border-width:thin;">');
+WYSIWYGHEADER.Add('<div id="FrameContent" ');
+WYSIWYGHEADER.Add(      'style="overflow:scroll; height:'+inttostr(self.actualHeight)+'px; ">');
+WYSIWYGHEADER.Add('      <div id="thetext" style="height: 100%; width: 100%; border-style: solid;border-width:thin;">');
 
 WYSIWYGFOOTER.Add('      </div>');
-WYSIWYGFOOTER.Add(myNode.GetAttribute('FooterHTML',false).AttribValue);
 WYSIWYGFOOTER.Add('    </div>');
 WYSIWYGFOOTER.Add('</body>');
 WYSIWYGFOOTER.Add('</html>');
@@ -420,36 +404,89 @@ end;
 {$ifndef JScript}
 procedure TXHTMLText.ShowHTML(Src: string);
 var
-  ss: TStringStream;
-  NewHTML: TIpHtml;
+  mc:TWinControl;
+  hnd:Boolean;
+  nm:string;
 begin
-  ss := TStringStream.Create(Src);
-  try
-    NewHTML := TIpHtml.Create; // Beware: Will be freed automatically by IpHtmlPanel1
-    TIpHtmlPanel(myControl).SetHtml(NewHTML);
-    NewHTML.LoadFromStream(ss);
-  finally
-    ss.Free;
+  if (not (csDesigning in componentState))
+  and (not (csLoading in componentState))
+  then
+  begin
+    nm:=self.myNode.NameSpace;
+    if nm<>'' then nm:=nm+'_';
+    nm:='tempinc/'+nm+self.myNode.NodeName;
+    WriteToFile(ProjectDirectory+nm+'.html',Src);
+    mc:=TWinControl(myControl);
+    hnd:=mc.HandleAllocated;
+    if (hnd) then
+      TFrameViewer(myControl).Load(ProjectDirectory+nm+'.html');
   end;
 end;
 {$endif}
 
+function TXHTMLText.GetActualHeight:integer;
+// NB. this is a read-only attribute (no setter)
+var
+  h:integer;
+begin
+  {$ifndef JScript}
+  h:=myControl.Height;
+  {$else}
+  h:=GetCurrentHeight(self.NodeName);
+  {$endif}
+  myNode.SetAttributeValue('ActualHeight',inttostr(h),'Integer',true);     // just so the attribute exists
+  result:=h;
+end;
+function TXHTMLText.GetActualWidth:integer;
+// NB. this is a read-only attribute (no setter)
+var
+  wd:integer;
+begin
+  {$ifndef JScript}
+  wd:=myControl.Width;
+  {$else}
+  wd:=GetCurrentWidth(self.NodeName);
+  {$endif}
+  myNode.SetAttributeValue('ActualWidth',inttostr(wd),'Integer',true);     // just so the attribute exists
+  result:=wd;
+end;
+
+procedure TXHTMLText.SetBgColor(AValue:TColor);
+var tmp:string;
+begin
+  inherited SetBgColor(AValue);
+
+  {$ifndef JScript}
+  TFrameViewer(myControl).DefBackground:=AValue;
+  {$else}
+  tmp:=MyNode.GetAttribute('BgColor',true).AttribValue;
+  asm console.log('set color '+AValue+'   new color is '+tmp); end;
+  {$endif}
+end;
+
+{$ifdef JScript}
+procedure ResetHTMLText(nm,ns:String);
+var
+  thisNode:TDataNode;
+begin
+  thisnode:=FindDataNodeById(SystemNodeTree,nm,ns,true);
+  TXHTMLText(thisNode.ScreenObject).SourceText:=TXHTMLText(thisNode.ScreenObject).SourceText;
+end;
+{$endif}
 
 begin
-  // this is the set of node attributes that each GPUCanvas instance will have (added to the set inherited from TXIFrame).
+  // this is the set of node attributes that each GPUCanvas instance will have (added to the set inherited from TXIFrame or TWrapperPanel).
   AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'FrameWidth','String','300','',false);
   AddDefaultAttribute(myDefaultAttribs,'FrameHeight','String','300','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
+  AddDefaultAttribute(myDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Top','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','HTML Text','',false);
   AddDefaultAttribute(myDefaultAttribs,'HTMLSource','String','','',false,false);
-  AddDefaultAttribute(myDefaultAttribs,'IsEditable','Boolean','True','Allow the text page to be edited',false);
   AddDefaultAttribute(myDefaultAttribs,'Showing','Boolean','False','When not embedded, set this to display the text in a standalone browser page',false,false);
-  AddDefaultAttribute(myDefaultAttribs,'SourceText','String','...text...','',false);
-  AddDefaultAttribute(myDefaultAttribs,'HeaderHTML','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'FooterHTML','String','','',false);
+  AddDefaultAttribute(myDefaultAttribs,'SourceText','String','...text...','Provide the inner HTML including text to be rendered',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);
@@ -462,11 +499,6 @@ begin
   {$endif}
   SuppressDesignerProperty(MyNodeType,'ContainerHeight');
   SuppressDesignerProperty(MyNodeType,'ContainerWidth');
-  SuppressDesignerProperty(MyNodeType,'BgColor');
   SuppressDesignerProperty(MyNodeType,'HTMLSource');
-  {$IFdef JScript}
-  SuppressDesignerProperty(MyNodeType,'ActualHeight');
-  SuppressDesignerProperty(MyNodeType,'ActualWidth');
-  {$endif}
 
 end.

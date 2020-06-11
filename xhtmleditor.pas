@@ -441,6 +441,7 @@ begin
   if myNode<>nil then
   begin
     myNode.SetAttributeValue('IsEditable',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;  // re-generate the HTML edit page
   end;
 end;
 procedure TXHTMLEditor.SetShowing(AValue:Boolean);
@@ -476,6 +477,15 @@ begin
     begin
       URLStringList:=CreateTextURL;
       self.HTMLSource:=URLStringList.Text;
+    {$ifndef JScript}
+    {$ifdef Chromium}
+    end
+    else
+    begin   // cef not ready yet, so save the generated HTML in the node attribute
+      URLStringList:=CreateTextURL;
+      myNode.SetAttributeValue('HTMLSource',URLStringList.Text,'String');
+    {$endif}
+    {$endif}
     end;
   end;
 end;
@@ -626,7 +636,7 @@ WYSIWYGHEADER.Add('  box-sizing: border-box;');
 WYSIWYGHEADER.Add('  height: 100%;');
 WYSIWYGHEADER.Add('  width: 100%;');
 WYSIWYGHEADER.Add('  outline: 0;');
-WYSIWYGHEADER.Add('  overflow-y: auto;');
+//WYSIWYGHEADER.Add('  overflow-y: auto;');
 WYSIWYGHEADER.Add('  padding: .wysiwyg-content-padding;');
 WYSIWYGHEADER.Add('}');
 WYSIWYGHEADER.Add('');
@@ -668,7 +678,7 @@ WYSIWYGHEADER.Add('');
 WYSIWYGHEADER.Add('      .content {');
 WYSIWYGHEADER.Add('        box-sizing: border-box;');
 WYSIWYGHEADER.Add('        margin: 0 auto;');
-WYSIWYGHEADER.Add('        max-width: 1000px;');
+//WYSIWYGHEADER.Add('        max-width: 1000px;');
 WYSIWYGHEADER.Add('        padding: 20px;');
 WYSIWYGHEADER.Add('      }');
 WYSIWYGHEADER.Add('');
@@ -687,7 +697,7 @@ if IsEditable=true then ActionBarClass := 'showActionBar'
 else ActionBarClass:='hideActionBar';
 WYSIWYGHEADER.Add('      <div id="MyActionBar" class="'+ActionBarClass+'" >');
 WYSIWYGHEADER.Add('      </div>');
-WYSIWYGHEADER.Add('      <div id="editor" class="wysiwyg" style="flex-grow: 1; width: 100%; overflow:scroll;background-color:white; border-style: solid;border-width:thin;">');
+WYSIWYGHEADER.Add('      <div id="editor" class="wysiwyg" style="flex-grow: 1; width: 100%; overflow:auto;background-color:white; border-style: solid;border-width:thin;">');
 
 WYSIWYGFOOTER.Add('      </div>');
 WYSIWYGFOOTER.Add(myNode.GetAttribute('FooterHTML',false).AttribValue);

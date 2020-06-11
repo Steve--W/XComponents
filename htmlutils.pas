@@ -864,11 +864,12 @@ begin
   asm
     var ob = document.getElementById(ObjectName);
     if (ob!=null) {
-      var style = window.getComputedStyle(ob);
-      var hh = style.height;
-      h = parseInt(hh, 10);
+      //var style = window.getComputedStyle(ob);
+      //var hh = style.height;
+      //h = parseInt(hh, 10);
+      h = ob.offsetHeight;     //NB returns 0 if element is not yet rendered
       //console.log('calculated height='+h);
-      }
+    }
   end;
   result:=h;
 end;
@@ -881,9 +882,10 @@ begin
   asm
     var ob = document.getElementById(ObjectName);
     if (ob!=null) {
-      var style = window.getComputedStyle(ob);
-      var ww = style.width;
-      w = parseInt(ww, 10);
+      //var style = window.getComputedStyle(ob);
+      //var ww = style.width;
+      //w = parseInt(ww, 10);
+      w = ob.offsetWidth;     //NB returns 0 if element is not yet rendered
       //console.log('calculated Width='+w);
       }
   end;

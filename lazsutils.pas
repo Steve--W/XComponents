@@ -1471,99 +1471,9 @@ begin
   WriteToFile(fileName,str);
 end;
 
-(*
-{$ifdef Chromium}
-procedure SetupCEFResources;
-var
-  ProgPath:String;
-begin
-  ProgPath:=ExtractFilePath(Application.ExeName);
-  if not DirectoryExists(ProgPath+'resources')  then ForceDirectories(ProgPath+'resources');
-  if not DirectoryExists(ProgPath+'resources/cef4')  then ForceDirectories(ProgPath+'resources/cef4');
-  if not DirectoryExists(ProgPath+'resources/cef4/locales')  then ForceDirectories(ProgPath+'resources/cef4/locales');
-  if not DirectoryExists(ProgPath+'resources/cef4/swiftshader')  then ForceDirectories(ProgPath+'resources/cef4/swiftshader');
-
-// files needed for CEF
-ResourceToFile('cef',ProgPath+'resources/cef4/cef.pak');
-ResourceToFile('cef_100_percent',ProgPath+'resources/cef4/cef_100_percent.pak');
-ResourceToFile('cef_200_percent',ProgPath+'resources/cef4/cef_200_percent.pak');
-ResourceToFile('cef_extensions',ProgPath+'resources/cef4/cef_extensions.pak');
-ResourceToFile('cef_sandbox',ProgPath+'resources/cef4/cef_sandbox.lib');
-ResourceToFile('chrome_elf',ProgPath+'resources/cef4/chrome_elf.dll');
-ResourceToFile('d3dcompiler_43',ProgPath+'resources/cef4/d3dcompiler_43.dll');
-ResourceToFile('d3dcompiler_47',ProgPath+'resources/cef4/d3dcompiler_47.dll');
-ResourceToFile('devtools_resources',ProgPath+'resources/cef4/devtools_resources.pak');
-ResourceToFile('icudtl',ProgPath+'resources/cef4/icudtl.dat');
-ResourceToFile('LIBCEFDLL',ProgPath+'resources/cef4/libcef.dll');
-ResourceToFile('LIBCEFLIB',ProgPath+'resources/cef4/libcef.lib');
-ResourceToFile('libEGL',ProgPath+'resources/cef4/libEGL.dll');
-ResourceToFile('libGLESv2',ProgPath+'resources/cef4/libGLESv2.dll');
-ResourceToFile('natives_blob',ProgPath+'resources/cef4/natives_blob.bin');
-ResourceToFile('snapshot_blob',ProgPath+'resources/cef4/snapshot_blob.bin');
-ResourceToFile('v8_context_snapshot',ProgPath+'resources/cef4/v8_context_snapshot.bin');
-ResourceToFile('am',ProgPath+'resources/cef4/locales/am.pak');
-ResourceToFile('ar',ProgPath+'resources/cef4/locales/ar.pak');
-ResourceToFile('bg',ProgPath+'resources/cef4/locales/bg.pak');
-ResourceToFile('bn',ProgPath+'resources/cef4/locales/bn.pak');
-ResourceToFile('ca',ProgPath+'resources/cef4/locales/ca.pak');
-ResourceToFile('cs',ProgPath+'resources/cef4/locales/cs.pak');
-ResourceToFile('da',ProgPath+'resources/cef4/locales/da.pak');
-ResourceToFile('de',ProgPath+'resources/cef4/locales/de.pak');
-ResourceToFile('el',ProgPath+'resources/cef4/locales/el.pak');
-ResourceToFile('en-GB',ProgPath+'resources/cef4/locales/en-GB.pak');
-ResourceToFile('en-US',ProgPath+'resources/cef4/locales/en-US.pak');
-ResourceToFile('es',ProgPath+'resources/cef4/locales/es.pak');
-ResourceToFile('et',ProgPath+'resources/cef4/locales/et.pak');
-ResourceToFile('fa',ProgPath+'resources/cef4/locales/fa.pak');
-ResourceToFile('fi',ProgPath+'resources/cef4/locales/fi.pak');
-ResourceToFile('fil',ProgPath+'resources/cef4/locales/fil.pak');
-ResourceToFile('fr',ProgPath+'resources/cef4/locales/fr.pak');
-ResourceToFile('gu',ProgPath+'resources/cef4/locales/gu.pak');
-ResourceToFile('he',ProgPath+'resources/cef4/locales/he.pak');
-ResourceToFile('hi',ProgPath+'resources/cef4/locales/hi.pak');
-ResourceToFile('hr',ProgPath+'resources/cef4/locales/hr.pak');
-ResourceToFile('hu',ProgPath+'resources/cef4/locales/hu.pak');
-ResourceToFile('id',ProgPath+'resources/cef4/locales/id.pak');
-ResourceToFile('it',ProgPath+'resources/cef4/locales/it.pak');
-ResourceToFile('ja',ProgPath+'resources/cef4/locales/ja.pak');
-ResourceToFile('kn',ProgPath+'resources/cef4/locales/kn.pak');
-ResourceToFile('ko',ProgPath+'resources/cef4/locales/ko.pak');
-ResourceToFile('lt',ProgPath+'resources/cef4/locales/lt.pak');
-ResourceToFile('lv',ProgPath+'resources/cef4/locales/lv.pak');
-ResourceToFile('ml',ProgPath+'resources/cef4/locales/ml.pak');
-ResourceToFile('mr',ProgPath+'resources/cef4/locales/mr.pak');
-ResourceToFile('ms',ProgPath+'resources/cef4/locales/ms.pak');
-ResourceToFile('nb',ProgPath+'resources/cef4/locales/nb.pak');
-ResourceToFile('nl',ProgPath+'resources/cef4/locales/nl.pak');
-ResourceToFile('pl',ProgPath+'resources/cef4/locales/pl.pak');
-ResourceToFile('pt-BR',ProgPath+'resources/cef4/locales/pt-BR.pak');
-ResourceToFile('pt-PT',ProgPath+'resources/cef4/locales/pt-PT.pak');
-ResourceToFile('ro',ProgPath+'resources/cef4/locales/ro.pak');
-ResourceToFile('ru',ProgPath+'resources/cef4/locales/ru.pak');
-ResourceToFile('sk',ProgPath+'resources/cef4/locales/sk.pak');
-ResourceToFile('sl',ProgPath+'resources/cef4/locales/sl.pak');
-ResourceToFile('sr',ProgPath+'resources/cef4/locales/sr.pak');
-ResourceToFile('sv',ProgPath+'resources/cef4/locales/sv.pak');
-ResourceToFile('sw',ProgPath+'resources/cef4/locales/sw.pak');
-ResourceToFile('ta',ProgPath+'resources/cef4/locales/ta.pak');
-ResourceToFile('te',ProgPath+'resources/cef4/locales/te.pak');
-ResourceToFile('th',ProgPath+'resources/cef4/locales/th.pak');
-ResourceToFile('tr',ProgPath+'resources/cef4/locales/tr.pak');
-ResourceToFile('uk',ProgPath+'resources/cef4/locales/uk.pak');
-ResourceToFile('vi',ProgPath+'resources/cef4/locales/vi.pak');
-ResourceToFile('zh-CN',ProgPath+'resources/cef4/locales/zh-CN.pak');
-ResourceToFile('zh-TW',ProgPath+'resources/cef4/locales/zh-TW.pak');
-ResourceToFile('LIBEGLSS',ProgPath+'resources/cef4/swiftshader/libEGL.dll');
-ResourceToFile('LIBGLESSS',ProgPath+'resources/cef4/swiftshader/libGLESv2.dll');
-end;
-{$endif}
-*)
 
 initialization
 
-//{$ifdef Chromium}
-//{$I C:/XcomponentsLaz2/resources/cef4.lrs}
-//{$endif}
   myProjectEvents:=TMyProjectEvents.Create;
 
 end.

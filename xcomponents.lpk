@@ -257,7 +257,7 @@
     </Files>
     <RequiredPkgs Count="6">
       <Item1>
-        <PackageName Value="TurboPowerIPro"/>
+        <PackageName Value="FrameViewer09"/>
       </Item1>
       <Item2>
         <PackageName Value="SynEdit"/>

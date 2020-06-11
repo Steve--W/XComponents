@@ -2311,12 +2311,12 @@ begin
      or ((SourceNode.NodeClass='NV') and (SourceNode.NodeType<>''))
      or (SourceNode.NodeClass = 'SVG') then
      begin
-       //if SourceNode.NodeType='TXForm' then begin asm console.log(SourceNode.NodeName+' setting attribute values'); end; end;
+       if SourceNode.NodeType='TXHTMLText' then begin asm console.log(SourceNode.NodeName+' setting attribute values'); end; end;
        for i:=0 to length(SourceNode.NodeAttributes)-1 do
+       if SourceNode.NodeAttributes[i].AttribName<>'' then
        begin
-         //if SourceNode.NodeType='TXForm' then begin asm console.log(SourceNode.NodeAttributes[i].AttribName+' '+SourceNode.NodeAttributes[i].AttribValue) end; end;
-         //if SourceNode.NodeType='TXTable' then showmessage('call SetAttributeValue for '+SourceNode.NodeName+'.'+SourceNode.NodeAttributes[i].AttribName
-         //                             +' '+SourceNode.NodeAttributes[i].AttribValue);
+         if SourceNode.NodeType='TXHTMLText' then tmp:=SourceNode.NodeName+'.'+SourceNode.NodeAttributes[i].AttribName+' set to '+SourceNode.NodeAttributes[i].AttribValue;
+         if SourceNode.NodeType='TXHTMLText' then asm console.log(tmp); end;
          mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
          mynode.SetAttributeSource(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribSource.InputNodeName,
                                    SourceNode.NodeAttributes[i].AttribSource.InputAttribName);

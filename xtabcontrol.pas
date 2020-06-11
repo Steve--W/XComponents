@@ -1043,7 +1043,8 @@ begin
     {
       // ----------------------------Define the styling to be used for  "TabPage"
          var Styletext='<style type="text/css">';
-         Styletext=Styletext+'div.TabPage { background-color:'+BgColor+'; height:98%; width:100%}';
+//         Styletext=Styletext+'div.TabPage { background-color:'+BgColor+'; height:98%; width:100%}';
+         Styletext=Styletext+'div.TabPage { height:98%; width:100%}';
          Styletext=Styletext+'</style>';
 
       //----------------------------- now append the style declarations to the head of the HTML page

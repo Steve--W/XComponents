@@ -54,25 +54,9 @@ begin
 
 end;
 
-//procedure ShowCompilerConfigPage;
-//begin
-//  LoadData;
-//  CompilerLogForm.Show;
-//  CompilerLogForm.CompilerPages.ActivePageIndex:=1;
-//end;
 
 { TCompilerLogForm }
 
-(*procedure TCompilerLogForm.FormCreate(Sender: TObject);
-begin
-  ProjectCompilerLogMemo:=CompilerLogMemo;
-  LoadConfig;
-//  InitialiseCompilerResources(CompilerLogForm.CompilerConfigXComponentsPath.Text,CompilerLogForm.CompilerConfigLazPath.Text);
-//InitialiseCompilerResources('XIDE',CompilerLogForm.CompilerConfigLazPath.Text);
-//InitialiseCompilerResources('XIDE',ProjectDirectory);
-
-end;
-*)
 
 procedure SetupCompilerLogForm;
 begin
