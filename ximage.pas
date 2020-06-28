@@ -287,7 +287,7 @@ begin
          on e:exception do
            begin
              TImage(myControl).Picture.LoadFromLazarusResource('dfltImage');
-             showmessage('Unable to load specified image file '+AValue);
+             //showmessage('XImage.SetSource Unable to load specified image file '+AValue);
            end;
 
        end;
@@ -308,7 +308,10 @@ begin
        try{
          ob.src=AValue
          }
-             catch(err) { alert(err.message+'  in XImage.SetSource '+AValue);}
+             catch(err) {
+               alert(err.message+'  in XImage.SetSource '+AValue);
+               ob.src='dfltImage.gif';
+               }
          }
        }
 

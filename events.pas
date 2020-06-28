@@ -539,12 +539,6 @@ procedure  handleEvent(MyEventType,nodeID,NameSpace,myValue:string);
 begin
   handleEvent(nil,MyEventType,nodeID,NameSpace,myValue,'');
 end;
-//{$ifndef JScript}
-//procedure  handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue:PChar);
-//begin
-//  handleEvent(e,MyEventType,nodeID,NameSpace,StrPas(myValue),'');
-//end;
-//{$endif}
 
 
 //======================================================================================================

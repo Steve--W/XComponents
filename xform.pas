@@ -46,12 +46,14 @@ private
   function getLeft:integer;
   function getCaption:string;
   function getShowing:string;
+  function getBgColor:TColor;
   procedure SetHeight(AValue:integer);
   procedure SetWidth(AValue:integer);
   procedure SetTop(AValue:integer);
   procedure SetLeft(AValue:integer);
   procedure SetCaption(AValue:string);
   procedure SetShowing(AValue:string);
+  procedure SetBgColor(AValue:TColor);
 public
   {$ifndef JScript}
   myEventTypes:TStringList;
@@ -74,6 +76,7 @@ published
   property Left:Integer read getLeft write SetLeft;
   property Caption:String read getCaption write SetCaption;
   property Showing:String read getShowing write SetShowing;
+  property BgColor:TColor read getBgColor write SetBgColor;
 
   {$ifndef JScript}
   // Events to be visible in Lazarus IDE    **** not working (TXForm as Lazarus component???) ....tbd ****
@@ -86,7 +89,7 @@ end;
 procedure OpenModal(NodeName:string;NameSpace:String='');
 procedure CloseModal(NodeName:string;NameSpace:String='');
 procedure addTheModalBackground(ParentName,WindowId,NodeName,NameSpace:string);
-procedure addaModalContentItem(MyName:string);
+procedure addaModalContentItem(MyName:string;MyNode:TDataNode);
 procedure InitialiseXFormStyles();
 {$endif}
 function InOpenXForms(NodeName,NameSpace:String):integer;
@@ -306,17 +309,19 @@ begin
 end;
 
 //-------------------------- declaration of the Content Items-----------------------------
-procedure addaModalContentItem(MyName:string);
+procedure addaModalContentItem(MyName:string;MyNode:TDataNode);
 var
   ContentName:String;
+  bgColor:String;
 begin
   ContentName:=MyName+'Contents';
+  bgColor:=MyNode.GetAttribute('BgColor',true).AttribValue;
   asm
   try{
   //alert('adding contentitem to '+MyName);
       var HTMLString = ''
       +'  <!-- Form '+MyName+' content -->'
-      +'  <div id="'+ContentName+'" class="modal-content '+MyName+'" > '
+      +'  <div id="'+ContentName+'" class="modal-content '+MyName+'" style="background-color:'+bgColor+'" > '
       +'    <div id="'+MyName+'Caption" ></div> '
       +'  </div>';
 
@@ -428,7 +433,7 @@ begin
   try{
     var wrapperid =  NameSpace+ScreenObjectName;
     $mod.addTheModalBackground(ParentName,wrapperid,ScreenObjectName,NameSpace);
-    $mod.addaModalContentItem(wrapperid);
+    $mod.addaModalContentItem(wrapperid,MyNode);
 
     }catch(err) { alert(err.message+' in XForm.CreateWidget');}
   end;
@@ -562,7 +567,7 @@ begin
     result:=myNode.GetAttribute('Showing',true).AttribValue
   else
     result := 'No';
-  if result='' then result:='No';
+  if (result='') and (self<>MainForm) then result:='No';
 end;
 
 procedure TXForm.SetShowing(AValue:string);
@@ -744,6 +749,39 @@ begin
   {$endif}
 end;
 
+function TXForm.GetBgColor:TColor;
+begin
+  {$ifndef JScript}
+  if myNode<>nil then
+    result:=HexRGBToColor(myNode.GetAttribute('BgColor',true).AttribValue);
+  {$else}
+  result:=GetAttribute('BgColor',true).AttribValue;
+  {$endif}
+end;
+procedure TXForm.SetBgColor(AValue:TColor);
+var str:string;
+begin
+  {$ifndef JScript}
+  if myNode<>nil then
+  begin
+    str:= ColorToHexRGB(AValue);
+    myNode.SetAttributeValue('BgColor',str,'Color');
+  end;
+  Color:=AValue;
+
+  {$else}
+  SetAttributeValue('BgColor',AValue,'Color');
+  asm
+  try {
+    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+    if (ob!=null) {
+      ob.style.backgroundColor = AValue;  }
+    } catch(err) { alert(err.message+'  in XForm.SetBgColor'); }
+  end;
+  {$endif}
+end;
+
+
 begin
   // this is the set of node attributes that each TXForm instance will have.
   AddDefaultAttribute(myDefaultAttribs,'Showing','String','No','',false,false);
@@ -752,6 +790,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'Top','Integer','50','',false);
   AddDefaultAttribute(myDefaultAttribs,'Left','Integer','50','',false);
   AddDefaultAttribute(myDefaultAttribs,'Caption','String','My Title','',false);
+  AddDefaultAttribute(myDefaultAttribs,'BgColor','String','#FFFFFF','',false);
 
   setLength(OpenXForms,0);
   {$ifndef JScript}

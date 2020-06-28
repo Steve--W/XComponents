@@ -1188,21 +1188,12 @@ end;
 function CreateTabSheet(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String): TDataNode;
 var
   ParentName,PageCaption,NodeID,ControlName:string;
-  //OnClickString:String;
 begin
   //showmessage('tabsheet createwidget');
   ControlName:=ParentNode.NodeName;
   ParentName:=NameSpace+MyNode.GetAttribute('ParentName',false).AttribValue+'Contents';
-  //showmessage('parentname='+ParentName);
   PageCaption:=MyNode.GetAttribute('Caption',false).AttribValue;
-  //showmessage('caption='+PageCaption);
   NodeID:=MyNode.NodeName;
-  //showmessage('NodeId='+NodeId);
-
-  //OnClickString:='onclick="event.stopPropagation();pas.XTabControl.ChangeTabPage('''+NodeID+''','''+ParentNode.NodeName+''','''+MyNode.NameSpace+'''); '+
-  //                       'pas.Events.handleEvent(null,''Change'','''+ControlName+''','''+NameSpace+''','''+ScreenObjectName+''');' +
-  //                       'pas.Events.handleEvent(null,''Click'','''+NodeID+''','''+NameSpace+''', ''''); '+
-  //                       '" ';
 
   asm
     try{
@@ -1212,17 +1203,9 @@ begin
     var ButtonsDiv = document.getElementById(ParentName+'Buttons');
     //alert('built ButtonsDiv '+ ParentName+'Buttons');
 
-    //var buttonstring ='<button id="'+wrapperid+'Button" class="'+ParentName+'TabButton" ' +
-//    var buttonstring ='<button id="'+wrapperid+'Button" class="TabButton '+NameSpace+ControlName+'" ' +
-//                             OnClickString +
-//                             ' style="background:rgb(241, 240, 238);border:none" ' +
-//                          '>'+PageCaption+'</button>';
-//    ButtonsDiv.innerHTML = ButtonsDiv.innerHTML + buttonstring;
-
     var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,'TXTabSheet',position);
     wrapper.style.height = '100%';
     wrapper.style.width = '100%';
-   // wrapper.className='TabPage  '+ ParentName;
     wrapper.className='TabPage';
 
     var TabContentDef ="<div id='" +wrapperid+"Contents'  class='vboxNoStretch "+NameSpace+ScreenObjectName+"' style='height:98%; width:100%' ></div>";

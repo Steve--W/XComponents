@@ -1171,6 +1171,8 @@ begin
   tempstr:=myStringReplace(tempstr,EventListdelimiter,'&eldlm;',-1,-1);
   tempstr:=myStringReplace(tempstr,AttribBitsDelimiter,'&abdlm;',-1,-1);
   tempstr:=myStringReplace(tempstr,AttribLinkDelimiter,'&akdlm;',-1,-1);
+  tempstr:=myStringReplace(tempstr,'https:','&hhttppss;',-1,-1);
+  tempstr:=myStringReplace(tempstr,'http:','&hhttpp;',-1,-1);
   result:=tempstr;
 end;
 function UnSubstituteSpecials(instring:string):string;
@@ -1192,6 +1194,8 @@ begin
   tempstr:=myStringReplace(tempstr,'&eldlm;',EventListdelimiter,-1,-1);
   tempstr:=myStringReplace(tempstr,'&abdlm;',AttribBitsDelimiter,-1,-1);
   tempstr:=myStringReplace(tempstr,'&akdlm;',AttribLinkDelimiter,-1,-1);
+  tempstr:=myStringReplace(tempstr,'&hhttppss;','https:',-1,-1);
+  tempstr:=myStringReplace(tempstr,'&hhttpp;','http:',-1,-1);
   result:=tempstr;
 end;
 
@@ -1250,10 +1254,10 @@ function NodeTreeToXML(CurrentItem,ParentNode:TDataNode;DynamicOnly,QuotedString
 // Recursive
 var
   XMLString,ParentName:String;
-  i,j,numchildren,numAttributes,numEvents:integer;
+  i,numchildren,numAttributes,numEvents:integer;
   CurrentChildNodes:TChildNodesArray;
   myAttribs:TNodeAttributesArray;
-  InputsString,AQuote1,AQuote2:string;
+  AQuote1,AQuote2:string;
   DfltAttrib:TDefaultAttribute;
 begin
   XMLString:='';
@@ -1284,17 +1288,14 @@ begin
   // special case (for XIDE) include the set of composites in the resources tree
   or ((CurrentItem.NodeType='TXComposite') and (CurrentItem.NodeClass='RUI'))
   or ((CurrentItem.NodeName='Composites') and (CurrentItem.NodeClass='RUI'))
-//  or ((CurrentItem.NodeName='UIComponents') and (CurrentItem.NodeClass='RUI'))
-//  or ((CurrentItem.NodeName='ResourceRoot') and (CurrentItem.NodeClass='ResourceRoot'))
   )
   and (CurrentItem.NodeName<>'XGPUCodeEditorForm')
   and (CurrentItem.NodeName<>'PasteDialog')
   and (CurrentItem.NodeName<>'CompilerLogForm')then
   begin
-    if ((CurrentItem.IsDynamic = true) or (DynamicOnly=false))
-      and (CurrentItem.NodeName<>'Composites')
-//      and (CurrentItem.NodeName<>'UIComponents')
-//      and (CurrentItem.NodeName<>'ResourceRoot')
+    if ((CurrentItem.IsDynamic = true)
+      or ((DynamicOnly=false) and (CurrentItem.NameSpace='')))
+    and (CurrentItem.NodeName<>'Composites')
     then
     begin
       XMLString:=AQuote2 + LineEnding + AQuote1 + StartXMLString+CurrentItem.NodeType+attributeListdelimiter;
@@ -1353,7 +1354,6 @@ begin
                            + CurrentItem.myEventTypes[i]
                            + AttribBitsDelimiter+SubstituteSpecials(trim(CurrentItem.myEventHandlers[i].TheCode))
                            + AttribBitsDelimiter+SubstituteSpecials(trim(CurrentItem.myEventHandlers[i].InitCode))
-                        //   + InputsString
                            + attributeListdelimiter;
         end;
       end;
@@ -1797,10 +1797,13 @@ function CopyEventHandlers(myNode,SourceNode:TDataNode;AddIfMissing:Boolean):boo
 var
   i,j,k:integer;
   ok:Boolean;
-  //myEventHandlers:TEventHandlers;
 begin
   if myNode<>nil then
   begin
+    if length(SourceNode.myEventHandlers) < SourceNode.myEventTypes.Count then
+    for i:=length(SourceNode.myEventHandlers) to SourceNode.myEventTypes.Count-1 do
+      SourceNode.AddEvent(SourceNode.myEventTypes[i],'','');
+
     setlength(myNode.myEventHandlers,mynode.myEventTypes.Count);
     for i:=0 to SourceNode.myEventTypes.Count-1 do
     begin
@@ -1826,21 +1829,6 @@ begin
       end;
     end;
 
-//    myEventHandlers:=SourceNode.myEventHandlers;
-//    if (length(myEventHandlers) = mynode.myEventTypes.Count)
-//    begin
-//      ok:=true;
-//      setlength(myNode.myEventHandlers,mynode.myEventTypes.Count);
-//      for i:=0 to length(myEventHandlers)-1 do
-//      begin
-//        if trim(myEventHandlers[i].TheCode)<>'' then
-//        begin
-//          mynode.myEventHandlers[i].TheCode:=myEventHandlers[i].TheCode;
-//          mynode.myEventHandlers[i].InitCode:=myEventHandlers[i].InitCode;
-//        end;
-//      end;
-//    end
-//    else  ok:=false;
     result:=ok;
   end
   else
@@ -1958,11 +1946,12 @@ begin
     AttribBits :=  stringsplit(attributeList[i],AttribBitsDelimiter);
     anm:=TrimWhiteSpace(AttribBits[0]);
     // if this attribute is not listed in defaults for this nodetype, then ignore it. (unless it's a composite)
-    if (IsADefaultAttrib(NodeType,anm))
+    if ((IsADefaultAttrib(NodeType,anm))
     or (NodeType='TXComposite')
     or (NodeType='TXCompositeIntf')
     or (NodeType='TXForm')
-    or (NodeClass<>'UI') then
+    or (NodeClass<>'UI'))
+    and (AttribBits.Count>3) then
     begin
       j:=j+1;
       myAttribs[j].AttribName:=anm;
@@ -2102,6 +2091,11 @@ begin
    end;
 
    //showmessage(ScreenObjectType+' '+NodeClass+' '+ScreenObjectName);
+   if ScreenObjectType='TXIFrame' then
+   begin
+     ScreenObjectType:='';
+     ScreenObjectType:='TXIFrame';
+   end;
 
    if (NodeClass <> 'Root') then                     // these already exist
    begin
@@ -2267,7 +2261,8 @@ begin
        if myNode.IsDynamic then
        begin
          myNode.myEventTypes:=SourceNode.myEventTypes;
-         ok:=CopyEventHandlers(myNode,SourceNode,(ScreenObjectType='TXCompositeIntf'));
+         //ok:=CopyEventHandlers(myNode,SourceNode,(ScreenObjectType='TXCompositeIntf'));
+         ok:=CopyEventHandlers(myNode,SourceNode,true);
          if ok=false then
            showmessage('Component '+mynode.NodeName+' has mismatched event types - check user events code');
        end;
@@ -2294,7 +2289,6 @@ begin
            else
              myNode.myEventHandlers:=SourceNode.myEventHandlers;
          end;
-//         if myDynamicWrapper<>nil then showmessage('AddComponentFromXML created dynamic node '+myNode.NodeName);
          if mynode=nil then showmessage('mynode is nil in addComponentFromXML');
        end
        else if (SourceNode.NodeClass='Code')
@@ -2311,17 +2305,13 @@ begin
      or ((SourceNode.NodeClass='NV') and (SourceNode.NodeType<>''))
      or (SourceNode.NodeClass = 'SVG') then
      begin
-       if SourceNode.NodeType='TXHTMLText' then begin asm console.log(SourceNode.NodeName+' setting attribute values'); end; end;
        for i:=0 to length(SourceNode.NodeAttributes)-1 do
        if SourceNode.NodeAttributes[i].AttribName<>'' then
        begin
-         if SourceNode.NodeType='TXHTMLText' then tmp:=SourceNode.NodeName+'.'+SourceNode.NodeAttributes[i].AttribName+' set to '+SourceNode.NodeAttributes[i].AttribValue;
-         if SourceNode.NodeType='TXHTMLText' then asm console.log(tmp); end;
          mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
          mynode.SetAttributeSource(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribSource.InputNodeName,
                                    SourceNode.NodeAttributes[i].AttribSource.InputAttribName);
        end;
-       //if SourceNode.NodeType='TXTable' then showmessage('done attributes.  Name='+MyNode.NameSpace+'.'+MyNode.NodeName);
        if MainForm<>nil then
          mf:=MainForm.Name
        else
@@ -2333,10 +2323,10 @@ begin
            // object may already exist if this is a system re-load, so delete the old one.
            var ob = document.getElementById(NewNameSpace+ScreenObjectName);
            if (ob!=null) {
-              //alert('looking for inner component of parent '+ParentNode.NodeName);
-              var Parent = pas.HTMLUtils.ScreenObjectInnerComponent(ParentNode);
+             //alert('looking for inner component of parent '+ParentNode.NodeName);
+             var Parent = pas.HTMLUtils.ScreenObjectInnerComponent(ParentNode);
              if (Parent!=null) {
-     //          alert('removing object '+NewNameSpace+ScreenObjectName+' while loading '+XMLString);
+                console.log('removing object '+NewNameSpace+ScreenObjectName+' while loading '+XMLString);
                 pos=Array.from(ob.parentNode.children).indexOf(ob);
                 Parent.removeChild(ob); }
            }
@@ -2344,11 +2334,8 @@ begin
        end;
        if myNode=nil then showmessage('oops no node '+SourceNode.NodeType+' '+SourceNode.NameSpace+':'+SourceNode.NodeName);
        // Create a screen object by running the registered instantiation function for the node type
-       //if myNode.NodeType='TXForm' then showmessage('calling widget func');
        fn:=LookupComponentFunc(SourceNode.NodeType);
-       //if myNode.NodeType='TXForm' then showmessage('calling fn for: '+SourceNode.NodeType+' '+NewNameSpace+'.'+SourceNode.NodeName);
        fn(myNode,ParentNode,SourceNode.NodeName,NewNameSpace,pos,'Left');        //!! set initial alignment from source?
-       //if myNode.NodeType='TXForm' then showmessage('fn done');
      end;
 
      if myNode.HasAttribute('SuspendRefresh') then
@@ -2621,6 +2608,7 @@ begin
     myNode.SetAttributeValue('Height',inttostr(myForm.Height));
     myNode.SetAttributeValue('Width',inttostr(myForm.Width));
     myNode.SetAttributeValue('Caption',myForm.Caption);
+    myNode.SetAttributeValue('BgColor',ColorToHexRGB(myForm.Color));
   end;
   {$else}
   SetLength(TXForm(myForm).ChildNodes,0) ;

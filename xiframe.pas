@@ -990,7 +990,8 @@ end;
     begin
       {$IFndef JScript}
         {$ifdef Chromium}
-        if (myChromium<>nil) and (myChromium.Browser<>nil) then
+        if (myChromium<>nil)
+        and (myChromium.Browser<>nil) then
         begin
           tmp:=myChromium.Browser.MainFrame.GetUrl;
           myChromium.Browser.MainFrame.LoadString(DataString, 'data:text/html');        //wobble??
@@ -1140,6 +1141,8 @@ begin
 // http://www.bbc.co.uk/news/embed/
 end;
 procedure TXIFrame.SetSuspendRefresh(AValue: Boolean);
+var
+  tmp:String;
 begin
   if (myNode<>nil)
   {$ifndef JScript}
@@ -1152,7 +1155,13 @@ begin
       {$ifndef JScript}
       if (not (csLoading in componentState))
       and (not (csDesigning in componentState))
+      and (self.myNode.MyForm<>nil) then
+        tmp:=TXForm(self.myNode.MyForm).Showing;
+
+      if (not (csLoading in componentState))
+      and (not (csDesigning in componentState))
       // if the frame is on a visible form...
+      and (self.myNode.MyForm<>nil)
       and (TXForm(self.myNode.MyForm).Showing <> 'No') then
       {$endif}
         self.RedisplayFrame;

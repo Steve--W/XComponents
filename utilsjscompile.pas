@@ -25,6 +25,8 @@ uses
   {$endif}
 
 
+  function BuildHTMLHead(ProgramName,docTitle,DeployMode,JSString:String):String;
+  function BuildHTMLBody:String;
 {$ifndef JScript}
 procedure AddRequiredFile(ResourceName,ResourcePath:String);
 procedure InitialiseCompilerResources(ProgramName,ProgPath:string);
@@ -62,10 +64,74 @@ var
 
 
 implementation
+uses NodeUtils
 {$ifndef JScript}
-uses LazsUtils, NodeUtils;
+,LazsUtils
 {$endif}
+;
 
+function BuildHTMLHead(ProgramName,docTitle,DeployMode,JSString:String):String;
+var
+  BatchString,IFrameMessageHandler:String;
+begin
+  IFrameMessageHandler:='  window.addEventListener("message", function(ev) { '+Lineending
+                  + 'if (ev.data.objid==undefined) { '  +LineEnding
+                  + '    pas.XSVGContainer.HandleMessage(ev.data); } '+lineEnding   // svg titlechange
+                  + 'else { '+lineEnding
+                  + '  if (ev.data.mtype=="titleChange") { '+lineEnding
+                  + '    pas.XHTMLEditor.HandleTXHTMLMessage(ev.data);  '+lineEnding   // htmleditor text change
+                  + '   } '
+                  + '} });'  +LineEnding;
+
+  BatchString:=BatchString
+    +'  <head >'  +LineEnding
+    +'   <meta charset="utf-8"> '  +LineEnding
+    +'   <title>'+docTitle+'</title>'  +LineEnding
+    +'    <!_ load the javascript libraries _>'  +LineEnding;
+
+    BatchString:=BatchString+'<div id="ProjectCodeContainer">'+JSString+'</div>';
+
+    BatchString:=BatchString + '<script type="application/javascript" >'+LineEnding;
+    Batchstring:=BatchString + '/*Deployment1*/var myDeployedMode = '''+DeployMode+''';/*Deployment2*/'+LineEnding;
+    BatchString:=BatchString+'</script>' +LineEnding
+
+    +'    <style> html {height: 100%;} ' +LineEnding
+    +'            body { height:100%; min-height: 100%;} ' +LineEnding
+    +'    </style>' +LineEnding
+    +'    <style>  '  +LineEnding
+    +'       @keyframes fadeIn { from { opacity: 0; }}  '  +LineEnding
+    +'       .highlight-border { border:dashed 3px green !important; outline:none !important;}'  +LineEnding
+    +'       .normal-border { border:solid 1px gray; outline:none;}'  +LineEnding
+    +'       .no-border { border:none 1px gray; outline:none;}'  +LineEnding
+    +'    </style>  '  +LineEnding
+    +AdditionalScript  +LineEnding
+    +'<script > '  +LineEnding
+    +'function  StartupCode(){ ' +LineEnding
+    +'  try{'  +LineEnding
+    +'    rtl.run("'+ProgramName+'"); ' +LineEnding
+    +'    pas.'+ProgramName+'.InitialisePage();'  +LineEnding
+    +IFrameMessageHandler
+    +'  }catch(err) {alert("Error in StartupCode ---"+err.message);}; '  +LineEnding
+    +'};  '   +LineEnding
+    +'</script>  '   +LineEnding
+    +'</head> '  +LineEnding;
+
+    result:=BatchString;
+end;
+
+function BuildHTMLBody:String;
+begin
+  result:=
+  '<body style="margin:0px; font:normal 12px Verdana, Arial, sans-serif;"'
+  +'        onload = " StartupCode();" ' +LineEnding
+  +'> '  +LineEnding
+  +'  <div  id = "'+NodeUtils.SystemRootName+'" class="vbox" style="height:100%; width:100%;top:0px;left:0px; position:relative; z-index:0;"> '  +LineEnding
+  +'    <div  id = "'+MainForm.Name+'" class="vbox" style="height:100%; width:100%;top:0px;left:0px"> '  +LineEnding
+  +'    </div> '  +LineEnding
+  +'  </div> '  +LineEnding
+  +'</body>'   +LineEnding
+  +'</html> ' +LineEnding  ;
+end;
 
 {$ifndef JScript}
 procedure TMyCompilerObj.DoLogForEvents(Sender: TObject; const Msg: String);
@@ -331,14 +397,6 @@ function CreateHTMLWrapper(ProgramName,DeployMode:String; embedJS:Boolean; JSStr
 var
   BatchString,IFrameMessageHandler,docTitle:String;
 begin
-  IFrameMessageHandler:='  window.addEventListener("message", function(ev) { '+Lineending
-                  + 'if (ev.data.objid==undefined) { '  +LineEnding
-                  + '    pas.XSVGContainer.HandleMessage(ev.data); } '+lineEnding   // svg titlechange
-                  + 'else { '+lineEnding
-                  + '  if (ev.data.mtype=="titleChange") { '+lineEnding
-                  + '    pas.XHTMLEditor.HandleTXHTMLMessage(ev.data);  '+lineEnding   // htmleditor text change
-                  + '   } '
-                  + '} });'  +LineEnding;
 
 //  AsyncDelayFunc:=
 //  'function asyncDelay(fn,msec,...args) {  '  +LineEnding
@@ -362,53 +420,11 @@ begin
     docTitle:=ProgramName;
 
   BatchString:= '<!DOCTYPE HTML>'  +LineEnding
-    +'<html  lang="en">'  +LineEnding
-    +'  <head >'  +LineEnding
-    +'   <meta charset="utf-8"> '  +LineEnding
-    +'   <title>'+docTitle+'</title>'  +LineEnding
-    +'    <!_ load the javascript libraries _>'  +LineEnding;
+    +'<html  lang="en">'  +LineEnding;
 
+  BatchString:=BatchString + BuildHTMLHead(ProgramName,docTitle,DeployMode,JSString);
+  BatchString:=BatchString + BuildHTMLBody;
 
-//    if embedJS then
-//      BatchString:=BatchString+'>'+JSString
-//    else
-//      BatchString:=BatchString+' src="'+ProgramName+'.js">';
-
-    BatchString:=BatchString+JSString;
-
-    BatchString:=BatchString + '<script type="application/javascript" >'+LineEnding;
-    Batchstring:=BatchString + '/*Deployment1*/var myDeployedMode = '''+DeployMode+''';/*Deployment2*/'+LineEnding;
-    BatchString:=BatchString+'</script>' +LineEnding
-
-    +'    <Style> html {height: 100%;} ' +LineEnding
-    +'            body { height:100%; min-height: 100%;} ' +LineEnding
-    +'    </Style>' +LineEnding
-    +'    <Style>  '  +LineEnding
-    +'       @keyframes fadeIn { from { opacity: 0; }}  '  +LineEnding
-    +'       .highlight-border { border:dashed 3px green !important; outline:none !important;}'  +LineEnding
-    +'       .normal-border { border:solid 1px gray; outline:none;}'  +LineEnding
-    +'       .no-border { border:none 1px gray; outline:none;}'  +LineEnding
-    +'    </Style>  '  +LineEnding
-    +AdditionalScript  +LineEnding
-    +'<script > '  +LineEnding
-    +'function  StartupCode(){ ' +LineEnding
-    +'  try{'  +LineEnding
-    +'    rtl.run("'+ProgramName+'"); ' +LineEnding
-    +'    pas.'+ProgramName+'.InitialisePage();'  +LineEnding
-    +IFrameMessageHandler
-    +'  }catch(err) {alert("Error in StartupCode ---"+err.message);}; '  +LineEnding
-    +'};  '   +LineEnding
-    +'</script>  '   +LineEnding
-    +'</head> '  +LineEnding
-    +'<body style="margin:0px; font:normal 12px Verdana, Arial, sans-serif;"'
-    +'        onload = " StartupCode();" ' +LineEnding
-    +'> '  +LineEnding
-    +'  <div  id = "'+SystemRootName+'" class="vbox" style="height:100%; width:100%;top:0px;left:0px; position:relative; z-index:0;"> '  +LineEnding
-    +'    <div  id = "'+MainForm.Name+'" class="vbox" style="height:100%; width:100%;top:0px;left:0px"> '  +LineEnding
-    +'    </div> '  +LineEnding
-    +'  </div> '  +LineEnding
-    +'</body>'   +LineEnding
-    +'</html> ' +LineEnding  ;
 
   result:=batchstring;
 end;
@@ -437,14 +453,14 @@ begin
 
 
     // if the JS file exists, run the html file on browser...
-    if FileExists(ProjectDirectory+ProgramName+'.js') then
+    if FileExists(ProjectDirectory+ProgramName+'.js') then      // transpiled project code, plus pas2js rtl
     begin
       TheLines.Clear;
       TheLines.LoadFromFile(ProjectDirectory+ProgramName+'.js');
       TheLines.insert(0,'    <script type="application/javascript" >');
       TheLines.add('   </script>  ');
 
-      if ExtraHTML<>nil then
+      if ExtraHTML<>nil then                             // eg. pyodide load script
         for i:=0 to ExtraHTML.Count-1 do
           TheLines.insert(i,ExtraHTML[i]);
 
