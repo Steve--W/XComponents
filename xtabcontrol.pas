@@ -28,7 +28,7 @@ uses
   WrapperPanel;
 
 {$ifdef JScript}
-procedure ChangeTabPage(nodeId,parentNodeId,NameSpace:string);
+procedure ChangeTabPage(nodeId,parentNodeId,NameSpace:string;TabNode:TDataNode=nil);
 {$endif}
 
 {$ifndef JScript}
@@ -568,9 +568,13 @@ begin
        exit;
      end;
      MyTabControl:=TPageControl(Sender);
-     //CallHandleEvent('Change',IntToStr(MyTabControl.TabIndex),Sender);
      TabID:=MyTabControl.ActivePage.Name;
-     //CallHandleEvent('Change',IntToStr(MyTabControl.TabIndex),Sender);
+
+     if (self.Visible) then
+       // nudge the parent to resize contents
+       ResizeMe(self.myNode);
+
+
      CallHandleEvent('Change',TabID,Sender);
 
      // do a Component Click event as well        //!!!! why?
@@ -1045,6 +1049,18 @@ begin
          var Styletext='<style type="text/css">';
 //         Styletext=Styletext+'div.TabPage { background-color:'+BgColor+'; height:98%; width:100%}';
          Styletext=Styletext+'div.TabPage { height:98%; width:100%}';
+         Styletext=Styletext+
+         '.TabButton { '
+             +' font-size: inherit;'
+             +' color: inherit;'
+             +' font-style: inherit;'
+             +' font-family: inherit;'
+             +' background: #d1d0ce;'     //'not selected' color
+             +' }'
+          +'.TabButton:focus { '
+             +' border-bottom: none; '
+             +' outline: none;'
+             +' }'
          Styletext=Styletext+'</style>';
 
       //----------------------------- now append the style declarations to the head of the HTML page
@@ -1090,41 +1106,41 @@ begin
   result:=myNode;
 end;
 
-procedure openTab(TabName,TabControlName,NameSpace:string);
+procedure openTab(TabName,TabControlName,NameSpace:string;PageNode:TDataNode);
 var
   myNode, ControlNode:TdataNode;
   siblingpos:Integer;
-  tabId,tcId:String;
+  tabId,tcId,bgColor:String;
 begin
+  MyNode:=PageNode;
+  bgColor:=MyNode.GetAttribute('BgColor',true).AttribValue;
   tabId:=NameSpace+TabName;
   tcId:=NameSpace+TabControlName;
   asm
   try{
-      //alert('openTab. tabid='+tabId);
       var butsdiv=document.getElementById(tcId+'ContentsButtons');
-      //alert('butsdiv='+butsdiv);
       var tabsdiv=document.getElementById(tcId+'Contents');
-      //alert('tabsdiv='+tabsdiv);
 
       var i;
       //alert('OpenTab  TabControl='+NameSpace+TabControlName+' tabId='+tabId);
 
       var x = tabsdiv.getElementsByClassName('TabPage');
       if (x==null) {alert('cannot find element by class name TabPage');}
+      else {
       for (i = 0; i < x.length; i++) {
          //alert('hiding '+x[i].id);
          x[i].style.display = "none";
-      }
+      } }
 
       var y = butsdiv.getElementsByClassName('TabButton');
 
       if (y==null) {alert('cannot find element by class name TabButton');}
+      else {
       for (i = 0; i <y.length; i++) {
          y[i].style.background ='#d1d0ce';// dark background when not selected
-         y[i].style.border= 'none';
-      }
+         y[i].style.border = '1px solid black';
+      } }
 
-      //alert('showing '+tabId);
       var selectedTab = document.getElementById(tabId);
       selectedTab.style.display = "block";
       var selectedTab = document.getElementById(tabId+'Contents');
@@ -1132,12 +1148,16 @@ begin
 
       var selectedTabButton = document.getElementById(tabId+'Button');
       if (selectedTabButton==null) {alert('cannot find element by name '+TabName+'Button');}
-      selectedTabButton.style.background = '#f1f0ee'; // Same background color as the tab page when selected
+      else {
+        selectedTabButton.style.background = bgColor; // Same background color as the tab page when selected
+        selectedTabButton.style.borderBottom = 'none';
+      }
 
       } catch(err) {alert('Error in XTabControl.OpenTab '+ err.message);}
   end;
 
-  myNode:=findDataNodeById(SystemNodetree,TabName,NameSpace,true);
+  if MyNode=nil then
+    myNode:=findDataNodeById(SystemNodetree,TabName,NameSpace,true);
   if myNode<>nil then
   begin
     ControlNode:=FindParentOfNodeByName(SystemNodeTree,TabName,NameSpace,true,siblingpos);
@@ -1146,12 +1166,18 @@ begin
       TXTabControl(ControlNode).TabIndex:=siblingpos;
     //showmessage('Tabindex='+intToStr(TXTabControl(ControlNode).TabIndex));
   end;
+  ResetAllRenderedCombos(MyNode);
 end;
 
-procedure ChangeTabPage(nodeId,parentNodeId,NameSpace:string);
+procedure ChangeTabPage(nodeId,parentNodeId,NameSpace:string;TabNode:TDataNode=nil);
+var
+  PageNode:TDataNode;
 begin
  //   showmessage('calling openTab('+NodeId+','+parentNodeId+')'+','+NameSpace);
-    openTab(NodeId,parentNodeId,NameSpace);
+  PageNode:=TabNode;
+  if PageNode=nil then
+    PageNode:=FindDataNodeById(SystemNodeTree,nodeId,NameSpace,true);
+  openTab(NodeId,parentNodeId,NameSpace,PageNode);
 end;
 
 procedure RebuildButtons(TCNode:TdataNode);
@@ -1165,7 +1191,8 @@ begin
   begin
     thisTab:=TCNode.ChildNodes[i];
     cap:=thisTab.GetAttribute('Caption',false).AttribValue;
-    OnClickString:='onclick="event.stopPropagation();pas.XTabControl.ChangeTabPage('''+thisTab.NodeName+''','''+TCNode.NodeName+''','''+thisTab.NameSpace+'''); '+
+    OnClickString:='onclick="event.stopPropagation();'+
+                         'pas.XTabControl.ChangeTabPage('''+thisTab.NodeName+''','''+TCNode.NodeName+''','''+thisTab.NameSpace+''',null); '+
                          'pas.Events.handleEvent(null,''Change'','''+TCNode.NodeName+''','''+thisTab.NameSpace+''','''+thisTab.NodeName+''');' +
                          'pas.Events.handleEvent(null,''Click'','''+thisTab.NodeName+''','''+thisTab.NameSpace+''', ''''); '+
                          '" ';
@@ -1269,7 +1296,7 @@ begin
       //showmessage('calling openTab('+self.NodeName+','+intToStr(idx)+')');
       // find the name of the required tab sheet...
       myTabSheetNode:=myNode.ChildNodes[idx].NodeName;
-      openTab(myTabSheetNode,self.NodeName,self.NameSpace);
+      openTab(myTabSheetNode,self.NodeName,self.NameSpace,myNode.ChildNodes[idx]);
     end;
     {$endif}
 

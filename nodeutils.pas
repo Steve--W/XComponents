@@ -173,6 +173,13 @@ type TAttribOptionsRec = record
 end;
 type TAttribOptionsArray = array of TAttribOptionsRec;
 
+type TExclusionAttrib = record
+  NodeType : string;
+  AttribName : string;
+  TargetAttrib:String;
+end;
+type TExclusionAttribs = array of TExclusionAttrib;
+
 {$ifdef JScript}
 type TInterfaceObject = class(TDataNode)
 private
@@ -196,6 +203,7 @@ function IsADefaultAttrib(NodeType,AttrName:String):Boolean;
 procedure AddDefaultAttribs(myComponent:TObject;NewNode:TDataNode;defaultAttribs:TDefaultAttributesArray);
 procedure AddDefaultAttribute(var Attribs:TDefaultAttributesArray;AttrName,AttrType,AttrValue,AttrHint:String; ro:Boolean);
 procedure AddDefaultAttribute(var Attribs:TDefaultAttributesArray;AttrName,AttrType,AttrValue,AttrHint:String; ro,incl:Boolean);
+procedure AddExclusionAttribToTable(NodeType,AttribName,TargetAttrib:String);
 procedure AddAttrib(var AttrParams:TNodeAttributesArray;attrName,attrType,attrValue:string;attrReadOnly:Boolean);
 procedure AddChildToParentNode(var ParentNode, ChildNode:TDataNode; position:integer);
 function StringToCodeInputs(InputString:String):TCodeInputs;
@@ -288,6 +296,7 @@ AttribOptionsArray:TAttribOptionsArray;
 ProjectDirectory:String;
 DefaultAttribsByType:TDefaultAttribsTable;
 SourcedAttribs:array of  TSourcedAttrib;
+ExclusionAttribs:TExclusionAttribs;
 
 //var
 //debugfind:Boolean;
@@ -577,6 +586,14 @@ begin
   AddDefaultAttribute(Attribs,AttrName,AttrType,AttrValue,AttrHint,ro,true);
 end;
 
+procedure AddExclusionAttribToTable(NodeType,AttribName,TargetAttrib:String);
+begin
+  SetLength(ExclusionAttribs,length(ExclusionAttribs)+1);
+  ExclusionAttribs[length(ExclusionAttribs)-1].NodeType:=NodeType;
+  ExclusionAttribs[length(ExclusionAttribs)-1].AttribName:=AttribName;
+  ExclusionAttribs[length(ExclusionAttribs)-1].TargetAttrib:=TargetAttrib;
+end;
+
 procedure TDataNode.AddAttribute(AttributeName,AttributeType,AttributeValue:string;AttributeReadOnly:boolean);
 var
   numAttributes:Integer;
@@ -840,9 +857,9 @@ begin
   begin
     if defaultAttribs[i].AttribReadOnly=false then
     begin
-      {$ifndef JScript}
-      if NewNode.NodeType='TXIFrame' then debugln('AddDefaultAttribs '+defaultAttribs[i].AttribName+' '+defaultAttribs[i].AttribValue);
-      {$endif}
+      //{$ifndef JScript}
+      //if NewNode.NodeType='TXIFrame' then debugln('AddDefaultAttribs '+defaultAttribs[i].AttribName+' '+defaultAttribs[i].AttribValue);
+      //{$endif}
       SetXObjectProperty(myComponent,NewNode,defaultAttribs[i].AttribName,defaultAttribs[i].AttribType,defaultAttribs[i].AttribValue);
     end;
   end;
@@ -892,7 +909,6 @@ procedure CreateComponentDataNode2(myComponent:TObject;myType:String; defaultAtt
 var
   NewNode:TDataNode;
 begin
-  if myType='TXIFrame' then debugln('CreateComponentDataNode2 1');
   NewNode:=TDataNode.Create('UI','','',myType,false);       // name is set later
   NewNode.ScreenObject:=myComponent;
   NewNode.myEventTypes:=eventTypes;
@@ -900,17 +916,13 @@ begin
   NewNode.MyForm:=TForm(myOwner);
   NewNode.IsDynamic:=IsDynamic;
 
-  if myType='TXIFrame' then debugln('CreateComponentDataNode2 2');
   SetObjectProp(myComponent,'myNode',NewNode);
 
-  if myType='TXIFrame' then debugln('CreateComponentDataNode2 3');
   AddDefaultAttribs(myComponent,NewNode,defaultAttribs);
 
-  if myType='TXIFrame' then debugln('CreateComponentDataNode2 4');
   // temporarily set as child of root node, so that name uniqueness checks can be done during design
   AddChildToParentNode(SystemNodetree,NewNode,-1);
 
-  if myType='TXIFrame' then debugln('CreateComponentDataNode2 done');
 end;
 
 {$else}
@@ -930,8 +942,6 @@ begin
     begin
       SetXObjectProperty(myComponent,myComponent,myComponent.NodeAttributes[i].AttribName,
                          myComponent.NodeAttributes[i].AttribType,myComponent.NodeAttributes[i].AttribValue);
-      //if myComponent.NodeType='TXForm' then showmessage('Refresh done prop '+myComponent.NodeAttributes[i].AttribName
-      //                                                   +' '+myComponent.NodeAttributes[i].AttribValue);
     end;
   end;
 end;
@@ -1156,14 +1166,38 @@ var
   tempstr:string;
 begin
   tempstr:=instring;
+  tempstr:=myStringReplace(tempstr,LineEnding,'&crlf;',-1,-1);
+  tempstr:=myStringReplace(tempstr,chr(10),'&crlf;',-1,-1);
   tempstr:=myStringReplace(tempstr,'<','&lt;',-1,-1);
   tempstr:=myStringReplace(tempstr,'>','&gt;',-1,-1);
   tempstr:=myStringReplace(tempstr,'''','&apos;',-1,-1);
   tempstr:=myStringReplace(tempstr,'"','&quot;',-1,-1);
   tempstr:=myStringReplace(tempstr,'\n','&bksln;',-1,-1);
   tempstr:=myStringReplace(tempstr,'\','&bksl;',-1,-1);
+  tempstr:=myStringReplace(tempstr,EventAttributeDelimiter,'&eadlm;',-1,-1);
+  tempstr:=myStringReplace(tempstr,EventListdelimiter,'&eldlm;',-1,-1);
+  tempstr:=myStringReplace(tempstr,delimiterBetweenAttribsAndEvents,'&aedlm;',-1,-1);
+  tempstr:=myStringReplace(tempstr,attributeListdelimiter,'&aldlm;',-1,-1);
+  tempstr:=myStringReplace(tempstr,EventListdelimiter,'&eldlm;',-1,-1);
+  tempstr:=myStringReplace(tempstr,AttribBitsDelimiter,'&abdlm;',-1,-1);
+  tempstr:=myStringReplace(tempstr,AttribLinkDelimiter,'&akdlm;',-1,-1);
+  tempstr:=myStringReplace(tempstr,'https:','&hhttppss;',-1,-1);
+  tempstr:=myStringReplace(tempstr,'http:','&hhttpp;',-1,-1);
+  result:=tempstr;
+end;
+function SubstituteSpecials2(instring:string):string;
+var
+  tempstr:string;
+begin
+  tempstr:=instring;
   tempstr:=myStringReplace(tempstr,LineEnding,'&crlf;',-1,-1);
   tempstr:=myStringReplace(tempstr,chr(10),'&crlf;',-1,-1);
+  tempstr:=myStringReplace(tempstr,'<','&lt;',-1,-1);
+  tempstr:=myStringReplace(tempstr,'>','&gt;',-1,-1);
+  tempstr:=myStringReplace(tempstr,'''','&apos;',-1,-1);
+  tempstr:=myStringReplace(tempstr,'"','&quot;',-1,-1);
+  tempstr:=myStringReplace(tempstr,'\n','&bksln;',-1,-1);
+  tempstr:=myStringReplace(tempstr,'\','&bksl;',-1,-1);
   tempstr:=myStringReplace(tempstr,EventAttributeDelimiter,'&eadlm;',-1,-1);
   tempstr:=myStringReplace(tempstr,EventListdelimiter,'&eldlm;',-1,-1);
   tempstr:=myStringReplace(tempstr,delimiterBetweenAttribsAndEvents,'&aedlm;',-1,-1);
@@ -1186,7 +1220,6 @@ begin
   tempstr:=myStringReplace(tempstr,'&quot;','"',-1,-1);
   tempstr:=myStringReplace(tempstr,'&bksln;','\n',-1,-1);
   tempstr:=myStringReplace(tempstr,'&bksl;','\',-1,-1);
-  tempstr:=myStringReplace(tempstr,'&crlf;',LineEnding,-1,-1);
   tempstr:=myStringReplace(tempstr,'&eadlm;',EventAttributeDelimiter,-1,-1);
   tempstr:=myStringReplace(tempstr,'&eldlm;',EventListdelimiter,-1,-1);
   tempstr:=myStringReplace(tempstr,'&aedlm;',delimiterBetweenAttribsAndEvents,-1,-1);
@@ -1196,6 +1229,7 @@ begin
   tempstr:=myStringReplace(tempstr,'&akdlm;',AttribLinkDelimiter,-1,-1);
   tempstr:=myStringReplace(tempstr,'&hhttppss;','https:',-1,-1);
   tempstr:=myStringReplace(tempstr,'&hhttpp;','http:',-1,-1);
+  tempstr:=myStringReplace(tempstr,'&crlf;',LineEnding,-1,-1);
   result:=tempstr;
 end;
 
@@ -1250,6 +1284,24 @@ begin
   result:=InputsString;
 end;
 
+function IsExcluded(ThisNode:TDataNode; ThisAttrib:TNodeAttribute):Boolean;
+var
+  i:integer;
+  incl:Boolean;
+begin
+  result:=false;
+  for i := 0 to length(ExclusionAttribs)-1 do
+  begin
+    if (ExclusionAttribs[i].NodeType = ThisNode.NodeType)
+    and (ExclusionAttribs[i].TargetAttrib = ThisAttrib.AttribName)
+    then
+    begin
+      incl := myStrToBool(ThisNode.GetAttribute(ExclusionAttribs[i].AttribName,false).AttribValue);
+      result:=not incl;
+    end;
+  end;
+end;
+
 function NodeTreeToXML(CurrentItem,ParentNode:TDataNode;DynamicOnly,QuotedString:Boolean):String;
 // Recursive
 var
@@ -1259,7 +1311,9 @@ var
   myAttribs:TNodeAttributesArray;
   AQuote1,AQuote2:string;
   DfltAttrib:TDefaultAttribute;
+  strg:string;
 begin
+
   XMLString:='';
   if CurrentItem.NodeName='ResourceRoot' then
     XMLString:='';
@@ -1298,6 +1352,7 @@ begin
     and (CurrentItem.NodeName<>'Composites')
     then
     begin
+
       XMLString:=AQuote2 + LineEnding + AQuote1 + StartXMLString+CurrentItem.NodeType+attributeListdelimiter;
       XMLString:=XMLString+' Class '+NameValuePairdelimiter + CurrentItem.NodeClass + attributeListdelimiter;
       XMLString:=XMLString+' Name '+NameValuePairdelimiter + CurrentItem.NodeName + attributeListdelimiter;
@@ -1312,9 +1367,10 @@ begin
           DfltAttrib.AttribIncludeInSave:=true;
         if (FindSuppressedProperty(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName)<0)
         and (DfltAttrib.AttribIncludeInSave = true)
-        and ((CurrentItem.NodeType<>'TXTable')
-             or ((CurrentItem.NodeType='TXTable') and (CurrentItem.NodeAttributes[i].AttribName<>'TableData'))
-             or ((CurrentItem.NodeType='TXTable') and (CurrentItem.NodeAttributes[i].AttribName='TableData') and (TXTable(CurrentItem.ScreenObject).IncludeDataInSave=true)))
+        and (IsExcluded(CurrentItem,CurrentItem.NodeAttributes[i]) = false)
+//        and ((CurrentItem.NodeType<>'TXTable')
+//             or ((CurrentItem.NodeType='TXTable') and (CurrentItem.NodeAttributes[i].AttribName<>'TableData'))
+//             or ((CurrentItem.NodeType='TXTable') and (CurrentItem.NodeAttributes[i].AttribName='TableData') and (TXTable(CurrentItem.ScreenObject).IncludeDataInSave=true)))
         and (CurrentItem.NodeAttributes[i].AttribName<>'ParentName')        // is re-generated on load
         and ((CurrentItem.NodeAttributes[i].AttribName<>'XMLString')
              or ((CurrentItem.NodeAttributes[i].AttribName='XMLString') and (CurrentItem.IsDynamic=false))) then
@@ -2143,9 +2199,6 @@ begin
        end;
        EventNames:=TStringList.Create;
        myEventHandlers := EventsFromXML(EventsList,EventNames);
-       //showmessage('eventnames '+inttostr(EventNames.Count)+' handlers '+inttostr(length(myEventHandlers)));
-       //for i:=0 to EventNames.Count-1 do tmp:=tmp+EventNames[i]+':';
-       //showmessage('Root events from XML: '+tmp);
        UpdateEvents(EventNames,myEventHandlers,myNode);
 
      end;
@@ -2184,9 +2237,6 @@ begin
    //showmessage('Building from SourceNode '+SourceNode.NodeType+' '+SourceNode.NameSpace+':'+SourceNode.NodeName);
    if (Not ExpandingComposite)
    or ((SourceNode.NodeType<>'TXMenuItem')
-      //and (SourceNode.NodeType<>'RawUnit')   // deprecated       //!! what to do with code units loaded from composites ????
-      //and (SourceNode.NodeType<>'PasUnit')
-      //and (SourceNode.NodeType<>'PythonScript')
       and (SourceNode.NodeClass<>'RUI')) then
    begin
      ScreenObjectName:=SourceNode.NodeName;
@@ -2255,13 +2305,11 @@ begin
        for i:=0 to length(SourceNode.NodeAttributes)-1 do
          if SourceNode.NodeAttributes[i].AttribReadOnly=false then        //!!!! ? should this be just the 'includeinsave' setting ????
          begin
-           //mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
            EditAttributeValue(myNode,SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);     //!!!! are we doing this twice??
          end;
        if myNode.IsDynamic then
        begin
          myNode.myEventTypes:=SourceNode.myEventTypes;
-         //ok:=CopyEventHandlers(myNode,SourceNode,(ScreenObjectType='TXCompositeIntf'));
          ok:=CopyEventHandlers(myNode,SourceNode,true);
          if ok=false then
            showmessage('Component '+mynode.NodeName+' has mismatched event types - check user events code');

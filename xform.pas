@@ -790,7 +790,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'Top','Integer','50','',false);
   AddDefaultAttribute(myDefaultAttribs,'Left','Integer','50','',false);
   AddDefaultAttribute(myDefaultAttribs,'Caption','String','My Title','',false);
-  AddDefaultAttribute(myDefaultAttribs,'BgColor','String','#FFFFFF','',false);
+  AddDefaultAttribute(myDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
 
   setLength(OpenXForms,0);
   {$ifndef JScript}

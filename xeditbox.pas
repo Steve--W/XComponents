@@ -248,7 +248,7 @@ begin
     var inputtext= ItemValue;
     var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
     var EBoxString = '<input type="'+TypeString+'"  id='+MyObjectName+' ' +
-                     ' class="widgetinner '+wrapperid+'" ' +
+                     ' class="widgetinput '+wrapperid+'" ' +
                           OnPasteString +
                           OnClickString +
                           OnChangeString +
@@ -413,14 +413,20 @@ begin
   begin
   {$ifndef JScript}
   if (not (csDesigning in componentState))
-  and (not (csLoading in componentState)) then
+  and (not (csLoading in componentState))
+  and (self.IsVisible) then
   begin
+    try
     if AValue=true then
       //TEdit(myControl).SetFocus
       self.myNode.MyForm.ActiveControl:=TEdit(myControl)
     else
       //self.SetFocus;
       self.myNode.MyForm.ActiveControl:=self;
+    except
+      on ex:exception do
+        EXIT;
+    end;
   end;
   {$else}
   asm

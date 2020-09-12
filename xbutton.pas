@@ -224,7 +224,7 @@ asm
 
     var typestring="'ButtonClick'";
     HTMLString = '<input type="button" id='+MyObjectName+' class="widgetinner '+wrapperid+'" '+
-                         'style="font-size:inherit; display: inline-block; '+
+                         'style="display: inline-block; '+
 //                                marginString+'" '+
                                 '" '+
     'onclick="event.stopPropagation(); pas.Events.handleEvent(null,'+typestring+','+NodeIDString+', '+NameSpaceString+', '+NodeIDString+');"'+

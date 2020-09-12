@@ -382,7 +382,7 @@ WYSIWYGHEADER.Add('<body style="margin:0px; background-color:'+BgCol+'">');
 WYSIWYGHEADER.Add('');
 WYSIWYGHEADER.Add('<div id="FrameContent" ');
 WYSIWYGHEADER.Add(      'style="overflow:scroll; height:'+inttostr(self.actualHeight)+'px; ">');
-WYSIWYGHEADER.Add('      <div id="thetext" style="height: 100%; width: 100%; border-style: solid;border-width:thin;">');
+WYSIWYGHEADER.Add('      <div id="thetext" style="height: 100%; width: 100%; ">');
 
 WYSIWYGFOOTER.Add('      </div>');
 WYSIWYGFOOTER.Add('    </div>');

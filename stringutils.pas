@@ -135,6 +135,20 @@ begin
   result:=found;
 end;
 
+function CharReplace(Instring,OldChar,NewChar:String):string;
+var i:integer;
+    finalstring:string;
+begin
+  finalstring:='';
+  for i:=1 to Length(Instring) do
+  begin
+    if Instring[i]= OldChar
+    then finalstring:=finalstring+NewChar
+    else finalstring:=finalstring+Instring[i] ;
+  end;
+  result :=  finalstring;
+End;
+
 function CheckMatch(Instring,teststring:string;startpos:integer):boolean;
 var i:integer;
   match:boolean;
@@ -154,20 +168,6 @@ begin
    end;
    result := match;
 end;
-
-function CharReplace(Instring,OldChar,NewChar:String):string;
-var i:integer;
-    finalstring:string;
-begin
-  finalstring:='';
-  for i:=1 to Length(Instring) do
-  begin
-    if Instring[i]= OldChar
-    then finalstring:=finalstring+NewChar
-    else finalstring:=finalstring+Instring[i] ;
-  end;
-  result :=  finalstring;
-End;
 
 function  myStringReplace(Instring,OldString,NewString:String;ReplaceNum,MaxStringLength:integer):String;
 // replaces "ReplaceNum" occurrences of oldstring in the first "MaxStringLength" of Instring --- NB it is case sensitive
@@ -205,6 +205,20 @@ begin
   end;
   result :=  finalstring;
 end;
+
+// !! The following replacement would be nice, but sadly
+// is buggy in the pas2js-converted version.
+// (which uses js functions to do the replace, and it messes up if the search string contains a vertical bar
+//  - because the vertical bar does nasty things to the setup of the RegExp for the search.
+//
+//function  myStringReplace(Instring,OldString,NewString:String;ReplaceNum,MaxStringLength:integer):String;
+//begin
+//  if (ReplaceNum <0) or (ReplaceNum>1) then
+//    result := StringReplace(InString,OldString,NewString,[rfReplaceAll])
+//  else
+//    result := StringReplace(InString,OldString,NewString,[]);     // 1st occurrence only
+//
+//end;
 
 function FoundString(inString,searchString:string):integer;  // find first occurrance of "searchString"
   var

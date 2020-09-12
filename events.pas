@@ -48,10 +48,10 @@ procedure HandleEventLater(e:TEventStatus;EventType,NodeId,NameSpace,MyValue:str
 
 var   EventCode : TEventClass;   // contains event handling procedures
       MyLibC: TLibHandle= dynlibs.NilHandle;
+      ConsoleString:String;
+      ConsoleNode:TDataNode;
 
-{$ifndef JScript}
 var mmi : IInterface;    // type is  IMyMethodInterface
-{$endif}
 
 {$else}
 function FindEventFunction(NameSpace,myName,EventType:string;MyNode:TDataNode;DoBind:Boolean):TObject;
@@ -311,6 +311,13 @@ begin
       m.Data := pointer(MyNode.ScreenObject); //store pointer to object instance  (self of the function)
     TEventHandler(m)(e,myName,myValue);
   end;
+  if (ConsoleString<>'') and (ConsoleNode<>nil) then
+  begin
+    ConsoleString:=ConsoleNode.GetAttribute('ItemValue',false).AttribValue + ConsoleString;
+    EditAttributeValue(ConsoleNode,'ItemValue',PChar(ConsoleString));
+    ConsoleString:='';
+  end;
+
 end;
 {$else}
 function FindEventFunction(NameSpace,myName,EventType:string;MyNode:TDataNode;DoBind:Boolean):TObject;
@@ -325,7 +332,6 @@ begin
 asm
 try {
 //alert('FindEventFunction NS='+NameSpace+' myName='+myName+' MyNode='+MyNode.NameSpace+'.'+MyNode.NodeName);
-
   fn=null;
   var handlerName=NameSpace+myName+'Handle'+EventType;
 
@@ -350,14 +356,12 @@ try {
   // with dynamically added event code (eg. using the XIDE project)
   // in which case look for the event handler in module XIDEMainEvents
     if (NameSpace!='') {UnitName = NameSpace;}
-
-    //alert('FindEventFunction looking in dynamic events unit '+UnitName+' for '+handlerName);
+    //console.log('FindEventFunction looking in dynamic events unit '+UnitName+' for '+handlerName);
     var mdl=pas[UnitName];
     if ((mdl!=null)&&(mdl!=undefined)) {
       //alert('found module '+UnitName);
         fn = mdl[ handlerName];
         if (fn!=null) {
-          //alert('found function '+handlerName);
           if (DoBind) {
           fn = fn.bind(mdl); }    // so that the 'this' context will be preserved
         }
@@ -403,7 +407,6 @@ begin
       // Execute the function, if found....
     if (fn!=null)  {
     fn(e,myName,MyValue);
-     // alert('function done.');
   }
   }catch(err) { alert(err.message+'  in Events.RunComponentEvent '+myName+' '+EventType);}
   end;
@@ -499,11 +502,6 @@ begin
        //asm console.log('handleEvent '+MyEventType+' '+nodeID+' '+NameSpace); end;
        CurrentNode:=FindDataNodeById(SystemNodeTree,nodeID,NameSpace,false);
      {$endif}
-
-     //if CurrentNode=nil then
-     //  ShowMessage('handleEvent.'+MyEventType+'   Cannot find node '+nodeID)
-     //else
-     //  showmessage('node found');
 
     if (CurrentNode<>nil)
     and (MainForm<>nil) then

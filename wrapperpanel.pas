@@ -111,8 +111,8 @@ type TWrapperPanel=Class(TInterfaceObject)
    procedure WrapperClick(Sender: TObject) ;
    {$endif}
  public
-   FIsSelected:Boolean;
-   {$ifndef JScript}
+    FIsSelected:Boolean;
+    {$ifndef JScript}
     myEventTypes:TStringList;
     myLbl:TLabel;
     myExtension:TXDesignerExtension;
@@ -177,8 +177,6 @@ procedure SuppressWrapperDesignerProperties;
 {$endif}
 procedure SuppressDesignerProperty(Classname:String; pName:String);
 function AddDynamicWidget(TypeName:String;ParentForm:TForm;ParentNode:TDataNode;NodeName,NameSpace,Alignment:String;position:integer):TdataNode;
-//procedure SetCommonWrapperProperties(myWrapper:TWrapperPanel);
-//procedure SetCommonWrapperPropDefaults(myWrapper:TWrapperPanel);
 procedure AddWrapperDefaultAttribs(var myDefaultAttribs:TDefaultAttributesArray);
 
 
@@ -244,21 +242,10 @@ begin
       myExtension.myWrapper:=self;
    end;
 
-  // Property linking...
-//  FLink:=TXPropertyLink.Create(Self);
-//  FLink.Filter:=[{tkUnknown,}tkInteger,tkChar,tkEnumeration,
-//                 tkFloat,{tkSet,tkMethod,}tkSString,tkLString,tkAString,
-//                 tkWString,tkVariant,{tkArray,tkRecord,tkInterface,}
-//                 {tkClass,tkObject,}tkWChar,tkBool,tkInt64,
-//                 tkQWord{,tkDynArray,tkInterfaceRaw}];
-//  FLink.Options:=[ploAutoSave];
-//  FLink.OnLoadFromProperty:=@LinkLoadFromProperty;
-//  FLink.OnSaveToProperty:=@LinkSaveToProperty;
 end;
 
 destructor TWrapperPanel.Destroy;
 begin
-//  FreeThenNil(FLink);
   if csDesigning in componentState then
   begin
     GlobalDesignHook.RemoveAllHandlersForObject(Self);
@@ -310,31 +297,6 @@ begin
   CheckParentIsXContainer(self);
   ResetAlignment(TControl(self));
 end;
-
-//procedure TWrapperPanel.SetLink(const AValue: TXPropertyLink);
-//begin
-//  if FLink=AValue then exit;
-//  FLink.Assign(AValue);
-//end;
-
-//procedure TWrapperPanel.LinkLoadFromProperty(Sender: TObject);
-//begin
-//  if Sender=nil then ;
-//  if (Link.Editor=nil) then exit;
-//
-//  //writeln('LinkLoadFromProperty A ',Name,
-//  //  ' FLink.GetAsText=',FLink.GetAsText,' Text=',Text,
-//  //  ' PropName=',FLink.TIPropertyName);
-//  //showmessage('loadfromproperty');
-//
-//  if MyNode<>nil then
-//    myNode.SetAttributeValue('Link',LinkToStr(Link));
-//
-//end;
-//
-//procedure TWrapperPanel.LinkSaveToProperty(Sender: TObject);
-//begin
-//end;
 
 function TLabelPosProperty.GetAttributes: TPropertyAttributes;
 begin
@@ -724,13 +686,20 @@ end;
 
 
 procedure TWrapperPanel.SetIsVisible(AValue:Boolean);
+var
+  oldval:Boolean;
 begin
   if myNode<>nil then
   begin
     myNode.SetAttributeValue('IsVisible',myBoolToStr(AValue),'Boolean');
     {$ifndef JScript}
+    oldval:=self.Visible;
     self.Visible:=AValue;
 
+    if (self.Visible) and (oldval=false)
+    and (self.myControl is TWinControl) then
+      // nudge the parent to resize contents
+      ResizeMe(myNode);
     {$else}
     asm
       var ob = document.getElementById(this.NameSpace+this.NodeName);
@@ -749,6 +718,7 @@ begin
             // delete the 'display' attribute
             ob.removeAttribute("style");
           }
+          pas.HTMLUtils.ResetAllRenderedCombos(this);
         }
         else  {
           ob.style.display = 'none';

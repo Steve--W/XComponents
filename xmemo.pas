@@ -44,11 +44,13 @@ type
 
     function GetItemValue:string;
     function GetReadOnly:Boolean;
+    function GetIncludeTextInSave:Boolean;
     function GetMemoWidth:string;
     function GetMemoHeight:string;
 
     procedure SetItemValue(AValue:string);
     procedure SetReadOnly(AValue:Boolean);
+    procedure SetIncludeTextInSave(AValue:Boolean);
     procedure SetMemoWidth(AValue:string);
     procedure SetMemoHeight(AValue:string);
 
@@ -75,6 +77,7 @@ type
     // Properties defined for this class...
     property ItemValue: String read GetItemValue write SetItemValue;
     property ReadOnly: Boolean read GetReadOnly write SetReadOnly;
+    property IncludeTextInSave: Boolean read GetIncludeTextInSave write SetIncludeTextInSave;
     property MemoHeight: String read GetMemoHeight write SetMemoHeight;
     property MemoWidth: String read GetMemoWidth write SetMemoWidth;
 
@@ -352,6 +355,10 @@ function TXMemo.GetReadOnly:Boolean;
 begin
   result:=MyStrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
 end;
+function TXMemo.GetIncludeTextInSave:Boolean;
+begin
+  result:=MyStrToBool(MyNode.getAttribute('IncludeTextInSave',true).AttribValue);
+end;
 function TXMemo.GetMemoHeight:string;
 begin
   result:=MyNode.getAttribute('MemoHeight',true).AttribValue;
@@ -396,6 +403,11 @@ begin
   {$endif}
 end;
 
+procedure TXMemo.SetIncludeTextInSave(AValue:Boolean);
+begin
+  myNode.SetAttributeValue('IncludeTextInSave',myBoolToStr(AValue),'Boolean');
+end;
+
 begin
   // this is the set of node attributes that each TXMemo instance will have.
   AddWrapperDefaultAttribs(myDefaultAttribs);
@@ -409,7 +421,10 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Memo Box','',false);
   AddDefaultAttribute(myDefaultAttribs,'ReadOnly','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'ItemValue','String','....text....','',false);
+  AddDefaultAttribute(myDefaultAttribs,'IncludeTextInSave','Boolean','True','If false, the memo contents will be excluded from saved system data',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
+
+  AddExclusionAttribToTable(MyNodeType,'IncludeTextInSave','ItemValue');
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);
   AddAttribOptions(MyNodeType,'LabelPos',LabelPosOptions);

@@ -174,7 +174,8 @@ begin
       //just set attribute here
       self.myNode.SetAttributeValue('SourceText',NewText);
       //event here (eg) to refresh ob inspector
-      if StartingUp=false then
+      if (StartingUp=false)
+      and (XForm.TXForm(self.myNode.MyForm).Showing<>'No') then
         CallHandleEventLater('Change',NewText,self.myControl);
 
     end

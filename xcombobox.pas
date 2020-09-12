@@ -42,20 +42,16 @@ type
 
     function GetItemIndex:integer;
     function GetItemValue:string;
-    //function GetReadOnly:Boolean;
     function GetBoxWidth:string;
     function GetOptionList:string;
 
     procedure SetItemIndex(AValue:integer);
     procedure SetItemValue(AValue:string);
-    //procedure SetReadOnly(AValue:Boolean);
     procedure SetBoxWidth(AValue:string);
     procedure SetOptionList(AValue:string);
 
   protected
     { Protected declarations }
-//    procedure LinkLoadFromProperty(Sender: TObject);  override;
-//    procedure LinkSaveToProperty(Sender: TObject);  override;
     {$ifndef JScript}
     procedure DoConstructor(TheOwner:TComponent;IsDynamic:Boolean);
     property ParentColor;
@@ -76,7 +72,6 @@ type
     // Properties defined for this class...
     property ItemIndex: Integer read GetItemIndex write SetItemIndex;
     property ItemValue: String read GetItemValue write SetItemValue;
-    //property ReadOnly: Boolean read GetReadOnly write SetReadOnly;
     property BoxWidth: String read GetBoxWidth write SetBoxWidth;
     property OptionList: String read GetOptionList write SetOptionList;
     property PriorIndex:integer read fPriorIndex write fPriorIndex;
@@ -91,6 +86,8 @@ type
 
   {$ifndef JScript}
   procedure Register;
+  {$else}
+  function ResetOptionsList(MyNode:TdataNode):String;
   {$endif}
 
 
@@ -112,10 +109,6 @@ begin
   RegisterComponents('XComponents',[TXComboBox]);
 
   RegisterPropertyEditor(TypeInfo(String), TXComboBox, 'ItemValue', THiddenPropertyEditor);
-    // suppress some of the Link properties
-//    RegisterPropertyEditor(TypeInfo(TAliasStrings), TXPropertyLink, 'AliasValues', THiddenPropertyEditor);
-//    RegisterPropertyEditor(TypeInfo(String), TXPropertyLink, 'TIElementName', THiddenPropertyEditor);
-//    RegisterPropertyEditor(TypeInfo(TPropertyLinkOptions), TXPropertyLink, 'Options', THiddenPropertyEditor);
 end;
 
 constructor TXComboBox.Create(TheOwner:TComponent);
@@ -212,17 +205,31 @@ begin
 
 end;
 
+function ResetOptionsList(MyNode:TdataNode):String;
+var
+  OptionList,ItemIndex,opList:String;
+begin
+  opList:='';
+  OptionList:= MyNode.getAttribute('OptionList',true).AttribValue;
+  ItemIndex:= MyNode.getAttribute('ItemIndex',true).AttribValue;
+  asm
+  var optionlistarray=JSON.parse( OptionList);
+  for (var i=0; i<optionlistarray.length; i++){
+    var selectedflag ='';
+    if (i==ItemIndex ){selectedflag = 'selected'}
+    opList = opList +'<option value="'+optionlistarray[i]+'" '+selectedflag+'>'+optionlistarray[i]+'</option> ';
+  }
+  end;
+  result:=opList;
+end;
+
 function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
-  ItemIndex,LabelText,LabelPos,OptionList:string;
-//  ReadOnly:Boolean;
+  LabelText,LabelPos:string;
   OnChangeString, OnClickString:String;
 begin
 //showmessage('createwidget combobox '+ScreenObjectName);
-  OptionList:= MyNode.getAttribute('OptionList',true).AttribValue;
-  ItemIndex:= MyNode.getAttribute('ItemIndex',true).AttribValue;
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
-//  ReadOnly:= StrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
 
   OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
   OnChangeString:= 'onchange="pas.NodeUtils.SetInterfaceProperty('''+ScreenObjectName+''','''+NameSpace+''',''ItemIndex'',pas.SysUtils.IntToStr(this.selectedIndex)); '+
@@ -239,26 +246,16 @@ begin
     var wrapperid =  NameSpace+ScreenObjectName;
     var MyObjectName=wrapperid+'Contents';
 
- //   var ReadOnlyString = '';
- //   if (ReadOnly==true) { ReadOnlyString = ' readonly ';}
-
-    var TypeString = 'text';
-
-    var inputtext= ItemIndex;
     var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
     var ComboString = '<select id="'+MyObjectName+'" ' +
                   OnChangeString +
                   OnClickString +
-                  ' class="widgetinner '+wrapperid+'" ' +
-                  ' style="display: inline-block;"   value='+ItemIndex+'> ';
+                  ' class="widgetinput '+wrapperid+'" ' +
+                  ' style="display: inline-block;" > ';
 
-     var optionlistarray=JSON.parse( OptionList);
-     for (var i=0; i<optionlistarray.length; i++){
-       var selectedflag ='';
-       if (i==ItemIndex ){selectedflag = 'selected'}
-       ComboString = ComboString +'<option value="'+optionlistarray[i]+'" '+selectedflag+'>'+optionlistarray[i]+'</option> ';
-     }
-     ComboString = ComboString +'</select> ';
+    var OpsString = pas.XComboBox.ResetOptionsList(MyNode);
+
+    ComboString = ComboString + OpsString + '</select> ';
 
     HTMLString = labelstring+ComboString;
 
@@ -266,7 +263,7 @@ begin
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
 
     // attempt to fix the height for a combo box to one line-height... (still not displayed same as editbox...tbd!!!!)
-//    var dummyEBoxString = '<input type="'+TypeString+'"  id='+MyObjectName+'dummy ' +
+//    var dummyEBoxString = '<input type="text"  id='+MyObjectName+'dummy ' +
 //                     ' class="widgetinner '+wrapperid+'" ' +
 //                     ' style="display: inline-block;" >';
 //    wrapper.insertAdjacentHTML('beforeend', dummyEBoxString);
@@ -352,26 +349,32 @@ begin
     }
     end;
     {$endif}
+    MyNode.SetAttributeValue('ItemValue',val);
     result:=val;
   end;
 end;
-//function TXComboBox.GetReadOnly:Boolean;
-//begin
-//  result:=MyStrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
-//end;
 
 procedure TXComboBox.SetItemIndex(AValue:integer);
+var
+  nm:string;
+  lNode:TDataNode;
 begin
   myNode.SetAttributeValue('ItemIndex',intToStr(AValue),'Integer');
   {$ifndef JScript}
   TComboBox(myControl).ItemIndex:=AValue;
+  if AValue<0 then TComboBox(myControl).Text:='';
   myNode.SetAttributeValue('ItemValue',TComboBox(myControl).Text,'String');
   {$else}
+  nm:=myNode.NodeName;
+  lNode:=myNode;
   asm
+    //console.log(nm+' set itemindex '+AValue);
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
-       ob.selectedIndex=AValue;
-       this.myNode.SetAttributeValue('ItemValue',ob.value,'String',false);
+       ob.selectedIndex=AValue;            //!! does not take effect if the combobox is hidden (eg on another tab page)
+       if ((AValue>=0)&&(AValue<ob.options.length)) {
+         ob.options[AValue].selected = true;
+         }
        }
   end;
   {$endif}
@@ -385,29 +388,14 @@ begin
   options:=JSONStringToStringList(self.OptionList);
 
   i:=options.IndexOf(AValue);
-  self.ItemIndex:=i;
+  self.ItemIndex:=i;            // see setItemIndex
 end;
 
-
-//procedure TXComboBox.SetReadOnly(AValue:Boolean);
-//begin
-//  myNode.SetAttributeValue('ReadOnly',myBoolToStr(AValue),'Boolean');
-//  {$ifndef JScript}
-//  TLabeledEdit(myControl).ReadOnly:=AValue;
-//  {$else}
-//  asm
-//    var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
-//    if (ob!=null) {
-//      ob.readOnly = AValue  }
-//  end;
-//  {$endif}
-//end;
 
 procedure TXComboBox.SetOptionList(AValue:String);
 begin
   myNode.SetAttributeValue('OptionList',AValue,'String');
   {$ifndef JScript}
-  //TComboBox(myControl).items:=ListStringToStringList(AValue);
   TComboBox(myControl).items:=JSONStringToStringList(AValue);
   if self.ItemIndex>-1 then
     self.ItemIndex:=self.ItemIndex;   // to reset the displayed itemvalue
@@ -451,6 +439,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Right','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Combo Box','',false);
   AddDefaultAttribute(myDefaultAttribs,'ItemIndex','Integer','-1','',false);
+  AddDefaultAttribute(myDefaultAttribs,'ItemValue','String','','',false);
   AddDefaultAttribute(myDefaultAttribs,'OptionList','String','["Option 1","Option 2","Option 3"]','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 

@@ -1406,6 +1406,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'IncludeDataInSave','Boolean','True','If false, the table contents will be excluded from saved system data',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
+  AddExclusionAttribToTable(MyNodeType,'IncludeDataInSave','TableData');
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);
   AddAttribOptions(MyNodeType,'LabelPos',LabelPosOptions);

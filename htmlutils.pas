@@ -15,20 +15,17 @@ interface
 implementation
 end.
 {$else}
-uses Classes, SysUtils, StringUtils, NodeUtils
-  ;
+uses Classes, SysUtils, StringUtils, NodeUtils;
 
 
 procedure removeClassName(el:TObject; ClassName:String);
 procedure StopBubbling(event:TObject);
 function addHandVBoxStyles():string;
 procedure addWidgetInnerStyles;
-//procedure ClearAllScreenObjects;
 function getAncestorWithTagAndClass(node:TObject; tagName, className:String):TObject;
 function getPageOffsetLeft(el:TObject):Integer;
 function getPageOffsetTop(el:TObject):Integer;
 function hasClassName(el:TObject; name:String):Boolean;
-//function PrepareHeightWidthHTML(var HW,StrVal,StyleVal:string):Boolean;
 procedure SetHeightWidthHTML(MyNode:TDataNode; ob:TObject; HW,AttrValue:string);
 function DeleteScreenObject(MyNode:TDataNode):string;
 function CreateWrapperHtml(NewNode,ParentNode:TDataNode;ScreenObjectName,NameSpace,ScreenObjectType:string):string;
@@ -46,11 +43,13 @@ function ReadFromLocalStore(KeyName:String):String;
 procedure ClearLocalStore(KeyName:String);
 function GetCurrentHeight(ObjectName:String):integer;
 function GetCurrentWidth(ObjectName:String):integer;
-procedure ShowGreyOverlay(ParentName,WindowId:String);
+procedure ShowGreyOverlay(ParentName,WindowId,WaitMessage:String);
 procedure DeleteGreyOverlay(DivId:String);
+procedure UpdateWaitMessage(DivId,NewMessage:String);
 procedure ApplyClasses(ob:TObject;AValue:String;myNode:TdataNode);
 procedure SyncTimeout(msec:integer);
 procedure FixHeightToLineHeight(obName:String);
+procedure ResetAllRenderedCombos(StartContainer:TDataNode);
 
 
 const
@@ -62,7 +61,7 @@ var browser:TObject;
 
 
 implementation
-uses XForm ,XIframe, XSVGContainer ;
+uses XForm ,XIframe, XSVGContainer, XComboBox ;
 
 procedure SyncTimeout(msec:integer);
 begin
@@ -292,6 +291,16 @@ begin
             +' font-style: inherit;'
             +' font-family: inherit;'
             +' }'
+        +'.widgetinput { '
+            +' font-size: inherit;'
+            +' color: inherit;'
+            +' font-style: inherit;'
+            +' font-family: inherit;'
+            +' border: 1px solid black;'
+            +' }'
+        +'input[type=text]:focus { '
+            +' border: 2px solid #555; '
+            +' }'
          +' </style>';
 
       //----------------------------- now append the style declarations to the head of the HTML page
@@ -446,6 +455,9 @@ begin
   asm
     if (ob!=null) {
       if (HW=='H') {
+        if (MyNode.NodeType == 'TXScrollBox') {
+           if (hwStr == '') { hwStr = '100%'; }
+         }
         ob.style.height=hwStr;
         if (pct==false) {
           ob.style.minHeight=hwStr;
@@ -498,24 +510,6 @@ begin
   NilScreenObject(MyNode);
 
 end;
-(*
-procedure ClearAllScreenObjects;
-var
-    SystemRootNameVar:string;
-begin
-  SystemRootNameVar:=SystemRootName;
-//  showmessage('ClearAllScreenObjects');
-  asm
-try{
-       var self=document.getElementById(SystemRootNameVar);
-       while (self.firstChild)
-         { self.removeChild(self.firstChild);}
-    }catch(err) { alert(err.message+'  in HTMLUtils.ClearAllScreenObjects');}
-
-end;
-//  showmessage('ClearAllScreenObjects done');
-end;
-*)
 
 procedure AddObjectToParentObject(ParentNode:TDataNode;ParentId,myId:String;position:integer;HTMLString:string);
 var
@@ -603,7 +597,6 @@ end;
 
 function CreateWrapperHtml(NewNode,ParentNode:TDataNode;ScreenObjectName,NameSpace,ScreenObjectType:string):string;
 var
-//  Border,
   ClassString:String;
 begin
   ClassString :=' class="'+NameSpace+ScreenObjectName;
@@ -611,14 +604,15 @@ begin
   ClassString := ClassString + '" ';
 
 asm
-try{
+  try{
 
     var ComponentHTML='';
     var NodeIDString = "'"+ScreenObjectName+"'";
     var NameSpaceString = "'"+NameSpace+"'";
     var componentClick="'Click'";
 
-    var WrapperStyle = ' background-color:inherit; white-space:nowrap; ';
+    //var WrapperStyle = ' background-color:inherit; white-space:nowrap; ';
+    var WrapperStyle = ' white-space:nowrap; ';
 
     // note tabindex=0 allows a div to be focused.  Only the focused element will listen to keyboard events.
 
@@ -750,7 +744,7 @@ begin
       nodeID:=myStringReplace(nodeID,NameSpace,'',1,-1);
   end;
   bits:=stringsplit(nodeID,'Node');
- // showmessage('GetDataNodeFromTreeNode looking for '+bits[0]+' from '+nodeID);
+  //showMessage('GetDataNodeFromTreeNode looking for '+bits[0]+' from '+nodeID);
   result:=FindDataNodeById(SystemNodeTree,bits[0],NameSpace,true);
 end;
 
@@ -892,15 +886,17 @@ begin
   result:=w;
 end;
 
-procedure ShowGreyOverlay(ParentName,WindowId:String);
+procedure ShowGreyOverlay(ParentName,WindowId,WaitMessage:String);
 begin
 asm
 try{
-//alert('ShowGreyOverlay '+WindowId);
   pas.XForm.InitialiseXFormStyles();
+  if (WaitMessage=='') {WaitMessage = 'Please Wait...';}
   var HTMLString = ''
-  +'<div id='+WindowId+' class="modal-background" style="display:block; cursor:progress;" '
-  +'>Please wait...</div>';
+  +'<div id='+WindowId+' class="modal-background" style="display:block; cursor:progress;" >'
+  +'<div id='+WindowId+'MsgBox style="display:-webkit-box; position:absolute; background-color:white; top:35%; left:40%; height:20%; width:20%; -webkit-box-pack:center; -webkit-box-align:center;" >'
+  +WaitMessage
+  +'</div></div>';
 
   var ParentItem=document.getElementById(ParentName);
   ParentItem.insertAdjacentHTML('beforeend', HTMLString);
@@ -915,6 +911,16 @@ asm
   var ob = document.getElementById(DivId);
   if (ob!=null) {
     ob.parentNode.removeChild(ob);
+    }
+end;
+end;
+
+procedure UpdateWaitMessage(DivId,NewMessage:String);
+begin
+asm
+  var ob = document.getElementById(DivId+'MsgBox');
+  if (ob!=null) {
+    ob.innerHTML = NewMessage;
     }
 end;
 end;
@@ -953,6 +959,7 @@ begin
       if ((ob.classList[i]!='modal-background')
         &&(ob.classList[i]!='modal-content')
         &&(ob.classList[i]!='widgetinner')
+        &&(ob.classList[i]!='widgetinput')
         &&(ob.classList[i]!='vbox')
         &&(ob.classList[i]!='vboxNoStretch')
         &&(ob.classList[i]!='vboxNoFlex')
@@ -1015,6 +1022,30 @@ begin
       ob.style.maxHeight = obStyle.getPropertyValue('line-height');
       //alert('maxHeight='+ob.style.maxHeight);
     }
+  end;
+end;
+
+procedure ResetAllRenderedCombos(StartContainer:TDataNode);
+// fudge to rest selectedindex on comboboxes so the correct selected value becomes visible.
+// (this is a problem when selectedindex has been set for a combobox that was not visible at the time)
+var
+  Combos:TNodesArray;
+  i,idx:integer;
+begin
+  Combos:=FindNodesOfType(StartContainer,'TXComboBox');
+  for i:=0 to length(Combos)-1 do
+  begin
+    idx:=TXComboBox(Combos[i]).ItemIndex;
+    asm
+      //console.log('i='+i+' looking for '+Combos[i].NameSpace+Combos[i].NodeName+'Contents');
+      var ob = document.getElementById(Combos[i].NameSpace+Combos[i].NodeName+'Contents');
+      if (ob!=null) {
+        //console.log('found '+ob.id+' selectedIndex is '+ ob.selectedIndex+' setting to '+idx);
+        ob.selectedIndex = idx;
+        if ((idx>=0)&&(idx<ob.options.length)) {
+          ob.options[idx].selected = true;  }
+      }
+    end;
   end;
 end;
 

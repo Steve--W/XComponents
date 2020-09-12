@@ -79,6 +79,7 @@ var
 procedure TXNumericSlider.SetMyEventTypes;
 begin
   MyEventTypes.Add('Click');
+  MyEventTypes.Add('Change');
 
 end;
 
@@ -130,6 +131,7 @@ begin
 
   TTrackBar(myControl).Min:=0;
   TTrackBar(myControl).Max:=100;
+  TTrackBar(myControl).TickStyle:=tsAuto;
   TTrackBar(myControl).Constraints.MaxHeight:=20;
 
   AddLabel(myControl);
@@ -283,7 +285,7 @@ procedure TXNumericSlider.SetItemValue(AValue:integer);
 begin
   myNode.SetAttributeValue('ItemValue',inttostr(AValue));
   {$ifndef JScript}
-  TProgressBar(myControl).Position:=AValue;
+  TTrackBar(myControl).Position:=AValue;
   {$else}
   asm
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
@@ -297,7 +299,9 @@ procedure TXNumericSlider.SetMaxVal(AValue:integer);
 begin
   myNode.SetAttributeValue('MaxVal',IntToStr(AValue));
   {$ifndef JScript}
-  TProgressBar(myControl).Max:=AValue;
+  TTrackBar(myControl).Max:=AValue;
+  if TTrackBar(myControl).Position > AValue then
+    TTrackBar(myControl).Position:=AValue;
   {$else}
   asm
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
@@ -310,7 +314,9 @@ procedure TXNumericSlider.SetMinVal(AValue:integer);
 begin
   myNode.SetAttributeValue('MinVal',IntToStr(AValue));
   {$ifndef JScript}
-  TProgressBar(myControl).Min:=AValue;
+  TTrackBar(myControl).Min:=AValue;
+  if TTrackBar(myControl).Position < AValue then
+    TTrackBar(myControl).Position:=AValue;
   {$else}
   asm
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');

@@ -24,21 +24,7 @@ uses
   uCEFChromium, uCEFWindowParent, uCEFInterfaces, uCEFConstants, uCEFTypes, uCEFChromiumEvents,
   {$endif}
   StringUtils, NodeUtils, Pas2jsCompiler;
-(*
-type TXPropertyLink = class(TPropertyLink)
-private
-  FTIObjectName:String;
-protected
-published
-  property TIObjectName:String read FTIObjectName write FTIObjectName;
-//  property OnBeforeWrite;
-//  property OnAfterWrite;
-//  property Options;
-  property TIObject;
-  property TIPropertyName;
-//  property TIElementName;
-end;
-*)
+
 type
   TMyProjectEvents = class
   private
@@ -71,7 +57,6 @@ var myProjectEvents:TMyProjectEvents;
     destructor Destroy; override;
   end;
 
-//function FindObjectByID(WithinForm:TForm;ScreenObjectID:String):TControl;
 function HasProperty(aObject:TObject; aProperty:string):boolean;
 function GetBooleanProperty(aObject:TObject; aProperty:string):Boolean;
 Procedure SetBooleanProperty(aObject:TObject; aProperty:string; AValue : Boolean);
@@ -81,7 +66,6 @@ procedure FetchHeightWidth(NewNode:TDataNode; var h,w:string;WidthProp,HeightPro
 procedure CheckPercentageSizing(myComponent:TControl);
 function DoXFormCreated(myForm:TForm):TDataNode;
 procedure DoFormResize(MyForm: TForm; RootObject:TWinControl);
-//function LinkToStr(ALink:TXPropertyLink):string;
 procedure ShowHideSelectedBorder(myNode:TDataNode;showborder:Boolean);
 procedure PaintSelectedRectangle(myCanvas:TCanvas;PanelArea:TRect;SelectionBorderColor:TColor;IsSelected:boolean);
 function FindSizedParent(myComponent:TControl;hw:String):TControl;
@@ -90,7 +74,6 @@ function mygetClipboardData(stringname:string):string;
 procedure ResetAlignment(AControl:TControl);
 function SortAlignList(Item1, Item2: Pointer): Integer;
 procedure InsertUnderParent(var MyComponent:TControl;MyParent:TWinControl;position:integer);
-//procedure ClearAllScreenObjects;
 function DeleteScreenObject(MyNode:TDataNode):string;  overload;
 function DeleteScreenObject(ThisObject:TObject):string; overload;
 procedure DoAlignmentAndLabelPosCascade(mySelf:TWinControl);
@@ -105,9 +88,8 @@ function ReadFile(TextFileName:String):String;
 procedure ClearLocalStore(KeyName:String);
 function ResourceToString(resName:string):String;
 procedure ResourceToFile(resName,fileName:string);
-//{$ifdef Chromium}
-//procedure SetupCEFResources;
-//{$endif}
+procedure CascadeResize(myComponent:TControl);
+procedure ResizeMe(myNode:TDataNode);
 
 const
   glbBorderWidth:integer = 3;
@@ -191,54 +173,6 @@ begin
   end;
   Result:=true;
 end;
-
-//function ScanChildrenForControl(CurrentItem:TControl;ScreenObjectID:String):TControl;
-//var FoundItem,TempItem:TControl;
-//    TempControl :TControl;
-//    i:integer;
-//begin
-//   FoundItem:= nil;
-//   if CurrentItem is TWinControl then
-//   begin
-//     for i:=0 to TWinControl(CurrentItem).ControlCount - 1 do
-//     begin
-//        if FoundItem = nil then  // object has not been found so keep looking
-//        begin
-//          TempControl:= TWinControl(CurrentItem).Controls[i];
-//          begin
-//            if TempControl is TControl then   // it might be the control we are looking for..... or it may have children so search them for the object
-//            begin
-//              TempItem := TControl(TempControl);
-//              if Trim(Uppercase(TempItem.name)) = Trim(Uppercase(ScreenObjectID))
-//              then  FoundItem:= TempItem
-//              else  TempItem:= ScanChildrenForControl(TempItem,ScreenObjectID);
-//              if  TempItem<>nil
-//              then begin if TempItem.name = ScreenObjectID then  FoundItem:= TempItem; end;
-//            end;
-//          end ;
-//        end;
-//     end;
-//   end;
-//   result:= FoundItem;
-//end;
-
-//function FindObjectByID(WithinForm:TForm;ScreenObjectID:String):TControl;
-//var FoundItem, TempItem :TControl;
-//    i:integer;
-//begin
-//   FoundItem:= nil;
-//   TempItem:=ScanChildrenForControl(WithinForm,ScreenObjectID);
-//   if TempItem <> nil
-//   then
-//   begin
-//       FoundItem:= TempItem ;
-//       //showmessage('Success .........>'+ScreenObjectID+'< has been found');
-//   end
-//   else
-//     showmessage('Error in Utilities.FindObjectByID >'+ScreenObjectID+'< not found');
-//
-//   FindObjectByID:=FoundItem;
-//end;
 
 procedure InsertUnderParent(var MyComponent:TControl;MyParent:TWinControl;position:integer);
 var
@@ -439,16 +373,6 @@ begin
 end;
 
 
-
-
-
-
-//function LinkToStr(ALink:TXPropertyLink):string;
-//begin
-//  result:=ALink.TIObject.GetNamePath;
-//  result:=result + AttribLinkDelimiter + ALink.TIPropertyName;
-//end;
-
 procedure IdentifyMenuNodes(ParentItem:TMenu);
 // On startup (Lazarus FormCreate) this sets up all the parent>child relationships
 // for the data nodes relating to components created in Lazarus IDE.
@@ -569,20 +493,6 @@ begin
       parentFound:=false
     else
     begin
-      //if (hw='h')
-      // bypass an unsized VBox for a height change
-      // bypass an unsized HBox for a width change
-      //and ((pr.ClassName='TXVBox') or (pr.ClassName='TXTabControl')) then
-      //begin
-      //  chw:=GetStrProp(pr,'ContainerHeight');
-      //  if chw='' then parentFound:=false;
-      //end
-      //else if (hw='w')
-      //and ((pr.ClassName='TXHBox') or (pr.ClassName='TXTabControl')) then
-      //begin
-      //  chw:=GetStrProp(pr,'ContainerWidth');
-      //  if chw='' then parentFound:=false;
-      //end;
 
       // try bypassing ANY unsized container
       if (hw='h') then
@@ -605,22 +515,6 @@ begin
     if parentFound=false then
       pr:=pr.Parent;
   end;
-(*
-  while (pr<>nil)
-  and (pr.Parent<>nil)
-  and (not (pr is TXForm))
-  and (((pr.AutoSize=true) and (pr.Align=alNone))
-    or (pr.Align=alClient)
-    // bypass the wrapperpanel container of this component
-    or ((HasProperty(pr,'myControl')) and (GetObjectProp(pr,'myControl')=myComponent)
-    // bypass an unsized VBox for a height change
-    // bypass an unsized HBox for a width change
-    or ((pr.ClassName='XVBox') and ( ......
-    )
-    )
-    do
-      pr:=pr.Parent;
-      *)
   result:=pr;
 end;
 
@@ -753,6 +647,22 @@ begin
     end;
   end;
 end;
+
+procedure ResizeMe(myNode:TDataNode);
+var
+  myComponent:TControl;
+begin
+  myComponent:=TControl(myNode.ScreenObject);
+  if (myComponent<>nil) and (myComponent.Parent<>nil)
+  and ((myNode.MyForm=MainForm) or (InOpenXForms(myNode.MyForm.Name,myNode.NameSpace)>0))
+  and (TXForm(myNode.MyForm).Showing<>'No')
+  and (myComponent is TWinControl)
+  //???and (self.myControl is TWinControl)
+  then
+    // nudge the parent to resize contents
+    CascadeResize(myComponent);
+end;
+
 
 function DoXFormCreated(myForm:TForm):TDataNode;
 // Called from the FormCreate event for a form in an XComponents project (Form is of type TXForm).

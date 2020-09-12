@@ -20,7 +20,7 @@ interface
 uses
   Classes, SysUtils,TypInfo, NodeUtils,StringUtils,EventsInterface, Events,
   {$ifndef JScript}
-  fpjson, jsonparser,
+  fpjson, jsonparser,LazLogger,
   LResources, Forms, Controls, StdCtrls, Graphics, Dialogs, ExtCtrls,ComCtrls,
   Propedits,RTTICtrls,
   LazsUtils,
@@ -106,7 +106,6 @@ type TMyTreeView = class(TTreeView)
   function FindNodeByExpandedText(AValue:String):TTreeNode;
   function NodeTextIsUnique(NodeText:String):Boolean;
   function FindNodeById(NodeId:String):TTreeNode;
-//  function MakeTextUnique(NodeText:String):String;
 end;
 {$endif}
 
@@ -171,7 +170,6 @@ type
     procedure DeleteSelectedNode;
     procedure MoveNode(SourceNodeText,DestNodeText:String);
     function NodeTextIsUnique(NodeText:String):Boolean;
-//    function MakeTextUnique(NodeText:String):String;
     function BuildTreeDataString:String;
     procedure SelectTreeNodeById(NodeId:string);
     procedure SetSelectedNodeId(AValue:String);
@@ -320,7 +318,7 @@ begin
   TmyTreeView(myControl).OnEditingEnd:=@TmyTreeView(myControl).KillEditing;
 
   TmyTreeView(myControl).OnEditingEnd:=@TmyTreeView(myControl).TreeEditingEnd;
-  TmyTreeView(myControl).OnChange := @TmyTreeView(myControl).TreeSelectedNodeChange;
+  TmyTreeView(myControl).OnChange := @TmyTreeView(myControl).TreeSelectedNodeChange;        // NB. async
   TmyTreeView(myControl).OnCustomDrawItem:=@TmyTreeView(myControl).CustomDrawTreeNode;
   TmyTreeView(myControl).OnClick := @TmyTreeView(myControl).HandleClick;
   TmyTreeView(myControl).OnMouseMove := @TmyTreeView(myControl).HandleMouseMove;           // set node hint; DragStart
@@ -541,7 +539,7 @@ begin
   if TargetNode<>nil then
   begin
     if TargetNode<>self.Selected then
-      self.Select(TargetNode);        // In Lazarus this will automatically open any parent nodes
+      self.Select(TargetNode);        // In Lazarus this will automatically open any parent nodes   //  this fires a change event????
   end;
 end;
 
@@ -573,14 +571,11 @@ begin
       begin
         MyRecPtr:=Node.Data;
         NodeID:=MyRecPtr^.ID;
-     //   TXTree(outer).SelectedNodeId:=NodeID;
-        TXTree(outer).SelectedNodeText:=Node.Text;
+        //TXTree(outer).SelectedNodeText:=Node.Text;
+        TXTree(outer).myNode.SetAttributeValue('SelectedNodeText',Node.Text);
         pth:=TXTree(outer).SelectedTextPath;   // this sets the value for attribute 'SelectedTextPath'
         CallHandleEvent('TreeNodeClick',NodeID,Sender);
       end;
-
-
-      //CallHandleEvent('TreeNodeClick',Node.Text,Sender);
     end;
 end;
 
@@ -679,7 +674,7 @@ begin
   begin
     parentNode:=parentNode.Parent;
     i:=parentNode.Index;
-    str:=inttostr(i)+':'+parentNode.Text+'/'+str;
+    str:=inttostr(i)+'~:~'+parentNode.Text+'~/~'+str;
   end;
   result:=str;
 end;
@@ -694,23 +689,6 @@ begin
   else
     result:=true;
 end;
-
-//function TMyTreeView.MakeTextUnique(NodeText:String):String;
-//var
-//  i:integer;
-//begin
-//  if self.NodeTextIsUnique(NodeText) then
-//    result:=NodeText
-//  else
-//  begin
-//    i:=1;
-//    while (not self.NodeTextIsUnique(NodeText+intToStr(i))) do
-//    begin
-//      i:=i+1;
-//    end;
-//    result:=NodeText + intToStr(i);
-//  end;
-//end;
 
 function TmyTreeView.FindNodeById(NodeId:String):TTreeNode;
   function GetNodeId(ANode:TTreeNode):String;
@@ -1421,7 +1399,6 @@ begin
 //      alert('clearNodeSelectedMarker. NameOfDetailsList='+NameOfDetailsList+' normalColor='+normalColor);
       // go down the tree from the root clearing the selected colour
 
-  //    var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'ContentsScroll';  // the tree nodes container
       var TreeRootID=pas.XTree.GetTreeRootID(NameOfDetailsList)+'Node';  // the tree nodes container
       //alert('tree root id='+TreeRootID);
       var root = (document.getElementById(TreeRootID));
@@ -1442,7 +1419,6 @@ begin
   TreeObject:=TreeNode;
   asm
   //alert('NodeIdFromText.  NodeName='+TreeNode.NameSpace+'.'+TreeNode.NodeName+' Text='+NodeText);
-//  var ob = document.getElementById(TreeObject.NameSpace+TreeObject.NodeName+'ContentsScroll');  // the tree nodes container
   var ob = document.getElementById(TreeObject.NameSpace+TreeObject.NodeName+'Node');  // the tree nodes container
     if (ob!=null) {
             function checkChildren(obj) {
@@ -1450,7 +1426,7 @@ begin
                  if (obj.children[i].innerHTML==NodeText) {
                    //alert('found '+NodeText+' at '+ obj.children[i].id);   //Summary level
                    //return obj.id;                                         //id is name minus 'Summary' suffix
-                   return obj.children[i].id;                                         //id is name including 'Summary' suffix
+                   return obj.children[i].id;                               //id is name including 'Summary' suffix
                  }
                  else {
                    var tmp=checkChildren(obj.children[i]);
@@ -1595,8 +1571,6 @@ begin
 //  showmessage('HandleTreeNodeClick WrapperNodeId='+WrapperNodeId+' NodeObjectId='+SelectedNodeObjectId+' NS='+NameSpace);
    myNode:=FindDataNodeById(SystemNodetree,WrapperNodeId,NameSpace,true);
    NodeText:=NodeTextFromId(myNode,SelectedNodeObjectId);
-   //showmessage('HandleTreeNodeClick. NodeText='+NodeText+' NS='+NameSpace);
-   //TXTree(myNode).SelectedNodeText:=NodeText;
    TXTree(myNode).SelectedNodeId:=SelectedNodeObjectId;
 end;
 
@@ -1604,8 +1578,11 @@ procedure TXTree.SelectTreeNodeById(NodeId:string);
 var
    normalColor:string;
    ParentId:String;    // id minus the Summary suffix
+   CurrentSelection:String;
 begin
   //showmessage('SelectTreeNodeById '+NodeId);
+   CurrentSelection:=self.SelectedNodeText;
+
    normalColor:=self.BgColor;
    ParentId:=myStringReplace(NodeId,'Summary','',-1,-1);
    //showmessage('parentid='+ParentId);
@@ -1640,7 +1617,8 @@ begin
             } else {
             myself.removeAttribute("open");}
       }
-       //**** have to do this to force the document to repaint this element (eg if node has been opened)
+
+      //**** have to do this to force the document to repaint this element (eg if node has been opened)
        HTMLString = myself.innerHTML;
        myself.innerHTML = HTMLString;
        }
@@ -1687,23 +1665,6 @@ begin
   else
     result:=true;
 end;
-
-//function TXTree.MakeTextUnique(NodeText:String):String;
-//var
-//  i:integer;
-//begin
-//  if self.NodeTextIsUnique(NodeText) then
-//    result:=NodeText
-//  else
-//  begin
-//    i:=1;
-//    while (not self.NodeTextIsUnique(NodeText+intToStr(i))) do
-//    begin
-//      i:=i+1;
-//    end;
-//    result:=NodeText + intToStr(i);
-//  end;
-//end;
 
 function TXTree.GetChildNodes(nodeId:String):TStringArray;
 var
@@ -1887,16 +1848,19 @@ begin
   // (might send in a DETAILS id.  SUMMARY is first child of DETAILS)
   asm
     var ob=document.getElementById(nodeId);
+    if (ob!=null) {
     if (ob.tagName=='DETAILS') {
       ob=ob.getElementsByTagName('SUMMARY')[0];
       nodeId=ob.id;
       }
     nodeText=ob.innerHTML;
+    }
+    else {alert('cannot find node '+nodeId);}
+
   end;
   {$endif}
   fSelectedNodeId:=nodeId;
   myNode.SetAttributeValue('SelectedNodeText',nodeText);
-  //showmessage('SetSelectedNodeId Tree='+self.NodeName+' Id='+nodeId);
   if nodeId<>'' then
   begin
      self.SelectTreeNodeById(nodeId);
@@ -2258,25 +2222,25 @@ var
 begin
   if AValue<>self.SelectedNodeText then
   begin
-    myNode.SetAttributeValue('SelectedNodeText',AValue);
     if AValue<>'' then
     begin
       {$ifndef JScript}
+      myNode.SetAttributeValue('SelectedNodeText',AValue);
       self.SelectTreeNodeByText(AValue);                   // selects node with this text....!!!! node texts must be unique
       {$else}
       NodeId:=NodeIdFromText(self,AValue);
-      //showmessage('SetSelectedNodeText '+AValue+'   setting SelectedNodeId to '+NodeId);
       self.SelectedNodeId:=NodeId;
       pth:=self.SelectedTextPath;   // this sets the value for attribute 'SelectedTextPath'
-
       {$endif}
-    end;
+    end
+    else
+      myNode.SetAttributeValue('SelectedNodeText',AValue);
   end;
 end;
 
 
 begin
-  // this is the set of node attributes that each XHBox instance will have.
+  // this is the set of node attributes that each XTree instance will have.
   AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'TreeWidth','String','200','',false);
   AddDefaultAttribute(myDefaultAttribs,'TreeHeight','String','150','',false);
@@ -2299,7 +2263,6 @@ begin
   {$ifndef JScript}
   RegisterClass(TXTree);
   AddNodeFuncLookup(MyNodeType,@CreateWidget);
- // TreeNodeIdCounter:=0;
 {$else}
   AddNodeFuncLookup(MyNodeType,@CreateinterfaceObj,@CreateWidget);
   {$endif}
