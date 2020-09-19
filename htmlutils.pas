@@ -50,6 +50,7 @@ procedure ApplyClasses(ob:TObject;AValue:String;myNode:TdataNode);
 procedure SyncTimeout(msec:integer);
 procedure FixHeightToLineHeight(obName:String);
 procedure ResetAllRenderedCombos(StartContainer:TDataNode);
+procedure CheckBrowser;
 
 
 const
@@ -1048,6 +1049,79 @@ begin
     end;
   end;
 end;
+
+//----------------------------------------------------
+procedure CheckBrowser;
+var selection,browser,agent:String;
+
+function windowopera():string;
+var tempstring:string;
+begin
+  asm
+    tempstring = 'Not_Opera';
+    if(window.opera){
+      tempstring = 'opera';
+    }
+  end;
+  windowopera:=tempstring;
+end;
+
+function navigatoruserAgent():string;
+var tempstr:string;
+begin
+  asm
+    tempstr = navigator.userAgent.toLowerCase ();
+  end;
+  navigatoruserAgent:=tempstr;
+end;
+
+function navigatorappName():string;
+var tempstr:string;
+begin
+  asm
+    tempstr = navigator.appName.toLowerCase () ;
+  end;
+  navigatorappName:=tempstr;
+end;
+
+begin
+  browser := 'Unknown browser';
+  if (windowopera) = 'opera'
+  then  browser := 'Opera'
+  else
+  begin
+     if (navigatorappName() = 'microsoft internet explorer')
+     then  browser := 'Internet Explorer'
+     else
+     begin
+         agent := navigatoruserAgent();
+         if (pos('firefox',agent) > 0)
+         then browser := 'Firefox'
+         else
+         begin
+             if (pos('safari',agent) > 0)
+             then
+             begin
+               if (pos('edg',agent) > 0)
+               then   browser := 'Microsoft Edge'
+               else
+               begin
+                 if (pos('chrome',agent) > 0)
+                 then  browser := 'Google Chrome'
+                 else  browser := 'Safari';
+              end;
+           end;
+        end;
+     end;
+  end;
+  //Showmessage('Browser = '+browser);
+  if browser <> 'Google Chrome' then
+  begin
+    ShowMessage('Warning: XIDE is tested for use with Google Chrome.  Some features may not work in other browsers.');
+  end;
+end;
+//----------------------------------------------------
+
 
 
 begin

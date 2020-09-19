@@ -497,7 +497,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'Alignment','String','Left','',false);
   AddDefaultAttribute(myDefaultAttribs,'Hint','String','','',false);
   AddDefaultAttribute(myDefaultAttribs,'IsVisible','Boolean','True','',false);
-  AddDefaultAttribute(myDefaultAttribs,'HTMLClasses','String','','',false);
+  AddDefaultAttribute(myDefaultAttribs,'HTMLClasses','String','','Separate multiple classes with a space',false);
 end;
 
 

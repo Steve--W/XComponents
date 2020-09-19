@@ -1382,6 +1382,7 @@ begin
 end;
 
 
+
 initialization
 
   myProjectEvents:=TMyProjectEvents.Create;

@@ -140,7 +140,6 @@ begin
   // Make sure the embedded component can not be selected/deleted within the IDE
   myControl.ControlStyle := myControl.ControlStyle - [csNoDesignSelectable];
 
-//  myRadioGroup.OnEditingDone:=@self.myeditingDone;
   myControl.OnClick:=@self.RadioGroupClick;
   TRadioGroup(myControl).OnSelectionChanged:=@self.RadioGroupChange;
 
@@ -173,8 +172,6 @@ procedure TXRadioBtns.RadioGroupChange(Sender: TObject) ;
    begin
     RadioButtonGroup :=  TCustomRadioGroup(sender) ;
     self.ItemValue:=RadioButtonGroup.Items[RadioButtonGroup.ItemIndex];
-    //self.myeditingDone(self);     //implements a property link
-    //CallHandleEvent('Change',IntToStr(RadioButtonGroup.itemindex),Sender);
     CallHandleEvent('Change',self.ItemValue,Sender);
    end;
  end;
@@ -236,7 +233,6 @@ begin
        HTMLString = HTMLString +'<input type="radio"  '+selectedflag + ReadOnlyString
                                +' id="'+wrapperid+currentitemstring+'" '
                                +' name='+wrapperid+' '
-                               //+ OnChangeString+i+quot+');}" '
                                + OnChangeString+currentitemstring+quot+');}" '
                                +' value="'+currentitemstring+'" '
                                +'>'+currentitemstring+'<Br>';
@@ -266,13 +262,12 @@ begin
     var wrapperid = NameSpace+ScreenObjectName;
     var MyObjectName=wrapperid+'Contents';
 
-    HTMLString = '<fieldset  id='+MyObjectName+' style="display: inline-block;height:100%;width:100%;" '
+    HTMLString = '<fieldset  id='+MyObjectName+' style="display: inline-block;height:100%-20px;width:100%;" '
                  + OnClickString
                  +' >  ';
     var Legend='<legend id='+MyObjectName+'Legend >'+myCaption+'</legend>';
     var Buttons=$mod.CreateButtonsList(MyNode,OptionList);
     HTMLString = HTMLString + Legend + Buttons + '</fieldset> ';
-    //alert('create radiogroup widget. html='+HTMLString);
 
     var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);

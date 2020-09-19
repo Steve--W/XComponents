@@ -1566,7 +1566,7 @@ begin
   // this is the set of node attributes that each TXTabSheet instance will have.
   AddDefaultAttribute(PageDefaultAttribs,'Hint','String','','',false);
   AddDefaultAttribute(PageDefaultAttribs,'IsVisible','Boolean','True','',false);
-  AddDefaultAttribute(PageDefaultAttribs,'HTMLClasses','String','','',false);
+  AddDefaultAttribute(PageDefaultAttribs,'HTMLClasses','String','','Separate multiple classes with a space',false);
   AddDefaultAttribute(PageDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
   AddDefaultAttribute(PageDefaultAttribs,'Caption','String','NewPage','',false);
   AddDefaultsToTable('TXTabSheet',PageDefaultAttribs);
