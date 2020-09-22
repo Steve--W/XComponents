@@ -728,7 +728,7 @@ begin
         }
       }
     }
-    //alert(myArray);
+    //alert(myArray[0]);
   end;
   result:=myArray;
 end;

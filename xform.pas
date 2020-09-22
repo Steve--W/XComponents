@@ -643,7 +643,7 @@ begin
     var ob=document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       var str=AValue;
-      if (AValue==0) str='100%';
+      if (AValue==0) str='99%';
       pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',str);
     }
   end;
@@ -662,7 +662,7 @@ begin
     var ob=document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       var str=AValue;
-      if (AValue==0) str='100%';
+      if (AValue==0) str='99%';
       pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',str);
     }
   end;

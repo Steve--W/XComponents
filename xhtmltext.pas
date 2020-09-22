@@ -458,9 +458,6 @@ begin
 
   {$ifndef JScript}
   TFrameViewer(myControl).DefBackground:=AValue;
-  {$else}
-  tmp:=MyNode.GetAttribute('BgColor',true).AttribValue;
-  asm console.log('set color '+AValue+'   new color is '+tmp); end;
   {$endif}
 end;
 

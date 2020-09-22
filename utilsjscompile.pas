@@ -87,7 +87,7 @@ begin
     +'  <head >'  +LineEnding
     +'   <meta charset="utf-8"> '  +LineEnding
     +'   <title>'+docTitle+'</title>'  +LineEnding
-    +'<noscript>Your browser does not support JavaScript!</noscript> '  +LineEnding
+    +'<noscript>To use XIDE, please enable Javascript in your browser</noscript> '  +LineEnding
     +'    <!_ load the javascript libraries _>'  +LineEnding;
 
     BatchString:=BatchString+'<div id="ProjectCodeContainer">'+JSString+'</div>';
