@@ -1115,9 +1115,10 @@ begin
      end;
   end;
   //Showmessage('Browser = '+browser);
-  if browser <> 'Google Chrome' then
+  if (browser <> 'Google Chrome')
+  and (browser <> 'Microsoft Edge') then              //!! we think Edge is ok, but not fully tested
   begin
-    ShowMessage('Warning: XIDE is tested for use with Google Chrome.  Some features may not work in other browsers.');
+    ShowMessage('Warning: XIDE is tested for use with Google Chrome.  Some features may differ in other browsers.');
   end;
 end;
 //----------------------------------------------------
