@@ -87,11 +87,9 @@ begin
   if (MyControl is TControl)
   and (TControl(MyControl).Parent<>nil) then
   begin
-    // showmessage(EventType);
     outer:= FindOuterParentOf(TControl(MyControl));
     if (outer<>nil) and (HasProperty(outer,'myNode')) then
     begin
-      //nodeID:= TControl(outer).Name;
       ComponentNode:=TDataNode(GetObjectProp(outer,'MyNode'));
       nodeID:=ComponentNode.NodeName;
       NameSpace:=ComponentNode.NameSpace;
@@ -109,6 +107,12 @@ begin
   begin
     outer:=MyControl;
     nodeID:= TMenuItem(outer).Name;
+    Namespace:='';
+  end
+  else if (MyControl is TComponent) then    //!! mynode exists???
+  begin
+    outer:=MyControl;
+    nodeID:= TComponent(outer).Name;
     Namespace:='';
   end;
   result:=nodeID;
@@ -406,8 +410,9 @@ begin
   try {
       // Execute the function, if found....
     if (fn!=null)  {
-    fn(e,myName,MyValue);
-  }
+      //console.log('running function '+NameSpace+' '+myName+' '+EventType+' '+MyNode.NodeName);
+      fn(e,myName,MyValue);
+    }
   }catch(err) { alert(err.message+'  in Events.RunComponentEvent '+myName+' '+EventType);}
   end;
 
@@ -443,6 +448,64 @@ function ExecuteEventTrappers(e:TEventStatus;MyEventType,nodeID,myValue:string;m
 
 end;
 
+procedure RunCompositeEvent(e:TEventStatus;myName,NameSpace,EventType:string;MyNode:TDataNode;MyValue:string);
+var
+  roi:Boolean;
+  nodes:TNodesArray;
+  i:integer;
+  newe:TEventStatus;
+begin
+  roi:=myNode.GetEventROI(EventType);
+  if roi=false then
+    // run event as normal
+    RunComponentEvent(e,myName,e.NameSpace,EventType,myNode,myValue)
+  else
+  begin
+    // find the underlying event within the composite element
+    nodes:=FindNodesOfType(myNode,'TXCompositeIntf',true,myNode.NodeName);
+    i:=0;
+    while i < length(nodes) do
+    begin
+      if nodes[i].HasUserEventCode(EventType) then
+      begin
+        newe:=TEventStatus.Create(EventType,nodes[i].NodeName);
+        newe.eventValue:=myValue;
+        newe.NameSpace:=nodes[i].NameSpace;
+        RunComponentEvent(newe,nodes[i].NodeName,nodes[i].NameSpace,EventType,nodes[i],myValue);
+        i:=length(nodes);
+      end;
+      i:=i+1;
+    end;
+  end;
+end;
+
+procedure RunInterfaceEvent(e:TEventStatus;myName,NameSpace,EventType:string;MyNode:TDataNode;MyValue:string);
+var
+  roi:Boolean;
+  newe:TEventStatus;
+  CompNode:TDataNode;
+begin
+  roi:=myNode.GetEventROI(EventType);
+  if roi=true then
+    // run event as normal
+    RunComponentEvent(e,myName,e.NameSpace,EventType,myNode,myValue)
+  else
+  begin
+    // find the containing composite element
+    CompNode:=FindDataNodeByID(SystemNodeTree,Namespace,'',true);
+    if CompNode<>nil then
+    begin
+      if CompNode.HasUserEventCode(EventType) then
+      begin
+        newe:=TEventStatus.Create(EventType,CompNode.NodeName);
+        newe.eventValue:=myValue;
+        newe.NameSpace:=CompNode.NameSpace;
+        RunComponentEvent(newe,CompNode.NodeName,CompNode.NameSpace,EventType,CompNode,myValue);
+      end;
+    end;
+  end;
+end;
+
 procedure ExecuteEventHandler(e:TEventStatus;MyEventType,nodeID,myValue:string;myNode:TDataNode);
   var
      i,NumHandlers:integer;
@@ -454,7 +517,21 @@ procedure ExecuteEventHandler(e:TEventStatus;MyEventType,nodeID,myValue:string;m
       if  myNode.MyEventTypes[i]=MyEventType then
       begin
         // Execute the registered event handler if it exists
-        RunComponentEvent(e,nodeID,e.NameSpace,MyEventType,myNode,myValue);
+        if (myNode.NodeType<>'TXComposite')
+        and (myNode.NodeType<>'TXCompositeIntf') then
+          RunComponentEvent(e,nodeID,e.NameSpace,MyEventType,myNode,myValue)
+        else if (myNode.NodeType='TXComposite') then
+        begin
+          // for a composite, if the event is 'ReadOnlyInterface', then execute the corresponding
+          // event on a TXCompositeIntf node, within the composite element instead.
+          RunCompositeEvent(e,nodeID,e.NameSpace,MyEventType,myNode,myValue);
+        end
+        else if (myNode.NodeType='TXCompositeIntf') then
+        begin
+          // for a composite interface, if the event is NOT 'ReadOnlyInterface', then execute the corresponding
+          // event on the containing TXComposite node instead.
+          RunInterfaceEvent(e,nodeID,e.NameSpace,MyEventType,myNode,myValue);
+        end;
       end;
     end;
 end;

@@ -421,7 +421,13 @@ begin
     docTitle:=ProgramName;
 
   BatchString:= '<!DOCTYPE HTML>'  +LineEnding
-    +'<html  lang="en">'  +LineEnding;
+    +'<html  lang="en">'  +LineEnding
+    +'<style> '  +LineEnding
+    +'  * {  '  +LineEnding
+    +'    font-family: sans-serif;  '  +LineEnding
+    +'    font-size:12px;           '  +LineEnding
+    +'  } '  +LineEnding
+    +'</style> '  +LineEnding;
 
   BatchString:=BatchString + BuildHTMLHead(ProgramName,docTitle,DeployMode,JSString);
   BatchString:=BatchString + BuildHTMLBody;

@@ -425,7 +425,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Number Spinner','',false);
   AddDefaultAttribute(myDefaultAttribs,'ReadOnly','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'MinVal','Integer','0','',false);
-  AddDefaultAttribute(myDefaultAttribs,'MaxVal','Integer','100','',false);
+  AddDefaultAttribute(myDefaultAttribs,'MaxVal','Integer','50','',false);
   AddDefaultAttribute(myDefaultAttribs,'StepSize','Integer','1','',false);
   AddDefaultAttribute(myDefaultAttribs,'ItemValue','Integer','5','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);

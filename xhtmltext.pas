@@ -35,7 +35,7 @@ uses
     {$if defined ( windows)}
     UTF8Process,
     {$endif}
-    framView,
+    framView,htmlView, HTMLGlobals,
     LCLType, gettext,
   {$else}
   HTMLUtils,
@@ -222,13 +222,24 @@ begin
 end;
 
 procedure TXHTMLText.HandleHotSpotClick(Sender:TObject;  const Target:UnicodeString; const AnURL:UnicodeString; var Handled:boolean);
+var
+  htmlviewer:THTMLViewer;
 begin
   // expecting this is a URL link to web page...
   // pop up a separate browser (works for windows...)
   if ((FoundString(AnURL,'://') > 0) and (FoundString(AnURL,'http') = 1)) then
     WinLaunchBrowser(AnURL,Handled);
   if not Handled then
-    TFrameViewer(self.myControl).HotSpotClick(Sender,AnURL,Handled);
+  begin
+    htmlViewer := TFrameViewer(Sender).ActiveViewer;
+    //
+    try
+    TFrameViewer(self.myControl).HotSpotClick(htmlViewer,AnURL,Handled);
+    except
+      on e : exception do
+        showmessage('oops');
+    end;
+  end;
 end;
 
 procedure TXHTMLText.DoReloadTimerThing(sender:TObject);

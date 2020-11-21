@@ -112,6 +112,7 @@ type
     function GetCellValue(row,col:integer):string;
     procedure SetCellValue(row,col:integer;AValue:string);
     function GetCellsAsArray(SkipHeader:Boolean):TTableCellsArray;
+    function GetTableDataForExcel:String;
     procedure AddTableRows(numRows:integer);
     procedure AddTableColumns(numCols:integer);
     procedure DeleteRow(r:integer);
@@ -976,8 +977,8 @@ function TXTable.ConstructTableStringFromExcelCopy(CopiedString:String):String;
 var
   i,j,colcount:integer;
   rows,cells:TStringList;
-  cstr,str:string;
-  // row1col1value #9 row1col2value #9 row1col3value #13#10  ...etc
+  str:string;
+  // expecting : row1col1value #9 row1col2value #9 row1col3value #13#10  ...etc
   //'[["a","b","c"],["1","2","3"]]'
 begin
   colcount:=0;
@@ -1027,6 +1028,33 @@ begin
   tdata:=ConstructTableStringFromNumArray(NumArray);
   self.TableData:=tdata;
 end;
+
+function TXTable.GetTableDataForExcel:String;
+var
+  i,j,colcount:integer;
+  str,rowstr,cellstr:string;
+  arr:TTableCellsArray;
+  // result : row1col1value #9 row1col2value #9 row1col3value #13#10  ...etc
+begin
+  arr := self.GetCellsAsArray(false);
+  str:='';
+  for i:=0 to length(arr)-1 do
+  begin
+    rowstr:='';
+    for j:=0 to length(arr[i])-1 do
+    begin
+      cellstr:=arr[i,j];
+      if j>0 then
+        rowstr:=rowstr + chr(9);
+      rowstr:=rowstr + cellstr;
+    end;
+    rowstr:=rowstr + LineEnding;
+    str:=str+rowstr;
+  end;
+
+  result:=str;
+end;
+
 
 function TXTable.GetReadOnly:Boolean;
 begin
@@ -1388,8 +1416,8 @@ end;
 begin
   // this is the set of node attributes that each TXTable instance will have.
   AddWrapperDefaultAttribs(myDefaultAttribs);
-  AddDefaultAttribute(myDefaultAttribs,'TableWidth','String','150','',false);
-  AddDefaultAttribute(myDefaultAttribs,'TableHeight','String','100','',false);
+  AddDefaultAttribute(myDefaultAttribs,'TableWidth','String','300','',false);
+  AddDefaultAttribute(myDefaultAttribs,'TableHeight','String','200','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Top','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Table','',false);

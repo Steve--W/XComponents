@@ -222,6 +222,7 @@ type
   private
     function GetCaption:string;
     procedure SetCaption(AValue:string);
+    procedure SetIsVisible(AValue:Boolean);  override;
 
     procedure SetMyEventTypes;
 
@@ -238,6 +239,7 @@ type
   end;
 
 procedure RebuildButtons(TCNode:TdataNode);
+procedure ButtonStyleSelected(tabId:String;PageNode:TDataNode);
 
 {$endif}
 
@@ -502,7 +504,8 @@ begin
 
   self.SetMyEventTypes;
   self.myNode.myEventTypes:=self.myEventTypes;
-  SetLength(self.myNode.myEventHandlers,self.myNode.myEventTypes.Count);
+  //SetLength(self.myNode.myEventHandlers,self.myNode.myEventTypes.Count);
+  self.myNode.InitialiseEventHandlers;
 
   AddDefaultAttribs(self,self.myNode,PageDefaultAttribs);
 
@@ -782,6 +785,11 @@ procedure TXTabSheet.SetIsVisible(AValue:Boolean);
 begin
   if myNode<>nil then
     myNode.SetAttributeValue('IsVisible',myBoolToStr(AValue),'Boolean');
+  if (AValue=false) and (self.IsSelected) then
+  begin
+    if TXTabControl(self.Parent).ActivePage=self then
+      TXTabControl(self.Parent).SelectNextPage(false,true);
+  end;
   self.TabVisible:=AValue;
 end;
 
@@ -1106,14 +1114,32 @@ begin
   result:=myNode;
 end;
 
+procedure ButtonStyleSelected(tabId:String;PageNode:TDataNode);
+var
+  bgColor:String;
+begin
+  bgColor:=PageNode.GetAttribute('BgColor',true).AttribValue;
+  if bgColor='' then
+    bgColor:='#FFFFFF';
+  asm
+    var selectedTabButton = document.getElementById(tabId+'Button');
+    if (selectedTabButton==null) {alert('cannot find element by name '+tabId+'Button');}
+    else {
+      selectedTabButton.style.background = bgColor; // Same background color as the tab page when selected
+      selectedTabButton.style.borderTop = '1px solid black';
+      selectedTabButton.style.borderLeft = '1px solid black';
+      selectedTabButton.style.borderRight = '1px solid black';
+      selectedTabButton.style.borderBottom = 'none';
+    }
+  end;
+end;
+
 procedure openTab(TabName,TabControlName,NameSpace:string;PageNode:TDataNode);
 var
-  myNode, ControlNode:TdataNode;
+  ControlNode:TdataNode;
   siblingpos:Integer;
   tabId,tcId,bgColor:String;
 begin
-  MyNode:=PageNode;
-  bgColor:=MyNode.GetAttribute('BgColor',true).AttribValue;
   tabId:=NameSpace+TabName;
   tcId:=NameSpace+TabControlName;
   asm
@@ -1122,14 +1148,13 @@ begin
       var tabsdiv=document.getElementById(tcId+'Contents');
 
       var i;
-      //alert('OpenTab  TabControl='+NameSpace+TabControlName+' tabId='+tabId);
+      //console.log('OpenTab  TabControl='+NameSpace+TabControlName+' tabId='+tabId);
 
       var x = tabsdiv.getElementsByClassName('TabPage');
       if (x==null) {alert('cannot find element by class name TabPage');}
       else {
       for (i = 0; i < x.length; i++) {
-         //alert('hiding '+x[i].id);
-         x[i].style.display = "none";
+        x[i].style.display = "none";
       } }
 
       var y = butsdiv.getElementsByClassName('TabButton');
@@ -1146,27 +1171,26 @@ begin
       var selectedTab = document.getElementById(tabId+'Contents');
       selectedTab.style.display = "flex";
 
-      var selectedTabButton = document.getElementById(tabId+'Button');
-      if (selectedTabButton==null) {alert('cannot find element by name '+TabName+'Button');}
-      else {
-        selectedTabButton.style.background = bgColor; // Same background color as the tab page when selected
-        selectedTabButton.style.borderBottom = 'none';
-      }
+      pas.XTabControl.ButtonStyleSelected(tabId,PageNode);
 
       } catch(err) {alert('Error in XTabControl.OpenTab '+ err.message);}
   end;
 
-  if MyNode=nil then
-    myNode:=findDataNodeById(SystemNodetree,TabName,NameSpace,true);
-  if myNode<>nil then
+  if PageNode=nil then
+    PageNode:=findDataNodeById(SystemNodetree,TabName,NameSpace,true);
+  if PageNode<>nil then
   begin
-    ControlNode:=FindParentOfNodeByName(SystemNodeTree,TabName,NameSpace,true,siblingpos);
-    if (siblingpos>-1)
-    and (TXTabControl(ControlNode).TabIndex<>siblingpos) then
-      TXTabControl(ControlNode).TabIndex:=siblingpos;
-    //showmessage('Tabindex='+intToStr(TXTabControl(ControlNode).TabIndex));
+    ControlNode:=FindParentOfNode(SystemNodeTree,PageNode,true);
+    if (ControlNode<>nil) then
+    begin
+      siblingpos:=ControlNode.GetChildIndex(PageNode);
+      if (siblingpos>-1)
+      and (TXTabControl(ControlNode).TabIndex<>siblingpos) then
+        TXTabControl(ControlNode).TabIndex:=siblingpos;
+      //showmessage('Tabindex='+intToStr(TXTabControl(ControlNode).TabIndex));
+    end;
   end;
-  ResetAllRenderedCombos(MyNode);
+  ResetAllRenderedCombos(PageNode);
 end;
 
 procedure ChangeTabPage(nodeId,parentNodeId,NameSpace:string;TabNode:TDataNode=nil);
@@ -1183,10 +1207,11 @@ end;
 procedure RebuildButtons(TCNode:TdataNode);
 var
   OnClickString,buttonstring:String;
-  thisTab:TDataNode;
+  thisTab,selectedTab:TDataNode;
   cap:string;
-  i:integer;
+  i,tabIndex:integer;
 begin
+  tabIndex:=TXTabControl(TCNode).TabIndex;
   for i:=0 to length(TCNode.ChildNodes)-1 do
   begin
     thisTab:=TCNode.ChildNodes[i];
@@ -1198,9 +1223,15 @@ begin
                          '" ';
     buttonstring := buttonstring +
                   '<button id="'+thisTab.NameSpace+thisTab.NodeName+'Button" class="TabButton '+TCNode.NodeName+'" ' +
-                           OnClickString +
-                           ' style="background:rgb(241, 240, 238);border:none; padding:5px" ' +
+                           OnClickString;
+    buttonstring := buttonstring +
+                           ' style="background:rgb(241, 240, 238);border:none; padding:5px;';
+    if Lowercase(thisTab.GetAttribute('IsVisible',false).AttribValue) = 'false' then
+      buttonstring := buttonstring + 'display:none;" ';
+    buttonstring := buttonstring + '" ' +
                         '>'+cap+'</button>';
+    if i=tabIndex then
+      selectedTab:=thisTab;
   end;
   asm
   try{
@@ -1210,13 +1241,16 @@ begin
       ButtonsDiv.innerHTML = buttonstring;
     }catch(err) { alert(err.message+' in XTabControl.RebuildButtons '+TCNode.NodeName);}
   end;
+  if selectedTab<>nil then
+    ButtonStyleSelected(selectedTab.NameSpace+selectedTab.NodeName,selectedTab);
 end;
 
 function CreateTabSheet(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String): TDataNode;
 var
   ParentName,PageCaption,NodeID,ControlName:string;
 begin
-  //showmessage('tabsheet createwidget');
+  //showmessage('tabsheet createwidget. ParentNode='+ParentNode.NodeName);
+  MyNode.NodeParent:=ParentNode;
   ControlName:=ParentNode.NodeName;
   ParentName:=NameSpace+MyNode.GetAttribute('ParentName',false).AttribValue+'Contents';
   PageCaption:=MyNode.GetAttribute('Caption',false).AttribValue;
@@ -1261,6 +1295,26 @@ end;
 function CreateTabPageInterfaceObj(MyForm:TForm;NodeName,NameSpace:String):TObject;
 begin
   result:=TObject(TXTabSheet.Create(MyForm,NodeName,NameSpace));
+end;
+procedure TXTabSheet.SetIsVisible(AValue:Boolean);
+var
+  ParentNode,selectedTab:TDataNode;
+  tabIndex:integer;
+begin
+  inherited SetIsVisible(AValue);
+  ParentNode:=FindParentOfNode(SystemNodeTree,self);
+  if (ParentNode<>nil)
+  and (ParentNode.NodeType='TXTabControl') then
+  begin
+    RebuildButtons(ParentNode);
+    if AValue=false then
+    begin
+      tabIndex:=TXTabControl(ParentNode).TabIndex;
+      selectedTab:=ParentNode.ChildNodes[tabIndex];
+      if self = selectedTab then
+        TXTabControl(ParentNode).SetmyTabIndex(tabIndex-1);
+    end;
+  end;
 end;
 {$endif}
 

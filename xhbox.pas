@@ -196,7 +196,7 @@ begin
   if myNode<>nil then
   begin
     myNode.SetAttributeValue('InheritColor',myBoolToStr(AValue),'Boolean');
-      parentNode:=FindParentOfNode(SystemNodeTree,myNode);
+      parentNode:=myNode.NodeParent;
       if parentNode<>nil then
       begin
         if AValue=true then
@@ -241,7 +241,7 @@ begin
   // this is the set of node attributes that each XHBox instance will have.
   AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'ContainerWidth','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'ContainerHeight','String','300','',false);
+  AddDefaultAttribute(myDefaultAttribs,'ContainerHeight','String','30','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
@@ -255,9 +255,9 @@ begin
   AddNodeFuncLookup(MyNodeType,@CreateWidget);
   {$else}
   AddNodeFuncLookup(MyNodeType,@CreateinterfaceObj,@CreateWidget);
+  {$endif}
   SuppressDesignerProperty(MyNodeType,'LabelPos');
   SuppressDesignerProperty(MyNodeType,'LabelText');
-  {$endif}
 end.
 
 

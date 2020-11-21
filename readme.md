@@ -18,6 +18,13 @@ Installation
 The Lazarus package FrameViewer09 must first be installed into the Lazarus IDE.  The package is available 
 from https://github.com/BerndGabriel/HtmlViewer.  This supports the XHTMLText component within XComponents.
 (also see https://wiki.lazarus.freepascal.org/THtmlPort for background)
+NOTE: In order for hotspot links to work properly in frame viewer, the following fix is required:
+  Make this change to the file framview.pas, on line 3023, in method TFrameViewer.HotSpotClick: 
+  //if not HotSpotClickHandled(ExpURL, Target) then       //!!!! 10/11/2020 replaced this to avoid stack overflow
+  if (((Dest='') or (Dest[1]<>'#')) and (not HotSpotClickHandled(ExpURL, Target)))
+  or ((Dest<>'') and (Dest[1]='#') ) then
+  begin
+    ...
 
 The XComponents package can be installed either with or without components which use the ‘Chromium Embedded Framework’.  
 The compiler directive ‘Chromium’ must be set in ‘Package Options’ to include these components.

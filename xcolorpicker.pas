@@ -269,6 +269,8 @@ var
   OnChangeString, OnClickString:String;
 begin
   ItemValue:= MyNode.getAttribute('ItemValue',true).AttribValue;
+  if ItemValue='' then
+    ItemValue:='#FFFFFF';
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
 //  ReadOnly:= StrToBool(MyNode.getAttribute('ReadOnly',true).AttribValue);
 
@@ -400,7 +402,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Right','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Colour Picker','',false);
 //  AddDefaultAttribute(myDefaultAttribs,'ReadOnly','Boolean','False','',false);
-  AddDefaultAttribute(myDefaultAttribs,'ItemValue','String','','',false);
+  AddDefaultAttribute(myDefaultAttribs,'ItemValue','String','#FF8040','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);

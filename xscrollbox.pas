@@ -664,7 +664,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'BgColor','Color','#FFFFFF','',false);
-  AddDefaultAttribute(myDefaultAttribs,'ScrollType','String','Both','',false);
+  AddDefaultAttribute(myDefaultAttribs,'ScrollType','String','Right','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);

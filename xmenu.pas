@@ -356,7 +356,7 @@ begin
 
   self.SetMyEventTypes;
   self.myNode.myEventTypes:=self.myEventTypes;
-  SetLength(self.myNode.myEventHandlers,self.myNode.myEventTypes.Count);
+  self.myNode.InitialiseEventHandlers;
 
   Self.myNode.IsDynamic:=false;
 
@@ -1479,7 +1479,7 @@ begin
   AddDefaultsToTable('TXMainMenu',MenuDefaultAttribs);
 
   // this is the set of node attributes that each MenuItem instance will have.
-  AddDefaultAttribute(ItemDefaultAttribs,'Caption','String','New Item','',false);
+  AddDefaultAttribute(ItemDefaultAttribs,'Caption','String','Menu Item','',false);
   AddDefaultAttribute(ItemDefaultAttribs,'Hint','String','','',false);
   AddDefaultAttribute(ItemDefaultAttribs,'IsVisible','Boolean','True','',false);
   AddDefaultAttribute(ItemDefaultAttribs,'IsEnabled','Boolean','True','',false);

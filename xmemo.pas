@@ -413,8 +413,8 @@ begin
   AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'ContainerWidth','String','','',false);
   AddDefaultAttribute(myDefaultAttribs,'ContainerHeight','String','','',false);
-  AddDefaultAttribute(myDefaultAttribs,'MemoWidth','String','200','',false);
-  AddDefaultAttribute(myDefaultAttribs,'MemoHeight','String','100','',false);
+  AddDefaultAttribute(myDefaultAttribs,'MemoWidth','String','400','',false);
+  AddDefaultAttribute(myDefaultAttribs,'MemoHeight','String','200','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','True','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Top','',false);

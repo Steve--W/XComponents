@@ -295,8 +295,8 @@ begin
         datanode:= TDataNode(GetObjectProp(self.myWrapper,'myNode'));
         if datanode<>nil then
         begin
-          //ParentNode:=FindParentOfnode(SystemNodeTree,datanode.NodeName);
           ParentNode:=FindParentOfnode(SystemNodeTree,datanode);
+          //ParentNode:=datanode.MyParent;
           if ParentNode<>nil then
             ParentNode.RemoveChildNode(datanode);
           datanode.DeleteMe;

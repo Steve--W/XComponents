@@ -78,6 +78,9 @@ implementation
 
 const MyNodeType='TXTrapEvents';
 
+var
+  myDefaultAttribs:TDefaultAttributesArray;
+
 procedure TXTrapEvents.SetMyEventTypes;
 begin
   MyEventTypes.Add('Any');
@@ -107,11 +110,11 @@ begin
     self.MyEventTypes:=TStringList.Create;
     self.SetMyEventTypes;
 
-    SetLength(NewNode.myEventHandlers,self.myEventTypes.Count);
+    //SetLength(NewNode.myEventHandlers,self.myEventTypes.Count);
     NewNode.myEventTypes:=self.myEventTypes;
+    NewNode.InitialiseEventHandlers;
 
 
-    //AddChildToParentNode(SystemNodetree,NewNode,-1);
     AddChildToParentNode(UIRootNode,NewNode,-1);
 
     self.myNode:=NewNode;
@@ -192,6 +195,8 @@ end;
 
 
 begin
+  SetLength(myDefaultAttribs,0);
+  AddDefaultsToTable('TXTrapEvents',myDefaultAttribs);
   {$ifndef JScript}
   RegisterClass(TXTrapEvents);
   AddNodeFuncLookup('TXTrapEvents',@CreateWidget);
@@ -202,6 +207,7 @@ begin
   SuppressDesignerProperty('TXTrapEvents','LabelPos');
   SuppressDesignerProperty('TXTrapEvents','LabelText');
   SuppressDesignerProperty('TXTrapEvents','Hint');
+  SuppressDesignerProperty('TXTrapEvents','Border');
   {$endif}
 end.
 

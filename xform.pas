@@ -115,7 +115,9 @@ begin
   {$endif}
   myNode.MyEventTypes:=TStringList.Create;
   myNode.myEventTypes.Add('Closure');
-  SetLength(myNode.myEventHandlers,myNode.myEventTypes.Count);
+  myNode.InitialiseEventHandlers;
+  //SetLength(myNode.myEventHandlers,myNode.myEventTypes.Count);
+  //myNode.myEventHandlers[myNode.myEventTypes.Count-1]:=TEventHandlerRec.Create;
 end;
 
 function InOpenXForms(NodeName,NameSpace:String):integer;
@@ -175,9 +177,9 @@ var
 begin
 
   NewForm :=  TXForm.CreateNew(Application);
-  NewForm.name:=ScreenObjectName;
+  NewForm.name:=NameSpace+ScreenObjectName;    //!! Namespace here....for uniqueness
 
-  CreateComponentDataNode2(NewForm,'TXForm',myDefaultAttribs, NewForm.MyEventTypes, NewForm,true);
+  CreateComponentDataNode2(NewForm,'TXForm',myDefaultAttribs, nil, NewForm,true);
   NewNode:=NewForm.myNode;
   NewNode.NodeName:=ScreenObjectName;
   NewNode.NameSpace:=NameSpace;
@@ -194,12 +196,11 @@ procedure ShowXForm(XFormID:String; modal:Boolean;Namespace:String='');
 var OldParent:TComponent;
   FormToShow:TXForm;
 begin
-  FormToShow:=TXForm(Application.FindComponent(XFormID));
+  FormToShow:=TXForm(Application.FindComponent(Namespace+XFormID));
   if FormToShow<>nil then
   begin
     if (FormToShow<>MainForm) then
     begin
-      //FormToShow.BorderStyle:=bsSingle;
       if modal then
         FormToShow.Showing:='Modal'
       else
@@ -786,7 +787,7 @@ begin
   // this is the set of node attributes that each TXForm instance will have.
   AddDefaultAttribute(myDefaultAttribs,'Showing','String','No','',false,false);
   AddDefaultAttribute(myDefaultAttribs,'Width','Integer','400','',false);
-  AddDefaultAttribute(myDefaultAttribs,'Height','Integer','200','',false);
+  AddDefaultAttribute(myDefaultAttribs,'Height','Integer','300','',false);
   AddDefaultAttribute(myDefaultAttribs,'Top','Integer','50','',false);
   AddDefaultAttribute(myDefaultAttribs,'Left','Integer','50','',false);
   AddDefaultAttribute(myDefaultAttribs,'Caption','String','My Title','',false);

@@ -186,7 +186,8 @@ begin
   if myNode<>nil then
   begin
     myNode.SetAttributeValue('InheritColor',myBoolToStr(AValue),'Boolean');
-    parentNode:=FindParentOfNode(SystemNodeTree,myNode);
+    //parentNode:=FindParentOfNode(SystemNodeTree,myNode);
+    parentNode:=myNode.NodeParent;
     if parentNode<>nil then
     begin
       if AValue=true then

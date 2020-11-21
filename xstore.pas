@@ -235,5 +235,6 @@ begin
   SuppressDesignerProperty('TXStore','LabelPos');
   SuppressDesignerProperty('TXStore','LabelText');
   SuppressDesignerProperty('TXStore','Hint');
+  SuppressDesignerProperty('TXStore','Border');
   {$endif}
 end.

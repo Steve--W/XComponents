@@ -531,7 +531,8 @@ begin
   NewNode:=self.myNode;
   AddChildToParentNode(ParentNode,NewNode,position);
 
-  SetLength(NewNode.myEventHandlers,NewNode.myEventTypes.Count);
+  //SetLength(NewNode.myEventHandlers,NewNode.myEventTypes.Count);
+  NewNode.InitialiseEventHandlers;
 
   RefreshComponentProps(myNode);
 
@@ -851,13 +852,13 @@ end;
 
 procedure TXSVGRect.SetDefaultAttribs;
 begin
-  self.myNode.SetAttributeValue('XPos','50');
-  self.myNode.SetAttributeValue('YPos','50');
-  self.myNode.SetAttributeValue('Width','50');
-  self.myNode.SetAttributeValue('Height','50');
+  self.myNode.SetAttributeValue('XPos','40');
+  self.myNode.SetAttributeValue('YPos','60');
+  self.myNode.SetAttributeValue('Width','30');
+  self.myNode.SetAttributeValue('Height','30');
   self.myNode.SetAttributeValue('StrokeWidth','3');
   self.myNode.SetAttributeValue('StrokeColor','#BBBBBB','Color');
-  self.myNode.SetAttributeValue('FillColor','#FF0000','Color');
+  self.myNode.SetAttributeValue('FillColor','#FFFFFF','Color');
   self.myNode.SetAttributeValue('FillTransparent','False','Boolean');
   self.myNode.SetAttributeValue('Rotate','0');
   self.ConstructXMLString;
@@ -923,12 +924,12 @@ end;
 
 procedure TXSVGRoundedRect.SetDefaultAttribs;
 begin
-  self.myNode.SetAttributeValue('XPos','50');
-  self.myNode.SetAttributeValue('YPos','50');
+  self.myNode.SetAttributeValue('XPos','60');
+  self.myNode.SetAttributeValue('YPos','10');
   self.myNode.SetAttributeValue('Rx','10');
   self.myNode.SetAttributeValue('Ry','10');
-  self.myNode.SetAttributeValue('Width','50');
-  self.myNode.SetAttributeValue('Height','50');
+  self.myNode.SetAttributeValue('Width','40');
+  self.myNode.SetAttributeValue('Height','40');
   self.myNode.SetAttributeValue('StrokeWidth','3');
   self.myNode.SetAttributeValue('StrokeColor','#BBBBBB','Color');
   self.myNode.SetAttributeValue('FillColor','#FF0000','Color');
@@ -1003,7 +1004,7 @@ begin
   self.myNode.SetAttributeValue('YPos','75');
   self.myNode.SetAttributeValue('XPos','25');
   self.myNode.SetAttributeValue('Radius','20');
-  self.myNode.SetAttributeValue('StrokeWidth','5');
+  self.myNode.SetAttributeValue('StrokeWidth','3');
   self.myNode.SetAttributeValue('StrokeColor','#00FF00','Color');
   self.myNode.SetAttributeValue('FillColor','#FFFF00','Color');
   self.myNode.SetAttributeValue('FillTransparent','False','Boolean');
@@ -1074,7 +1075,7 @@ begin
   self.myNode.SetAttributeValue('XPos','100');
   self.myNode.SetAttributeValue('Rx','20');
   self.myNode.SetAttributeValue('Ry','50');
-  self.myNode.SetAttributeValue('StrokeWidth','5');
+  self.myNode.SetAttributeValue('StrokeWidth','4');
   self.myNode.SetAttributeValue('StrokeColor','#66FF66','Color');
   self.myNode.SetAttributeValue('FillColor','#AABBCC','Color');
   self.myNode.SetAttributeValue('FillTransparent','False','Boolean');
@@ -1421,7 +1422,7 @@ end;
 
   procedure TXSVGWidget.setXMLString(AValue:string);
   var
-    myParent:TXSVGContainer;
+    mySVGParent:TXSVGContainer;
     pn:TDataNode;
   begin
     myNode.SetAttributeValue('XMLString',AValue);
@@ -1430,12 +1431,12 @@ end;
     if pn<>nil then
     begin
       {$ifndef JScript}
-      myParent:=TXSVGContainer(pn.ScreenObject);
+      mySVGParent:=TXSVGContainer(pn.ScreenObject);
       {$else}
       // if (not StartingUp) then showmessage('widget '+myNode.NodeType+' setXMLString '+AValue);
-      myParent:=TXSVGContainer(pn);
+      mySVGParent:=TXSVGContainer(pn);
       {$endif}
-      myParent.XMLString:=myParent.XMLString;  // will re-draw the parent SVG frame
+      mySVGParent.XMLString:=mySVGParent.XMLString;  // will re-draw the parent SVG frame
 
     end;
 

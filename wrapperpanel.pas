@@ -75,22 +75,20 @@ type TWrapperPanel=Class(TInterfaceObject)
    {$endif}
    FIsContainer:Boolean;
    FAlignChildrenVertical:Boolean;
-//   FLink: TXPropertyLink;
 
    function GetName:string;
-   function GetIsVisible:Boolean;
+   function GetIsVisible:Boolean;              //
    function GetContainerWidth:string;
    function GetContainerHeight:string;
-   function GetHint:string;
+   function GetHint:string;                   //
    function GetBgColor:TColor;
    function GetLabelText:string;
    function GetLabelPos:String;
-   function GetAlignment:String;
+   function GetAlignment:String;              //
    function GetSpacingAround:integer;
    function GetBorder:Boolean;
-   function GetHTMLClasses:String;
+   function GetHTMLClasses:String;            //
 
-   procedure SetIsVisible(AValue:Boolean);
    procedure SetMyName(AValue:string);
    procedure SetHint(AValue:string);
    procedure SetLabelText(AValue:string);
@@ -100,7 +98,6 @@ type TWrapperPanel=Class(TInterfaceObject)
    procedure SetHTMLClasses(AValue:string);
 
    {$ifndef JScript}
-//   procedure SetLink(const AValue: TXPropertyLink);
    function DoAlignChildControls(TheAlign: TAlign; AControl: TControl;
                      AControlList: TFPList; var ARect: TRect): Boolean; override;
 
@@ -127,6 +124,7 @@ type TWrapperPanel=Class(TInterfaceObject)
     procedure SortOutAlignment;
     {$endif}
 
+    procedure SetIsVisible(AValue:Boolean);   virtual;
     procedure SetLabelPos(AValue:String);    virtual;
     procedure SetIsSelected(AValue: Boolean);   virtual;
     procedure SetBgColor(AValue:TColor);       virtual;
@@ -421,18 +419,17 @@ end;
 
 constructor TWrapperPanel.Create(NodeName,NameSpace:String);
 begin
-  inherited Create('UI',NodeName,'','',false);       //!!!!namespace???
+  inherited Create('UI',NodeName,'','',false);       //!!namespace???
+
+  myNode:=TDataNode(self);
 
   AlignChildrenVertical:=true;
 
   self.NodeName:=NodeName;
   self.Namespace:=NameSpace;
   self.IsContainer:=true;
-  self.IsVisible:=true;
-  myNode:=TDataNode(self);
-  //showmessage('adding '+NodeName+' to SystemNodeTree');
   AddChildToParentNode(SystemNodeTree,myNode,-1);  // to be re-parented later
-
+  self.IsVisible:=true;
 
 end;
 
@@ -470,7 +467,6 @@ begin
     //Create Widget (also creates datanode)
     NewNode:=fn(parentNode,NodeName,NameSpace,position,Alignment);
     {$else}
- //   NewWidget:=TInterfaceObject(CreateInterfaceObject(nil,TypeName,NodeName,NameSpace));
     NewWidget:=TInterfaceObject(CreateInterfaceObject(ParentForm,TypeName,NodeName,NameSpace));
     if IsPublishedProp(NewWidget,'Alignment') then
       SetStringProp(NewWidget,'Alignment',Alignment);
@@ -480,6 +476,7 @@ begin
       AddChildToParentNode(ParentNode,NewNode,position);
     fn(NewNode,ParentNode,NodeName,NameSpace,position,Alignment);
     {$endif}
+    NewNode.InitialiseEventHandlers;
     StartingUp:=Starting;
     NewNode.IsDynamic:=true;
 
@@ -900,14 +897,13 @@ var
     ParentAlignChildrenVertical, ContainerType:Boolean;
     MyAlignment,MyLabelPos,NewAlignment,typ,nm:String;
     ParentNode:TDataNode;
-    pos:integer;
 begin
   //if self.IsDynamic then showmessage('SortOutMyAlignmentAndLabelPos '+self.NodeName);
   ContainerType := self.IsContainer;
   MyAlignment:=self.Alignment;
   MyLabelPos:=self.LabelPos;
-  ParentNode:=FindParentOfNodeByName(SystemNodeTree,self.NodeName,self.NameSpace,false,pos);
-  //ParentNode:=FindParentOfNode(SystemNodeTree,self);        //!!!! doesn't work....why not???
+  //ParentNode:=FindParentOfNodeByName(SystemNodeTree,self.NodeName,self.NameSpace,false);
+  ParentNode:=FindParentOfNode(SystemNodeTree,self,false);
 
   ParentAlignChildrenVertical:=true;
   if (ParentNode<>nil)
@@ -1055,14 +1051,14 @@ var
   MyAlignment,MyLabelPos,NewAlignment:String;
   ParentNode:TDataNode;
   nm,typ:String;
-  pos:integer;
 begin
   ContainerType := self.IsContainer;
   nm:=self.NodeName;
   typ:=self.NodeType;
   MyAlignment:=self.Alignment;
   MyLabelPos:=self.LabelPos;
-  ParentNode:=FindParentOfNodeByName(SystemNodeTree,self.NodeName,self.NameSpace,false,pos);
+  //ParentNode:=FindParentOfNodeByName(SystemNodeTree,self.NodeName,self.NameSpace,false);
+  ParentNode:=FindParentOfNode(SystemNodeTree,self,false);
 
 
   if ParentNode<>nil then

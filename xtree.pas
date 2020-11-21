@@ -310,6 +310,7 @@ begin
 
   TmyTreeView(myControl).DragMode:=dmAutomatic;
   TmyTreeView(myControl).IsDropTarget:=false;
+  TmyTreeView(myControl).ShowHint:=true;
 
   //myControl.Enabled:=true;      //????
   TmyTreeView(myControl).ReadOnly:=false;      //????
@@ -535,24 +536,35 @@ procedure TmyTreeView.selectNodeByText(NodeText:String);
 var
   TargetNode:TTreeNode;
 begin
-  TargetNode:=TTreeNode(self.Items.FindNodeWithText(NodeText));
-  if TargetNode<>nil then
+  if NodeText<>'' then
   begin
-    if TargetNode<>self.Selected then
-      self.Select(TargetNode);        // In Lazarus this will automatically open any parent nodes   //  this fires a change event????
-  end;
+    TargetNode:=TTreeNode(self.Items.FindNodeWithText(NodeText));
+    if TargetNode<>nil then
+    begin
+      if TargetNode<>self.Selected then
+        self.Select(TargetNode);        // In Lazarus this will automatically open any parent nodes   //  this fires a change event????
+    end;
+  end
+  else
+    self.ClearSelection();
 end;
+
 
 procedure TmyTreeView.selectNodeById(NodeId:String);
 var
   TargetNode:TTreeNode;
 begin
-  TargetNode:=self.FindNodeById(NodeId);
-  if TargetNode<>nil then
+  if NodeId<>'' then
   begin
-    if TargetNode<>self.Selected then
-      self.Select(TargetNode);        // In Lazarus this will automatically open any parent nodes
-  end;
+    TargetNode:=self.FindNodeById(NodeId);
+    if TargetNode<>nil then
+    begin
+      if TargetNode<>self.Selected then
+        self.Select(TargetNode);        // In Lazarus this will automatically open any parent nodes
+    end;
+  end
+  else
+    self.ClearSelection();
 end;
 
 procedure TmyTreeView.TreeSelectedNodeChange(Sender: TObject; Node: TTreeNode);
@@ -726,11 +738,7 @@ var
   NewTreeNode:TTreeNode;
   myHint,NodeId:String;
   MyRecPtr: PNodeDataRec;
-//  AData: TTreeData;
 begin
-//  AData := TTreeData.Create;
-//  AData.ID := '?????';
-//  ShowMessage(TTreeData(ANode.Data).ID);
 
   New(MyRecPtr);
   MyRecPtr^.ID:=GetNewNodeId(ParentNode,TreeName);
@@ -866,9 +874,6 @@ begin
 
     if jData<>nil then
     begin
-      //tmp:=jData.asJSON;
-      //showmessage(jData.asJSON);
-      //JSONItems(jData);
       i:=0;
       // everything at this level is a child of the root node
       while i < jData.Count do
@@ -885,7 +890,6 @@ begin
         else if object_type='jtArray' then
         begin
           // first element in an array is the node, and following elements are node children
-          //self.AddChildren(jItem,newnode);
           self.AddChildren(jItem,parentnode,RootName);
         end;
         i:=i+1;
@@ -906,11 +910,6 @@ function TXTree.NodeTextIsUnique(NodeText:String):Boolean;
 begin
   result:=TMyTreeView(self.myControl).NodeTextIsUnique(NodeText);
 end;
-
-//function TXTree.MakeTextUnique(NodeText:String):String;
-//begin
-//  result:=TMyTreeView(self.myControl).MakeTextUnique(NodeText);
-//end;
 
 function TXTree.BuildTreeDataString:String;
 begin
@@ -1247,23 +1246,23 @@ function GetPathToNode(TreeName,NameOfSelectedNode:string):string;
 var containsSelectedNode:boolean;
   str:String;
 begin
-  //showmessage('GetPathToNode. Tree='+TreeName);
 
   asm
+    //console.log('GetPathToNode '+NameOfSelectedNode+'. Tree='+TreeName);
     try{
     var thisNode=document.getElementById(NameOfSelectedNode);
     var parent=thisNode;
-   // alert('thisNode='+thisNode.id+' '+thisNode.tagName);
 
     do
     {
       var idx='';
       parent = parent.parentNode;     // should be a DETAILS element
-      //alert('parentid='+parent.id+' tag='+parent.tagName);
+      //console.log('parentid='+parent.id+' tag='+parent.tagName);
       if (parent.tagName=="DETAILS") {
         var list = parent.getElementsByTagName("SUMMARY");
         // should contain just one SUMMARY element
         if (list.length>0) {
+          //console.log('SUMMARY found');
           var summ=list[0];
           var localDiv=parent.parentNode;
           var parentDiv=localDiv.parentNode;
@@ -1275,24 +1274,23 @@ begin
             // just count the DIV children up to this node (localDiv)
             if (DList[i].tagName=='DIV') {j=j+1;}
             if (DList[i]==localDiv) {
-                idx=j+':';
+                idx=j+'~:~';
                 i=DList.length;
               }
             i=i+1;
           }
           while (i<DList.length);
 
-          if (str!="") {str=idx+summ.innerHTML+"/"+str;}
+          if (str!="") {str=idx+summ.innerHTML+"~/~"+str;}
           else {str=idx+summ.innerHTML;}
 
         }
       }
     }
     while ((parent.id!=TreeName)&&(parent.id!=TreeName+"Contents")&&(thisNode.parentNode!=null)&&(thisNode.parentNode!=undefined))
+    //console.log('final str='+str);
     }catch(err) { alert(err.message+'  in XTree.GetPathToNode'); }
   end;
-
-  // prepend each name with the sibling number
 
   result:=  str;
 end;
@@ -1623,7 +1621,10 @@ begin
        myself.innerHTML = HTMLString;
        }
      }
-     else alert('Cannot find node '+NodeId);
+     else {
+       // go down the tree from the root clearing the selected colour
+       pas.XTree.deselectNodeChildren(this.NodeName+'Node',normalColor);
+     }
      }catch(err) { alert(err.message+'  in XTree.SelectTreeNodeById'); }
    end;
 
@@ -1834,19 +1835,23 @@ end;
 procedure TXTree.SetSelectedNodeId(AValue:string);
 var
   nodeId:String;
-  nodeText:String;
+  nodeText,pth:String;
   {$ifndef JScript}
   ANode:TTreeNode;
   {$endif}
 begin
+  nodeText:='';
   nodeId:=AValue;
-  {$ifndef JScript}
-  ANode:=TmyTreeView(self.myControl).FindNodeById(nodeId);
-  nodeText:=ANode.Text;
-  {$else}
-  // make sure the id is a SUMMARY element.
-  // (might send in a DETAILS id.  SUMMARY is first child of DETAILS)
-  asm
+  if nodeId<>'' then
+  begin
+    {$ifndef JScript}
+    ANode:=TmyTreeView(self.myControl).FindNodeById(nodeId);
+    nodeText:=ANode.Text;
+    {$else}
+    // make sure the id is a SUMMARY element.
+    // (might send in a DETAILS id.  SUMMARY is first child of DETAILS)
+    asm
+    //console.log('SetSelectedNodeId '+AValue);
     var ob=document.getElementById(nodeId);
     if (ob!=null) {
     if (ob.tagName=='DETAILS') {
@@ -1857,14 +1862,16 @@ begin
     }
     else {alert('cannot find node '+nodeId);}
 
+    end;
+    {$endif}
   end;
-  {$endif}
+
   fSelectedNodeId:=nodeId;
   myNode.SetAttributeValue('SelectedNodeText',nodeText);
-  if nodeId<>'' then
-  begin
-     self.SelectTreeNodeById(nodeId);
-  end;
+
+  pth:=self.SelectedTextPath;   // this sets the value for attribute 'SelectedTextPath'
+
+  self.SelectTreeNodeById(nodeId);
 end;
 
 procedure TXTree.DeSelectNode;
@@ -2110,14 +2117,16 @@ begin
     pth:=TmyTreeView(myControl).BuildExpandedText(TmyTreeView(myControl).Selected);
   end;
   {$else}
-  // build the text path from the defined nodes
+    // build the text path from the defined nodes
     localSelectedNodeId :=self.SelectedNodeId;
-
+    //asm console.log('localSelectedNodeId='+localSelectedNodeId); end;
     if localSelectedNodeId<>'' then
     begin
- //     showmessage('GetSelectedTextPath.  SelectedNodeId='+localSelectedNodeId);
       pth:=GetPathToNode(self.NodeName,localSelectedNodeId);
-    end;
+    end
+    else
+      pth:='';
+    //asm console.log('pth='+pth); end;
   {$endif}
 
   myNode.setAttributeValue('SelectedTextPath',pth,'String');
@@ -2228,22 +2237,27 @@ begin
       myNode.SetAttributeValue('SelectedNodeText',AValue);
       self.SelectTreeNodeByText(AValue);                   // selects node with this text....!!!! node texts must be unique
       {$else}
+      //asm console.log('SetSelectedNodeText '+AValue); end;
       NodeId:=NodeIdFromText(self,AValue);
       self.SelectedNodeId:=NodeId;
       pth:=self.SelectedTextPath;   // this sets the value for attribute 'SelectedTextPath'
       {$endif}
     end
     else
+    begin
       myNode.SetAttributeValue('SelectedNodeText',AValue);
+      {$ifndef JScript}
+      self.SelectTreeNodeByText(AValue);                   // clears the current selection
+      {$endif}
+    end;
   end;
 end;
-
 
 begin
   // this is the set of node attributes that each XTree instance will have.
   AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'TreeWidth','String','200','',false);
-  AddDefaultAttribute(myDefaultAttribs,'TreeHeight','String','150','',false);
+  AddDefaultAttribute(myDefaultAttribs,'TreeHeight','String','250','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Top','',false);

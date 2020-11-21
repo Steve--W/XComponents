@@ -26,19 +26,23 @@ uses
 
 type TIntArray = Array of integer;
 type TDataNode = class;  //forward
+type TNodeAttribute = class;  //forward
 
-type TCodeInputRec = record
+type
+TAttribSourceRec = record
     InputNodeName:String;
+    InputNameSpace:String;
     InputAttribName:String;
-    InputSynonym:String;
     InputValue:String;
   end;
-type TCodeInputs = Array of TCodeInputRec;
 type TEventHandler = procedure(e:TEventStatus;nodeID:AnsiString;myValue:AnsiString) of object;
-type TEventHandlerRec = record
+type TEventHandlerRec = class(TObject)
+  public
   TheHandler:TEventHandler;   // for event handler functions that exist in the compiled project
   TheCode:String;             // for dynamically created XComponents with user-entered event code
   InitCode:String;            // for dynamically created XComponents with user-entered event code
+  ReadOnlyInterface:Boolean; // for TXComposite components only.
+  EventHint:String;          // for TXCompositeIntf components only.
 end;
 type TEventHandlers = Array of TEventHandlerRec;
 type TGenericHandler = function(MyEventType,myValue:string;myNode:TDataNode):Boolean of object;
@@ -95,12 +99,17 @@ type TAddComponentFunc = function(MyNode, ParentNode:TDataNode;ScreenObjectName,
  end;
  type TDefaultAttribsTable = Array of TDefaultAttribsByType;
 
- type   TNodeAttribute = Record
+ type   TNodeAttribute = class(TObject)
+   public
          AttribName:string;
          AttribType:string;
          AttribValue:string;
          AttribReadOnly:boolean;
-         AttribSource:TCodeInputRec;
+         AttribSource:TAttribSourceRec;
+         AttribHint:String;        // populated only for TXCompositeIntf nodes; otherwise hints come from the defaultattribs.
+
+         OwnerNode:TDataNode;
+         constructor Create(InNode:TDataNode; AttrName:String);
      end;
 type  TNodeAttributesArray = Array of TNodeAttribute;
 
@@ -139,6 +148,8 @@ type   TDataNode = class(TForm)         // <- TObject
           myEventTypes:TStringList;
           myEventHandlers:TEventHandlers;
 
+          NodeParent:TDataNode;
+
           constructor Create(MyClass,MyName,MyNameSpace,MyType:string;NodeIsDynamic:Boolean=false);
           procedure DeleteMe;
           function HasAttribute(AttrName:string):Boolean;
@@ -149,17 +160,23 @@ type   TDataNode = class(TForm)         // <- TObject
           procedure SetAttributeValue(AttrName:string;const NewValue,AttrType:string;AttribReadOnly:Boolean);  overload;
           procedure SetAttributeValue(AttrName:string;const NewValue,AttrType:string);  overload;
           procedure SetAttributeValue(AttrName:string;const NewValue:string); overload;
-          procedure SetAttributeSource(AttrName:string;SourceNodeName,SourceAttribName:string);
+          procedure SetAttributeSource(AttrName:string;SourceNodeName,SourceNameSpace,SourceAttribName:string);
           function GetChildIndex(ChildNode:TDataNode):integer;
           procedure RemoveChildNode(ChildNode:TDataNode);
           function FindRegisteredEvent(EventType:string):TEventHandler;
           procedure RegisterEvent(EventType:String;TheHandler:TEventHandler);
           function HasUserEventCode(EventType:String):Boolean;
           function EventNum(EventType:String):integer;
+          function GetEvent(EventType:String):TEventHandlerRec;
           function GetEventCode(EventType:String):String;
           function GetEventInitCode(EventType:String):String;
-          procedure AddEvent(EventType,MainCode,InitCode:String);
-
+          function GetEventROI(EventType:String):Boolean;
+          procedure InitialiseEventHandlers;
+          procedure AddEvent(EventType,MainCode,InitCode:String;ReadOnly:Boolean=false;EventHint:String='');
+          procedure DeleteEvent(EventType:String);
+          procedure DeleteAttribute(AttributeName:string);
+          procedure DebugEvents(sometext:String);
+          procedure LogAttributes(sometext:String);
        end;
 
 const AlignmentOptions:Array[0..4] of string = ('Left','Right','Centre','Top','Bottom');
@@ -206,15 +223,9 @@ procedure AddDefaultAttribute(var Attribs:TDefaultAttributesArray;AttrName,AttrT
 procedure AddExclusionAttribToTable(NodeType,AttribName,TargetAttrib:String);
 procedure AddAttrib(var AttrParams:TNodeAttributesArray;attrName,attrType,attrValue:string;attrReadOnly:Boolean);
 procedure AddChildToParentNode(var ParentNode, ChildNode:TDataNode; position:integer);
-function StringToCodeInputs(InputString:String):TCodeInputs;
-function CodeInputsToString(myInputs:TCodeInputs):String;
 function NodeTreeToXML(CurrentItem,ParentNode:TDataNode;DynamicOnly,QuotedString:Boolean):String;
 function FindDataNodeById(InTree:TDataNode; ScreenObjectID,NameSpace:String;showerror:boolean):TDataNode;
-function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode;showerror:Boolean;var position:Integer):TDataNode;  overload;
-function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode):TDataNode;  overload;
-function FindParentOfNodeByName(InTree:TDataNode;ScreenObjectID,Namespace:String;showerror:Boolean;var position:Integer):TDataNode;  overload;
-function FindParentOfNodeByName(InTree:TDataNode;ScreenObjectID,Namespace:String;showError:Boolean):TDataNode; overload;
-function FindParentOfNodeByName(InTree:TDataNode;ScreenObjectID,Namespace:String):TDataNode; overload;
+function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode;showerror:Boolean=false):TDataNode;  overload;
 procedure ReParentNode(MyNode,NewParent:TDataNode);
 procedure DeleteNode(ParentNode,MyNode:TDataNode);
 function CopyNode(SourceNode:TDataNode;DrillDown:Boolean):TDataNode;
@@ -225,7 +236,6 @@ function NodeIsDescendantOf(ThisNode:TDataNode;AncestorName:string):integer;
 function NodeIsInXForm(ThisNode:TDataNode):Boolean;
 procedure DeleteNodeChildren(ParentNode:TDataNode);
 function InsertSystemNode(ParentNode,SourceNode:TDataNode;Position:integer):TDataNode;
-procedure ClearAttribs(var AttrParams:TNodeAttributesArray);
 function NodeNameIsUnique(myNode:TDataNode;NodeName,Namespace:string; showerror:Boolean):Boolean;
 function SetUniqueName(myNode:TDataNode;Formname:String;const NewName: TComponentName):TComponentName;
 procedure InitSystemNodetree;
@@ -254,11 +264,11 @@ procedure EditAttributeValueIndexed(NodeNameToEdit,NameSpace,AttrNameToEdit:Stri
 
 function FindInterfaceNode(StartNode:TDataNode;NameSpace:String;PropName:String):TdataNode;
 
-procedure PushSourceToAttributes(SourceNode:TDataNode; SourceAttrib:TNodeAttribute);
+procedure PushSourceToAttributes(FromNode:TDataNode; FromAttrib:TNodeAttribute);
 procedure PushAllSourcesToAttributes;
 procedure PushNodeSourcesToAttributes(FromNode:TDataNode);
 procedure myCopyToClip(stringname,instring:string);
-function FindNodesOfType(StartNode:TdataNode;NodeType:String):TNodesArray;
+function FindNodesOfType(StartNode:TdataNode;NodeType:String;InNameSpace:Boolean=false;NameSpace:String=''):TNodesArray;
 procedure SetNodePropDefaults(myNode:TDataNode;defaultAttribs:TDefaultAttributesArray);
 procedure UnSuspendFrames(StartNode:TdataNode);
 
@@ -353,7 +363,15 @@ uses LazsUtils,WrapperPanel, XForm, XBitMap, XIFrame, XTable, Events, PasteDialo
 uses WrapperPanel, XForm, XButton, XBitMap, XTable, PasteDialogUnit, HTMLUtils;
 {$endif}
 
-
+constructor TNodeAttribute.Create(InNode:TDataNode; AttrName:String);
+begin
+  self.OwnerNode:=InNode;
+  self.AttribName:=AttrName;
+  self.AttribReadOnly:=false;
+  self.AttribType:='String';
+  self.AttribValue:='';
+  self.AttribHint:='';
+end;
 
 constructor TDataNode.Create(MyClass,MyName,MyNameSpace,MyType:string;NodeIsDynamic:Boolean=false);
 var
@@ -387,11 +405,6 @@ begin
 
 end;
 
-//function TDataNode.getBaseNodeName:String;
-//begin
-//  result:=fNodeName;
-//end;
-
 function TDataNode.HasAttribute(AttrName:string):Boolean;
 var
   found:Boolean;
@@ -411,7 +424,7 @@ var
   myAttribs:TNodeAttributesArray;
 begin
   i:=0;
-  foundAttrib.AttribName:='';
+  foundAttrib:=nil;
   myAttribs:=self.NodeAttributes;
   while i < length(myAttribs) do
   begin
@@ -422,13 +435,12 @@ begin
     end;
     i:=i+1;
   end;
-  if foundAttrib.AttribName<>AttrName then
+  if foundAttrib=nil then
     if AllowSpace then
     begin
-      foundAttrib.AttribName:=AttrName;
-      foundAttrib.AttribType:='String';
-      foundAttrib.AttribValue:='';
-      foundAttrib.AttribReadOnly:=false;
+      foundAttrib:=TNodeAttribute.Create(self,AttrName);
+      SetLength(self.NodeAttributes,length(self.NodeAttributes)+1);
+      self.NodeAttributes[length(self.NodeAttributes)-1]:=foundAttrib;
     end
     else
     begin
@@ -444,7 +456,7 @@ var
   myAttribs:TNodeAttributesArray;
 begin
   i:=0;
-  foundAttrib.AttribName:='';
+  foundAttrib:=nil;
   myAttribs:=self.NodeAttributes;
   while i < length(myAttribs) do
   begin
@@ -455,13 +467,12 @@ begin
     end;
     i:=i+1;
   end;
-  if trim(uppercase(foundAttrib.AttribName))<>trim(uppercase(AttrName)) then
+  if foundAttrib=nil then
     if AllowSpace then
     begin
-      foundAttrib.AttribName:=AttrName;
-      foundAttrib.AttribType:='String';
-      foundAttrib.AttribValue:='';
-      foundAttrib.AttribReadOnly:=false;
+      foundAttrib:=TNodeAttribute.Create(self,AttrName);
+      SetLength(self.NodeAttributes,length(self.NodeAttributes)+1);
+      self.NodeAttributes[length(self.NodeAttributes)-1]:=foundAttrib;
     end
     else
     begin
@@ -598,12 +609,13 @@ procedure TDataNode.AddAttribute(AttributeName,AttributeType,AttributeValue:stri
 var
   numAttributes:Integer;
   myAttributes:TNodeAttributesArray;
+  newAttrib:TNodeAttribute;
 begin
   //showmessage('adding '+AttributeName+' '+AttributeValue);
     myAttributes:= self.NodeAttributes;
     numAttributes:=Length(myAttributes);
     SetLength( self.NodeAttributes,numAttributes+1);
-    self.NodeAttributes[numAttributes].AttribName := AttributeName ;
+    self.NodeAttributes[numAttributes]:=TNodeAttribute.Create(self,AttributeName);
     self.NodeAttributes[numAttributes].AttribValue := AttributeValue;
     self.NodeAttributes[numAttributes].AttribType := AttributeType ;
     self.NodeAttributes[numAttributes].AttribReadOnly := AttributeReadOnly;
@@ -611,12 +623,32 @@ begin
     SortAttribs(self.NodeAttributes);
 end;
 
+procedure TDataNode.DeleteAttribute(AttributeName:String);
+var
+  i:integer;
+  found:boolean;
+begin
+  for i:=0 to length(self.NodeAttributes)-1 do
+  begin
+    if self.NodeAttributes[i].AttribName=AttributeName then
+    begin
+      found:=true;
+      TNodeAttribute(self.NodeAttributes[i]).Free;
+    end;
+    if found then
+    begin
+      if i<length(self.NodeAttributes)-1 then
+        self.NodeAttributes[i]:=self.NodeAttributes[i+1];
+    end;
+  end;
+  if found then
+    SetLength( self.NodeAttributes,length(self.NodeAttributes)-1);
+end;
+
+
 procedure TDataNode.SetAttributeValue(AttrName:string;const NewValue,AttrType:string;AttribReadOnly:Boolean); // overload;
 var
   foundAttrib:TNodeAttribute;
-  myAttribs:TNodeAttributesArray;
-  i:integer;
-  found:Boolean;
 begin
   foundAttrib:=self.GetAttribute(AttrName,true);
   //this may have created a new attribute (default type String), so fix the type.
@@ -624,30 +656,19 @@ begin
      foundAttrib.AttribType:=AttrType;
 
   foundAttrib.AttribValue:=NewValue;
+  foundAttrib.AttribReadOnly:=AttribReadOnly;
 
-  // now have to put it back in the array
-  found:=false;
-  myAttribs:=self.NodeAttributes;
-  i:=0;
-  while i < length(myAttribs) do
-  begin
-    if self.NodeAttributes[i].AttribName=AttrName then
-    begin
-      self.NodeAttributes[i]:=foundAttrib;
-      i:= length(myAttribs);
-      found:=true;
-    end;
-    i:=i+1;
-  end;
-  if not found then
-  begin
-    self.AddAttribute(foundAttrib.AttribName, foundAttrib.AttribType, FoundAttrib.AttribValue, AttribReadOnly);
-  end;
 end;
 
 procedure TDataNode.SetAttributeValue(AttrName:string;const NewValue,AttrType:string); // overload;
+var
+  foundAttrib:TNodeAttribute;
 begin
-  self.SetAttributeValue(AttrName,NewValue,AttrType,false);
+  foundAttrib:=self.GetAttribute(AttrName,true);
+  //this may have created a new attribute (default type String), so fix the type.
+  if AttrType<>'' then
+     foundAttrib.AttribType:=AttrType;
+  foundAttrib.AttribValue:=NewValue;
 end;
 
 procedure TDataNode.SetAttributeValue(AttrName:string;const NewValue:string); //overload;
@@ -655,44 +676,39 @@ begin
   self.SetAttributeValue(AttrName,NewValue,'');
 end;
 
-procedure TDataNode.SetAttributeSource(AttrName:string;SourceNodeName,SourceAttribName:string);
+procedure TDataNode.SetAttributeSource(AttrName:string;SourceNodeName,SourceNameSpace,SourceAttribName:string);
 var
   foundAttrib:TNodeAttribute;
-  myAttribs:TNodeAttributesArray;
   i:integer;
-  found:Boolean;
 begin
-  foundAttrib:=self.GetAttribute(AttrName,true);
   //if no attribute here, add one
-  if (foundAttrib.AttribName='') then
-    if (SourceNodeName <> '') then
-    begin
-      showmessage('Unable to set source for missing attribute '+self.NodeName+'.'+AttrName);
-      EXIT;
-    end;
+  foundAttrib:=self.GetAttribute(AttrName,true);
 
+//  SourceNode:=FindData
+//  SourceAttrib:=???.GetAttribute(AttrName,true);
   foundAttrib.AttribSource.InputNodeName:=SourceNodeName;
+  foundAttrib.AttribSource.InputNameSpace:=SourceNameSpace;
   foundAttrib.AttribSource.InputAttribName:=SourceAttribName;
 
   if SourceNodeName='' then
   begin
-    foundAttrib.AttribSource.InputSynonym:='';
     foundAttrib.AttribSource.InputValue:='';
   end;
   // now have to put it back in the array
+  (*
   found:=false;
-  myAttribs:=self.NodeAttributes;
   i:=0;
-  while i < length(myAttribs) do
+  while i < length(self.NodeAttributes) do
   begin
     if self.NodeAttributes[i].AttribName=AttrName then
     begin
       self.NodeAttributes[i]:=foundAttrib;
-      i:= length(myAttribs);
+      i:= length(self.NodeAttributes);
       found:=true;
     end;
     i:=i+1;
   end;
+  *)
 end;
 
 function TDataNode.GetChildIndex(ChildNode:TDataNode):integer;
@@ -737,16 +753,33 @@ begin
   self.ChildNodes:=mychildren;
 end;
 
-procedure TDataNode.AddEvent(EventType,MainCode,InitCode:String);
+procedure TDataNode.AddEvent(EventType,MainCode,InitCode:String;ReadOnly:Boolean=false;EventHint:String='');
 var
   j:integer;
 begin
   self.myEventTypes.Add(EventType);
   setlength(self.myEventHandlers,self.myEventTypes.Count);
   j:=self.myEventTypes.Count-1;
+  self.myEventHandlers[j]:=TEventHandlerRec.Create;
   self.myEventHandlers[j].TheCode:=MainCode;
   self.myEventHandlers[j].InitCode:=InitCode;
+  self.myEventHandlers[j].ReadOnlyInterface:=ReadOnly;
   self.myEventHandlers[j].TheHandler:=nil;
+  self.myEventHandlers[j].EventHint:=EventHint;
+end;
+
+procedure TDataNode.DeleteEvent(EventType:String);
+var
+  j,i:integer;
+begin
+  j:= self.myEventTypes.IndexOf(EventType);
+  for i:=self.myEventTypes.Count-1 downto j+1 do
+  begin
+    self.myEventTypes[i-1]:=self.myEventTypes[i];
+    self.myEventHandlers[i-1]:=self.myEventHandlers[i];
+  end;
+  self.myEventTypes.Delete(self.myEventTypes.Count-1);
+  setlength(self.myEventHandlers,self.myEventTypes.Count);
 end;
 
 function TDataNode.EventNum(EventType:String):integer;
@@ -771,9 +804,10 @@ begin
     setlength(self.myEventHandlers,self.myEventTypes.Count);
   for i:=0 to self.myEventTypes.Count-1 do
   begin
-     //showmessage('FindRegisteredEvent '+EventType);
-     if self.myEventTypes[i] = EventType then
-       result:=self.myEventHandlers[i].TheHandler;
+    if self.myEventHandlers[i]=nil then
+      self.myEventHandlers[i]:=TEventHandlerRec.Create;
+    if self.myEventTypes[i] = EventType then
+      result:=self.myEventHandlers[i].TheHandler;
   end;
 end;
 
@@ -787,6 +821,8 @@ begin
   begin
      if self.myEventTypes[i] = EventType then
      begin
+       if self.myEventHandlers[i]=nil then
+         self.myEventHandlers[i]:=TEventHandlerRec.Create;
        self.myEventHandlers[i].TheHandler := TheHandler;
        //showmessage('registered event '+EventType+' for '+self.NodeName);
      end;
@@ -801,8 +837,21 @@ begin
   for i:=0 to length(myEventHandlers)-1 do
   begin
      if self.myEventTypes[i] = EventType then
-       if trim(self.myEventHandlers[i].TheCode)<>'' then
-         result:=true;
+       if self.myEventHandlers[i]<>nil then
+         if trim(self.myEventHandlers[i].TheCode)<>'' then
+           result:=true;
+  end;
+end;
+
+function TDataNode.GetEvent(EventType:String):TEventHandlerRec;
+var
+  i:integer;
+begin
+  result:=nil;
+  for i:=0 to length(myEventHandlers)-1 do
+  begin
+     if self.myEventTypes[i] = EventType then
+       result:=self.myEventHandlers[i];
   end;
 end;
 
@@ -814,7 +863,7 @@ begin
   for i:=0 to length(myEventHandlers)-1 do
   begin
      if self.myEventTypes[i] = EventType then
-       if trim(self.myEventHandlers[i].TheCode)<>'' then
+       if self.myEventHandlers[i]<>nil then
          result:=self.myEventHandlers[i].TheCode;
   end;
 end;
@@ -827,14 +876,33 @@ begin
   for i:=0 to length(myEventHandlers)-1 do
   begin
      if self.myEventTypes[i] = EventType then
-       if trim(self.myEventHandlers[i].InitCode)<>'' then
+       if self.myEventHandlers[i]<>nil then
          result:=self.myEventHandlers[i].InitCode;
   end;
 end;
 
-procedure ClearAttribs(var AttrParams:TNodeAttributesArray);
+function TDataNode.GetEventROI(EventType:String):Boolean;
+var
+  i:integer;
 begin
-  setlength(AttrParams,0);
+  result:=false;
+  for i:=0 to length(myEventHandlers)-1 do
+  begin
+     if self.myEventTypes[i] = EventType then
+       result:=self.myEventHandlers[i].ReadOnlyInterface;
+  end;
+end;
+
+procedure TDataNode.InitialiseEventHandlers;
+var
+  i:integer;
+begin
+  SetLength(self.myEventHandlers,self.myEventTypes.Count);
+  for i:=0 to self.myEventTypes.Count-1 do
+  begin
+    if self.myEventHandlers[i]=nil then
+      self.myEventHandlers[i]:=TEventHandlerRec.Create;
+  end;
 end;
 
 procedure SetNodePropDefaults(myNode:TDataNode;defaultAttribs:TDefaultAttributesArray);
@@ -876,7 +944,7 @@ begin
   supp:=SuppressEvents;
   SuppressEvents:=true;
   NewWidget:=TControlClass(getclass(TypeName)).create(ParentForm);
-  SetStrProp(NewWidget,'Name',NameSpace+NodeName);
+  SetStrProp(NewWidget,'Name',NameSpace+NodeName);         // for uniqueness, prefix namespace
   NewNode:=TDataNode(GetObjectProp(NewWidget,'myNode'));
   NewNode.NameSpace:=NameSpace;
   NewNode.NodeName:=NodeName;
@@ -911,7 +979,13 @@ var
 begin
   NewNode:=TDataNode.Create('UI','','',myType,false);       // name is set later
   NewNode.ScreenObject:=myComponent;
-  NewNode.myEventTypes:=eventTypes;
+  if eventTypes=nil then
+  begin
+    NewNode.myEventTypes:=TStringList.Create;
+  end
+  else
+    NewNode.myEventTypes:=eventTypes;
+  NewNode.InitialiseEventHandlers;
   //showmessage('node '+myName+' event count set to '+ inttostr(EventTypes.Count));
   NewNode.MyForm:=TForm(myOwner);
   NewNode.IsDynamic:=IsDynamic;
@@ -991,9 +1065,8 @@ begin
 end;
 
 
-function ScanChildrenForNodeByName(CurrentItem:TDataNode;ScreenObjectID,NameSpace:String;var FoundParent:TDataNode; var position:Integer):TDataNode;
+function ScanChildrenForNodeByName(CurrentItem:TDataNode;ScreenObjectID,NameSpace:String;var FoundParent:TDataNode):TDataNode;
 var FoundItem,TempItem:TDataNode;
-    TempArrayOfChildren:TChildNodesArray;
     NumChildren,i:integer;
 begin
    FoundItem:=nil;
@@ -1016,8 +1089,7 @@ begin
      end
      else
      begin
-        TempArrayOfChildren:= CurrentItem.ChildNodes;
-        NumChildren:=Length(TempArrayOfChildren);
+        NumChildren:=Length(CurrentItem.ChildNodes);
         i:=0;
         while i < NumChildren do
         begin
@@ -1034,13 +1106,14 @@ begin
               and (Trim(Uppercase(TempItem.NameSpace)) = Trim(Uppercase(NameSpace)))
               then
               begin
+                if (TempItem.NodeParent<>CurrentItem) then
+                  showmessage('oops - NodeParent not correctly set for node '+NameSpace+'.'+ScreenObjectID);
                 FoundItem:= TempItem;
                 FoundParent:=CurrentItem;
-                position:=i;
                 i:=NumChildren;
               end
               else
-                FoundItem:= ScanChildrenForNodeByName(TempItem,ScreenObjectID,Namespace,FoundParent,position);
+                FoundItem:= ScanChildrenForNodeByName(TempItem,ScreenObjectID,Namespace,FoundParent);
            end;
            i:=i+1;
         end;
@@ -1057,14 +1130,12 @@ end;
 function FindDataNodeById(InTree:TDataNode; ScreenObjectID,NameSpace:String;showerror:boolean):TDataNode;
 var
   FoundItem, TempItem, FoundParent :TDataNode;
-  pos:Integer;
 begin
-   pos:=-1;
    if trim(ScreenObjectID)='' then
      showmessage('FindDataNodeById: oops no id');
    FoundItem:=nil;
    FoundParent:=nil;
-   TempItem:=ScanChildrenForNodeByName(InTree,ScreenObjectID,Namespace,FoundParent,pos);
+   TempItem:=ScanChildrenForNodeByName(InTree,ScreenObjectID,Namespace,FoundParent);
 
    if TempItem<>nil
    then
@@ -1080,15 +1151,21 @@ begin
 end;
 
 
-function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode;showerror:Boolean;var position:Integer):TDataNode;  overload;
+function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode;showerror:Boolean=false):TDataNode;  overload;
 var
   FoundItem, TempItem, FoundParent :TDataNode;
+  position:integer;
 begin
   //showmessage('FindParentOfNode '+ScreenObjectID+' in tree '+InTree.NodeName);
+   if targetNode.NodeParent<>nil then
+     FoundItem:=targetNode.NodeParent
+   else
+   begin
+     if targetNode.Nodename<>'ApplicationRoot' then
+       showMessage('oops: node '+TargetNode.NodeType+'('+TargetNode.NodeName+') has no "NodeParent" set');
    FoundItem:=nil;
    TempItem:=nil;
    FoundParent:=nil;
-   position:=-1;
    TempItem:=ScanChildrenForNode(InTree,targetNode,FoundParent,position);
 
    if (TempItem<>nil) and (FoundParent<>nil) then
@@ -1098,54 +1175,30 @@ begin
    else
      if showError then
        showmessage('Error in Nodeutils.FindParentOfNode >'+targetNode.NodeType+'('+targetNode.NodeName+')'+' < not found');
+   end;
 
    result:=FoundItem;
 end;
-function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode):TDataNode;  overload;
-var
-  pos:integer;
-begin
-  result:=FindParentOfNode(InTree,targetNode,false,pos)
-end;
 
-function FindParentOfNodeByName(InTree:TDataNode;ScreenObjectID,Namespace:String;showerror:Boolean;var position:Integer):TDataNode;
+function FindParentOfNodeByName(InTree:TDataNode;ScreenObjectID,Namespace:String;showerror:Boolean=false):TDataNode;
 var
-  FoundItem, TempItem, FoundParent :TDataNode;
+  TempItem, FoundParent :TDataNode;
 begin
-  //showmessage('FindParentOfNode '+ScreenObjectID+' in tree '+InTree.NodeName);
-   FoundItem:=nil;
    TempItem:=nil;
    FoundParent:=nil;
-   position:=-1;
-   TempItem:=ScanChildrenForNodeByName(InTree,ScreenObjectID,Namespace,FoundParent,position);
+   TempItem:=ScanChildrenForNodeByName(InTree,ScreenObjectID,Namespace,FoundParent);
 
-   if (TempItem<>nil) and (FoundParent<>nil) then
-   begin
-       FoundItem:= FoundParent ;
-   end
-   else
+   if (TempItem=nil) or (FoundParent=nil) then
      if showError then
        showmessage('Error in Nodeutils.FindParentOfNode >'+ScreenObjectID+'< not found');
-   result:=FoundItem;
-end;
-function FindParentOfNodeByName(InTree:TDataNode;ScreenObjectID,Namespace:String;showerror:Boolean):TDataNode;
-var
-  pos:Integer;
-begin
-  result:=FindParentOfNodeByName(InTree,ScreenObjectID,Namespace,false,pos);
-end;
-function FindParentOfNodeByName(InTree:TDataNode;ScreenObjectID,Namespace:String):TDataNode;
-var
-  pos:Integer;
-begin
-   result:=FindParentOfNodeByName(InTree,ScreenObjectID,Namespace,false,pos);
+   result:=FoundParent;
 end;
 
 function MakeAttrib(attrName,attrType,attrValue:string;attrReadOnly:Boolean):TNodeAttribute;
 var
   newAttrib:TNodeAttribute;
 begin
-  newAttrib.AttribName:=attrName;
+  newAttrib:=TNodeAttribute.Create(nil,attrName);
   newAttrib.AttribType:=attrType;
   newAttrib.AttribValue:=attrValue;
   newAttrib.AttribReadOnly:=AttrReadOnly;
@@ -1233,57 +1286,6 @@ begin
   result:=tempstr;
 end;
 
-function StringToCodeInputs(InputString:String):TCodeInputs;
-var
-  myInputs:TCodeInputs;
-  Inputs,InputBits:TStringList;
-  InputStr:String;
-  j,k:integer;
-begin
-   setLength(myInputs,0);
-   if InputString<>'' then
-   begin
-     Inputs:=stringsplit(Inputstring,AttribLinkDelimiter);
-     // each input has NodeName (which is a declared unit or function)
-     // and AttribName (if NodeName is a screen component).
-     setlength(myInputs,0);
-     k:=0;
-     for j:=0 to Inputs.Count-1 do
-     begin
-        // format of string is SynonymName.NodeName.AttribName
-        InputStr:=Inputs[j];
-        InputBits:=stringsplit(InputStr,'.');
-        if trim(InputBits[0])<>'' then  //skip any undefined inputs (must have synonym)
-        begin
-          setlength(myInputs,k+1);
-          myInputs[k].InputSynonym:=InputBits[0];
-          myInputs[k].InputNodeName:=InputBits[1];
-          if InputBits.Count>2 then
-            myInputs[k].InputAttribName:=InputBits[2];
-          k:=k+1;
-        end;
-     end;
-   end;
-   result:=myInputs;
-end;
-
-function CodeInputsToString(myInputs:TCodeInputs):String;
-var
-  j:integer;
-  InputsString:String;
-begin
-  InputsString:='';
-  for j:=0 to length(myInputs)-1 do
-  begin
-    InputsString:=InputsString
-                  + myInputs[j].InputSynonym
-                  + '.' + myInputs[j].InputNodeName
-                  + '.' + myInputs[j].InputAttribName
-                  + AttribLinkDelimiter;
-  end;
-  result:=InputsString;
-end;
-
 function IsExcluded(ThisNode:TDataNode; ThisAttrib:TNodeAttribute):Boolean;
 var
   i:integer;
@@ -1368,9 +1370,6 @@ begin
         if (FindSuppressedProperty(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName)<0)
         and (DfltAttrib.AttribIncludeInSave = true)
         and (IsExcluded(CurrentItem,CurrentItem.NodeAttributes[i]) = false)
-//        and ((CurrentItem.NodeType<>'TXTable')
-//             or ((CurrentItem.NodeType='TXTable') and (CurrentItem.NodeAttributes[i].AttribName<>'TableData'))
-//             or ((CurrentItem.NodeType='TXTable') and (CurrentItem.NodeAttributes[i].AttribName='TableData') and (TXTable(CurrentItem.ScreenObject).IncludeDataInSave=true)))
         and (CurrentItem.NodeAttributes[i].AttribName<>'ParentName')        // is re-generated on load
         and ((CurrentItem.NodeAttributes[i].AttribName<>'XMLString')
              or ((CurrentItem.NodeAttributes[i].AttribName='XMLString') and (CurrentItem.IsDynamic=false))) then
@@ -1381,7 +1380,11 @@ begin
                            + AttribBitsDelimiter+ SubstituteSpecials(CurrentItem.NodeAttributes[i].AttribValue)
                            + AttribBitsDelimiter+ myBoolToStr(CurrentItem.NodeAttributes[i].AttribReadOnly)
                            + AttribBitsDelimiter+ CurrentItem.NodeAttributes[i].AttribSource.InputNodeName
-                                                + '.'+CurrentItem.NodeAttributes[i].AttribSource.InputAttribName
+                                                + '.'+CurrentItem.NodeAttributes[i].AttribSource.InputAttribName;
+          if (CurrentItem.NodeType = 'TXCompositeIntf') then
+            XMLString:=XMLString
+                           + AttribBitsDelimiter+CurrentItem.NodeAttributes[i].AttribHint;
+          XMLString:=XMLString
                            + attributeListdelimiter;
         end;
       end;
@@ -1402,14 +1405,28 @@ begin
         XMLString:=XMLString+delimiterBetweenAttribsAndEvents;
         if CurrentItem.myEventTypes.count>0 then
           if CurrentItem.myEventTypes.count<>length(CurrentItem.myEventHandlers) then
-             setlength(CurrentItem.myEventHandlers,CurrentItem.myEventTypes.count);
+          begin
+             CurrentItem.InitialiseEventHandlers;
+          end;
         for i:=0 to CurrentItem.myEventTypes.count-1 do
         begin
+          if CurrentItem.myEventHandlers[i]=nil then
+          begin
+            showmessage('oops event handler nil for '+CurrentItem.NodeName+' event:'+ CurrentItem.myEventTypes[i]);
+          end;
           // build the full event string
           XMLString:=XMLString
                            + CurrentItem.myEventTypes[i]
                            + AttribBitsDelimiter+SubstituteSpecials(trim(CurrentItem.myEventHandlers[i].TheCode))
-                           + AttribBitsDelimiter+SubstituteSpecials(trim(CurrentItem.myEventHandlers[i].InitCode))
+                           + AttribBitsDelimiter+SubstituteSpecials(trim(CurrentItem.myEventHandlers[i].InitCode));
+          if (CurrentItem.NodeType = 'TXCompositeIntf')
+          or (CurrentItem.NodeType = 'TXComposite') then
+            XMLString:=XMLString
+                           + AttribBitsDelimiter+myBoolToStr(CurrentItem.myEventHandlers[i].ReadOnlyInterface);
+          if (CurrentItem.NodeType = 'TXCompositeIntf') then
+            XMLString:=XMLString
+                           + AttribBitsDelimiter+CurrentItem.myEventHandlers[i].EventHint;
+          XMLString:=XMLString
                            + attributeListdelimiter;
         end;
       end;
@@ -1567,7 +1584,6 @@ begin
       end
       else
       begin
-        //ParentNode:=FindParentOfNodeByName(SystemNodeTree,CurrentNode.NodeName);
         ParentNode:=FindParentOfNode(SystemNodeTree,CurrentNode);
         if (ParentNode<>nil) then
         begin
@@ -1617,7 +1633,6 @@ begin
       end
       else
       begin
-        //ParentNode:=FindParentOfNodeByName(SystemNodeTree,CurrentNode.NodeName);
         ParentNode:=FindParentOfNode(SystemNodeTree,CurrentNode);
         if (ParentNode<>nil) then
         begin
@@ -1746,13 +1761,14 @@ begin
   // remove the node from its existing parent, if any
   if ChildNode.NodeName<>'' then
   begin
-    //pn:= FindParentOfNode(SystemNodeTree,ChildNode.NodeName,false);
-    pn:= FindParentOfNode(SystemNodeTree,ChildNode);
+    //pn:= FindParentOfNode(SystemNodeTree,ChildNode);
+    pn:=ChildNode.NodeParent;
     if pn<>nil then
     begin
       pn.RemoveChildNode(ChildNode);
     end;
   end;
+  ChildNode.NodeParent:=ParentNode;
 
   // add the node to its new parent
   numchildren:= Length(ParentNode.ChildNodes);
@@ -1816,19 +1832,22 @@ end;
 function AddChildToDataNode(ParentNode:TDataNode;MyClass,MyName,MyType,Namespace:string;MyAttributes:TNodeAttributesArray;
                            position:integer):TDataNode;
 var numchildren:integer;
-    tempDataNodeArray:TChildNodesArray;
     newNode:TDataNode;
-    i:integer;
+    i,j:integer;
 begin
 
   if NodeNameIsUnique(nil,MyName,Namespace,true) then
   begin
-    tempDataNodeArray:= ParentNode.ChildNodes;
-    numchildren:= Length(tempDataNodeArray);
+    numchildren:= Length(ParentNode.ChildNodes);
     SetLength(ParentNode.ChildNodes,numchildren+1) ;
 
     newNode:=TDataNode.Create(MyClass,MyName,NameSpace,MyType);
     newNode.NodeAttributes:=MyAttributes;
+    newNode.NodeParent:=ParentNode;
+    for i:=0 to length(MyAttributes)-1 do
+    begin
+      MyAttributes[i].OwnerNode:=newNode;
+    end;
 
     if position=-1 then
     begin
@@ -1849,39 +1868,46 @@ begin
     result:=nil;
 end;
 
-function CopyEventHandlers(myNode,SourceNode:TDataNode;AddIfMissing:Boolean):boolean;
+function CopyEventHandlers(DestNode,SourceNode:TDataNode;AddIfMissing:Boolean):boolean;
 var
   i,j,k:integer;
   ok:Boolean;
 begin
-  if myNode<>nil then
+  if DestNode<>nil then
   begin
-    if length(SourceNode.myEventHandlers) < SourceNode.myEventTypes.Count then
-    for i:=length(SourceNode.myEventHandlers) to SourceNode.myEventTypes.Count-1 do
-      SourceNode.AddEvent(SourceNode.myEventTypes[i],'','');
+    j:=length(SourceNode.myEventHandlers);
+    k:= SourceNode.myEventTypes.Count;
+    //{$ifdef JScript} asm console.log('CopyEventHanfdlers. length(SourceNode.myEventHandlers)='+j+' SourceNode.myEventTypes.Count='+k); end; {$endif}
+    SourceNode.InitialiseEventHandlers;
+    //if length(SourceNode.myEventHandlers) < SourceNode.myEventTypes.Count then
+    //for i:=length(SourceNode.myEventHandlers) to SourceNode.myEventTypes.Count-1 do
+    //  SourceNode.AddEvent(SourceNode.myEventTypes[i],'','');
 
-    setlength(myNode.myEventHandlers,mynode.myEventTypes.Count);
+    setlength(DestNode.myEventHandlers,Destnode.myEventTypes.Count);
     for i:=0 to SourceNode.myEventTypes.Count-1 do
     begin
-      j := myNode.myEventTypes.IndexOf(SourceNode.myEventTypes[i]);
+      j := DestNode.myEventTypes.IndexOf(SourceNode.myEventTypes[i]);
       if (j<0) then
       begin
         if AddIfMissing then
         begin
-          myNode.AddEvent(SourceNode.myEventTypes[i],SourceNode.myEventHandlers[i].TheCode,SourceNode.myEventHandlers[i].InitCode);
+          DestNode.AddEvent(SourceNode.myEventTypes[i],
+                            SourceNode.myEventHandlers[i].TheCode,
+                            SourceNode.myEventHandlers[i].InitCode,
+                            SourceNode.myEventHandlers[i].ReadOnlyInterface,
+                            SourceNode.myEventHandlers[i].EventHint);
         end
         else
           ok:=false;
       end
-      else if j = i then
-      begin
-        mynode.myEventHandlers[j].TheCode:=SourceNode.myEventHandlers[i].TheCode;
-        mynode.myEventHandlers[j].InitCode:=SourceNode.myEventHandlers[i].InitCode;
-      end
       else
       begin
-        mynode.myEventHandlers[j].TheCode:=SourceNode.myEventHandlers[i].TheCode;
-        mynode.myEventHandlers[j].InitCode:=SourceNode.myEventHandlers[i].InitCode;
+        if Destnode.myEventHandlers[j]=nil then
+          Destnode.myEventHandlers[j]:=TEventHandlerRec.Create;
+        Destnode.myEventHandlers[j].TheCode:=SourceNode.myEventHandlers[i].TheCode;
+        Destnode.myEventHandlers[j].InitCode:=SourceNode.myEventHandlers[i].InitCode;
+        Destnode.myEventHandlers[j].ReadOnlyInterface:=SourceNode.myEventHandlers[i].ReadOnlyInterface;
+        Destnode.myEventHandlers[j].EventHint:=SourceNode.myEventHandlers[i].EventHint;
       end;
     end;
 
@@ -1932,8 +1958,6 @@ var
     i:integer;
     DfltAttrib:TDefaultAttribute;
 begin
-  //showmessage('InsertSystemNode '+SourceNode.NodeType+' parent='+ParentNode.Nodename);
-
   myparent:=ParentNode;
   if (myParent<>nil)
   and (myparent.NodeName<>'')
@@ -1945,31 +1969,30 @@ begin
     begin
       // create the screen object and data node...
       begin
-        //if SourceNode.NodeType='TXSVGContainer' then showmessage('InsertSystemNode 1');
         myself:=AddDynamicWidget(SourceNode.NodeType,ParentNode.MyForm,ParentNode,SourceNode.NodeName,SourceNode.NameSpace,'Left',position);
-        // if SourceNode.NodeType='TXSVGContainer' then showmessage('InsertSystemNode 2');
         myself.NameSpace:=SourceNode.NameSpace;
-        CopyEventHandlers(myself,SourceNode,(SourceNode.NodeType='TXCompositeIntf'));
-        // if SourceNode.NodeType='TXSVGContainer' then showmessage('InsertSystemNode 3');
+        CopyEventHandlers(myself,SourceNode,((SourceNode.NodeType='TXCompositeIntf')or(SourceNode.NodeType='TXComposite')));
         for i:=0 to length(SourceNode.NodeAttributes)-1 do
         begin
-          //thisAttrib:=myself.GetAttribute(SourceNode.NodeAttributes[i].AttribName,true);
           DfltAttrib:=GetDefaultAttrib(SourceNode.NodeType,SourceNode.NodeAttributes[i].AttribName);
-        //  if SourceNode.NodeType='TXSVGContainer' then showmessage('attrib '+SourceNode.NodeAttributes[i].AttribName+' readonly:'+myBoolToStr(SourceNode.NodeAttributes[i].AttribReadOnly)+' incl:'+myBoolToStr(DfltAttrib.AttribIncludeInSave));
           if (SourceNode.NodeAttributes[i].AttribReadOnly=false)
-          or (DfltAttrib.AttribIncludeInSave=true) then            //!!!! ??
+          or (DfltAttrib.AttribIncludeInSave=true)            //!! ??
+          or (SourceNode.NodeType='TXComposite')
+          or (SourceNode.NodeType='TXCompositeIntf') then
           begin
             if SourceNode.NodeAttributes[i].AttribName<>'ParentName' then
+            begin
               EditNodeAttributeValue(myself,SourceNode.NodeAttributes[i],true);
+              if (SourceNode.NodeType='TXCompositeIntf')
+              and (SourceNode.NodeAttributes[i].AttribHint<>'') then
+                myself.GetAttribute(SourceNode.NodeAttributes[i].AttribName,false).AttribHint:=SourceNode.NodeAttributes[i].AttribHint;
+            end;
           end;
         end;
-      //    if SourceNode.NodeType='TXSVGContainer' then showmessage('InsertSystemNode 4');
-
 
         // now insert any child nodes
         for i:=0 to length(SourceNode.ChildNodes)-1 do
           InsertSystemNode(myself,SourceNode.ChildNodes[i],-1);
-          //if SourceNode.NodeType='TXSVGContainer' then showmessage('InsertSystemNode 5');
       end;
     end
     else if (SourceNode.NodeClass = 'Code')
@@ -1981,13 +2004,12 @@ begin
       AddChildToParentNode(myparent,myself,position);
     end;
   end;
-  //showmessage('InsertSystemNode '+SourceNode.NodeType+' done');
- // if SourceNode.NodeType='TXSVGContainer' then showmessage('InsertSystemNode done');
+  //{$ifdef JScript} asm console.log('InsertSystemNode '+SourceNode.NodeType+' done'); end; {$endif}
 
   result:=myself;
 end;
 
-function AttribsFromXML(attributeList:TStringList;offset:integer;NodeClass,NodeType:String;var ParentName:String):TNodeAttributesArray;
+function AttribsFromXML(attributeList:TStringList;offset:integer;NodeClass,NodeType:String;var ParentName:String;NameSpace:String):TNodeAttributesArray;
 var
   myAttribs:TNodeAttributesArray;
   LinkSet,AttribBits, sourceBits:TStringList;
@@ -1995,7 +2017,7 @@ var
   tmp,anm:String;
 begin
   //showmessage('AttribsFromXML. count='+inttostr(attributeList.count)+' offset='+inttostr(offset));
-  setlength(myAttribs,attributeList.count-offset);
+  setlength(myAttribs,0);
   j:=-1;
   for i:=offset to attributeList.count-1 do
   begin
@@ -2007,14 +2029,15 @@ begin
     or (NodeType='TXCompositeIntf')
     or (NodeType='TXForm')
     or (NodeClass<>'UI'))
-    and (AttribBits.Count>3) then
+    and (AttribBits.Count>3) then      //name, type, value, readonly
     begin
       j:=j+1;
-      myAttribs[j].AttribName:=anm;
+      setlength(myAttribs,j+1);
+      myAttribs[j]:=TNodeAttribute.Create(nil,anm);
       myAttribs[j].AttribType:=TrimWhiteSpace(AttribBits[1]);
       myAttribs[j].AttribValue:=  UnSubstituteSpecials(AttribBits[2]);
       myAttribs[j].AttribReadOnly:=myStrToBool(TrimWhiteSpace(AttribBits[3]));
-      if AttribBits.Count>4 then
+      if AttribBits.Count>4 then       // ..... , source
       begin
         tmp:=TrimWhiteSpace(AttribBits[4]);
         sourceBits:= stringsplit(tmp,'.');
@@ -2025,7 +2048,13 @@ begin
             if sourceBits.Count>1 then
               myAttribs[j].AttribSource.InputAttribName:=sourceBits[1];
   //          showmessage('AttribsFromXML found source data '+ sourceBits[0]+' '+sourceBits[1]+' for '+AttribBits[0]);
+            myAttribs[j].AttribSource.InputNameSpace:=NameSpace;
           end;
+      end;
+      if AttribBits.Count>5 then       // ..... , hint
+      begin
+        tmp:=AttribBits[5];
+        myAttribs[j].AttribHint:=tmp;
       end;
       if myAttribs[j].AttribName='ParentName' then
         ParentName:=AttribBits[2];
@@ -2040,22 +2069,26 @@ var
   myEvents:TEventHandlers;
   AttribBits:TStringList;
   i:integer;
-  t1,t2,tmp:string;
 begin
   //showmessage('EventsFromXML. count='+inttostr(eventsList.count));
   setlength(myEvents,eventsList.count);
   for i:=0 to eventsList.count-1 do
   begin
-    t1:=eventsList[i];
+    myEvents[i]:=TEventHandlerRec.Create;
     AttribBits :=  stringsplit(eventsList[i],AttribBitsDelimiter);
-    t2:=AttribBits[0];
-    tmp:=AttribBits[1];
     EventNames.Add(TrimWhiteSpace(AttribBits[0]));
     myEvents[i].TheCode:=UnSubstituteSpecials(AttribBits[1]);
     if AttribBits.Count>2 then
     begin
-      tmp:=AttribBits[2];
       myEvents[i].InitCode:=UnSubstituteSpecials(AttribBits[2]);
+    end;
+    if AttribBits.Count>3 then
+    begin
+      myEvents[i].ReadOnlyInterface:=MyStrToBool(AttribBits[3]);
+    end;
+    if AttribBits.Count>4 then
+    begin
+      myEvents[i].EventHint:=AttribBits[4];
     end;
   end;
 
@@ -2066,29 +2099,26 @@ procedure UpdateEvents(EventNames:TStringList;SourceHandlers:TEventHandlers;Targ
 var
   i,j:integer;
   found:Boolean;
+  foundEvent:TEventHandlerRec;
 begin
   for i:=0 to EventNames.Count-1 do
   begin
     found:=false;
     //showmessage('TargetNode '+TargetNode.NodeName+' eventTypes '+inttostr(TargetNode.myEventTypes.Count)+' handlers '+inttostr(length(TargetNode.myEventHandlers)));
-    setlength(TargetNode.myEventHandlers,TargetNode.myEventTypes.Count);
-    for j:=0 to TargetNode.myEventTypes.Count-1 do
+    //setlength(TargetNode.myEventHandlers,TargetNode.myEventTypes.Count);
+    foundEvent:=TargetNode.GetEvent(EventNames[i]);
+    if foundEvent<>nil then
     begin
-      if TargetNode.myEventTypes[j] = EventNames[i] then
-      begin
         found:=true;
-        TargetNode.myEventHandlers[j].InitCode:=SourceHandlers[i].InitCode;
-        TargetNode.myEventHandlers[j].TheCode:=SourceHandlers[i].TheCode;
-        TargetNode.myEventHandlers[j].TheHandler:=nil;
-      end;
-    end;
-    if not found then
+        foundEvent.InitCode:=SourceHandlers[i].InitCode;
+        foundEvent.TheCode:=SourceHandlers[i].TheCode;
+        foundEvent.TheHandler:=nil;
+    end
+    else
     begin
       TargetNode.AddEvent(EventNames[i],SourceHandlers[i].TheCode,SourceHandlers[i].InitCode);
     end;
   end;
-  //myNode.myEventTypes:=EventNames;
-  //myNode.myEventHandlers:=myEventHandlers;
 end;
 
 function BuildSourceNodeFromXML(XMLString:String; var ParentName,NewNameSpace:String;ExpandingComposite:Boolean; var NodeClass:String):TDataNode;
@@ -2141,7 +2171,7 @@ begin
    NameSpace:=NewNameSpace+NameSpace;
 
    if (ExpandingComposite)
-   and (NodeClass = 'RUI') then
+   and ((NodeClass = 'RUI') or (NodeClass  = 'Root')) then
    begin
      EXIT;  // return nil
    end;
@@ -2155,7 +2185,7 @@ begin
 
    if (NodeClass <> 'Root') then                     // these already exist
    begin
-     myAttribs := AttribsFromXML(attributeList,offset,NodeClass,ScreenObjectType,ParentName);
+     myAttribs := AttribsFromXML(attributeList,offset,NodeClass,ScreenObjectType,ParentName,NameSpace);
      {$ifndef JScript}
      foundNode:=FindDataNodeById(SystemNodeTree,ScreenObjectName,Namespace,false);
      if (foundNode=nil)
@@ -2175,6 +2205,9 @@ begin
        else
          myNode:=foundNode;
        myNode.NodeAttributes:=myAttribs;
+
+       i:=length(myNode.NodeAttributes);
+
        myNode.myEventTypes:=EventNames;
        myNode.myEventHandlers:=myEventHandlers;
        result:=myNode;
@@ -2186,20 +2219,23 @@ begin
      {$endif}
      end;
    end
-   else
+   else  // 'Root' nodes...
    begin
      // update attributes for existing 'Root' node (eg. to capture DeploymentMode)
      myNode:=FindDataNodeById(SystemNodeTree,ScreenObjectName,'',false);
      if myNode<>nil then
      begin
-       myAttribs := AttribsFromXML(attributeList,offset,NodeClass,ScreenObjectType,ParentName);
+       myAttribs := AttribsFromXML(attributeList,offset,NodeClass,ScreenObjectType,ParentName,'');
        for i:=0 to length(myAttribs)-1 do
        begin
          myNode.SetAttributeValue(myAttribs[i].AttribName,myAttribs[i].AttribValue);
        end;
-       EventNames:=TStringList.Create;
-       myEventHandlers := EventsFromXML(EventsList,EventNames);
-       UpdateEvents(EventNames,myEventHandlers,myNode);
+       if myNode.NodeName = SystemRootName then
+       begin
+         EventNames:=TStringList.Create;
+         myEventHandlers := EventsFromXML(EventsList,EventNames);
+         UpdateEvents(EventNames,myEventHandlers,myNode);
+       end;
 
      end;
    end;
@@ -2211,6 +2247,7 @@ function addComponentFromXML(XMLString:String; DefaultParent:TDataNode; BaseName
      i,pos:integer;
      ParentNode:TDataNode;
      mynode,SourceNode:TDataNode;
+     myAttrib:TNodeAttribute;
      ok:Boolean;
 {$ifdef JScript}
      fn:TAddComponentFunc;
@@ -2289,6 +2326,7 @@ begin
      {$ifndef JScript}
      // If the object was created dynamically at run time, however, then we now need to
      // create a data node for it.
+
      if myNode=nil then
      begin
        myNode:=SourceNode;
@@ -2297,13 +2335,12 @@ begin
      end
      else
      begin
-       //showmessage('reparenting component '+ScreenObjectType+'; '+ NodeClass+'; '+ScreenObjectName);
        ReparentNode(myNode,ParentNode);
        pos:=ParentNode.GetChildIndex(myNode);
        if (ParentNode.ScreenObject<>nil) then
          InsertUnderParent(TControl(MyNode.ScreenObject),TWinControl(ParentNode.ScreenObject),pos);
        for i:=0 to length(SourceNode.NodeAttributes)-1 do
-         if SourceNode.NodeAttributes[i].AttribReadOnly=false then        //!!!! ? should this be just the 'includeinsave' setting ????
+         if SourceNode.NodeAttributes[i].AttribReadOnly=false then        //!! ? should this be just the 'includeinsave' setting ????
          begin
            EditAttributeValue(myNode,SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);     //!!!! are we doing this twice??
          end;
@@ -2323,7 +2360,7 @@ begin
        or ((SourceNode.NodeClass='NV') and (SourceNode.NodeType<>''))
        or (SourceNode.NodeClass = 'SVG') then
        begin
-         //showmessage('building dynamic node '+ScreenObjectType+' '+ScreenObjectName+' '+NewNameSpace);
+         //asm console.log('building dynamic node '+ScreenObjectType+' '+ScreenObjectName+' '+NewNameSpace); end;
          myDynamicWrapper:=TWrapperPanel(CreateInterfaceObject(ParentNode.MyForm,ScreenObjectType,ScreenObjectName,NewNameSpace));
          if myDynamicWrapper<>nil then
          begin
@@ -2345,21 +2382,28 @@ begin
          myNode:=SourceNode;
        end;
      end;
-    //showmessage('created node.  Name='+MyNode.NameSpace+'.'+MyNode.NodeName+' dynamic='+mybooltostr(MyNode.IsDynamic));
+     //asm console.log('created node.  Name='+mynode.NameSpace+'.'+mynode.NodeName+' dynamic='+mynode.IsDynamic); end;
 
      ReparentNode(myNode,ParentNode);
+     //asm console.log('Reparented to '+mynode.NameSpace+'.'+ParentNode.NodeName); end;
 
      if ((SourceNode.NodeClass='UI') and (SourceNode.NodeType<>''))
      or ((SourceNode.NodeClass='NV') and (SourceNode.NodeType<>''))
      or (SourceNode.NodeClass = 'SVG') then
      begin
        for i:=0 to length(SourceNode.NodeAttributes)-1 do
-       if SourceNode.NodeAttributes[i].AttribName<>'' then
-       begin
-         mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
-         mynode.SetAttributeSource(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribSource.InputNodeName,
-                                   SourceNode.NodeAttributes[i].AttribSource.InputAttribName);
-       end;
+         if (SourceNode.NodeAttributes[i]<>nil)
+         and (SourceNode.NodeAttributes[i].AttribName<>'') then
+         begin
+           myAttrib:=mynode.GetAttribute(SourceNode.NodeAttributes[i].AttribName,true);
+           myAttrib.AttribType:=SourceNode.NodeAttributes[i].AttribType;
+           myAttrib.AttribValue:=SourceNode.NodeAttributes[i].AttribValue;
+           myAttrib.AttribHint:=SourceNode.NodeAttributes[i].AttribHint;
+           myAttrib.AttribReadOnly:=SourceNode.NodeAttributes[i].AttribReadOnly;
+           myAttrib.AttribSource:=SourceNode.NodeAttributes[i].AttribSource;
+           //mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
+           //!! ???? should we be checking here for 'non-default' attributes??
+         end;
        if MainForm<>nil then
          mf:=MainForm.Name
        else
@@ -2703,14 +2747,14 @@ end;
 procedure ReParentNode(MyNode,NewParent:TDataNode);
 var
   OldParent:TDataNode;
-  pos:integer;
 begin
   // called during load from XML
-  {$ifndef JScript}
-  OldParent:=FindParentOfNode(SystemNodeTree,MyNode);
-  {$else}
-  OldParent:=FindParentOfNodeByName(SystemNodeTree,MyNode.NodeName,MyNode.NameSpace,false,pos);
-  {$endif}
+//  {$ifndef JScript}
+//  OldParent:=FindParentOfNode(SystemNodeTree,MyNode);
+//  {$else}
+//  OldParent:=FindParentOfNodeByName(SystemNodeTree,MyNode.NodeName,MyNode.NameSpace,false);
+//  {$endif}
+  OldParent:=MyNode.NodeParent;
   if (OldParent<>NewParent) then
   begin
     if (OldParent<>nil) then
@@ -2721,7 +2765,7 @@ begin
   end;
 end;
 
-function FindNodesOfType(StartNode:TDataNode;NodeType:String):TNodesArray;
+function FindNodesOfType(StartNode:TDataNode;NodeType:String;InNameSpace:Boolean=false;NameSpace:String=''):TNodesArray;
 var
   newNodes,descendants:TNodesArray;
   i,j,l:integer;
@@ -2729,12 +2773,16 @@ begin
   setlength(newNodes,0);
   for i:=0 to length(StartNode.ChildNodes)-1 do
   begin
-    if StartNode.ChildNodes[i].NodeType=NodeType then
+    if (StartNode.ChildNodes[i].NameSpace = NameSpace)
+    or (InNameSpace=false) then
     begin
-      setlength(newNodes,length(NewNodes)+1);
-      newNodes[length(NewNodes)-1]:=StartNode.ChildNodes[i];
+      if StartNode.ChildNodes[i].NodeType=NodeType then
+      begin
+        setlength(newNodes,length(NewNodes)+1);
+        newNodes[length(NewNodes)-1]:=StartNode.ChildNodes[i];
+      end;
+      descendants:=FindNodesOfType(StartNode.ChildNodes[i],NodeType,InNameSpace,NameSpace);
     end;
-    descendants:=FindNodesOfType(StartNode.ChildNodes[i],NodeType);
     l:=length(newNodes);
     setLength(newNodes,l+length(descendants));
     for j:=0 to length(descendants)-1 do
@@ -2753,9 +2801,13 @@ begin
   begin
      for i:=0 to length(StartNode.myEventHandlers)-1 do
      begin
+       if StartNode.myEventHandlers[i]=nil then
+         StartNode.myEventHandlers[i]:=TEventHandlerRec.Create;
        StartNode.myEventHandlers[i].InitCode:='';
        StartNode.myEventHandlers[i].TheCode:='';
        StartNode.myEventHandlers[i].TheHandler:=nil;
+       StartNode.myEventHandlers[i].ReadOnlyInterface:=false;
+       StartNode.myEventHandlers[i].EventHint:='';
      end;
   end;
   for i:=length(StartNode.ChildNodes)-1 downto 0 do
@@ -2898,9 +2950,8 @@ begin
   TargetNode:=SourcedAttribs[i].TheNode;
   SourcedAttribs[i].InProgress:=true;
   SourceAttrib:=SourceNode.GetAttribute(SourcedAttribs[i].TheAttribute.AttribSource.InputAttribName,false);
-  TargetAttrib.AttribName:=SourcedAttribs[i].TheAttribute.AttribName;
-  TargetAttrib.AttribType:=SourcedAttribs[i].TheAttribute.AttribType;
-  TargetAttrib.AttribReadOnly:=false;
+  TargetAttrib:=SourcedAttribs[i].TheAttribute;
+  //TargetAttrib.AttribReadOnly:=SourceAttrib.AttribReadOnly;
   TargetAttrib.AttribValue:=SourceAttrib.AttribValue;
   EditNodeAttributeValue(TargetNode,TargetAttrib,false);
   //EditNodeAttributeValue will change the associated screen object property.
@@ -2910,13 +2961,13 @@ begin
   SourcedAttribs[i].InProgress:=false;
 end;
 
-procedure PushSourceToAttributes(SourceNode:TDataNode; SourceAttrib:TNodeAttribute);
+procedure PushSourceToAttributes(FromNode:TDataNode; FromAttrib:TNodeAttribute);
 var
   i:integer;
-  TargetAttrib:TNodeAttribute;
-  TargetNode:TDataNode;
+  //TargetNode:TDataNode;
+
 begin
-  // we may maintain a 'quick list' of sourced attributes (SourcedAttribs)...
+  // use the 'quick list' of sourced attributes (SourcedAttribs)...
   // eg. built on entry to run mode (XIDE project)
   // record:  TSourcedAttrib
   if (not StartingUp)
@@ -2924,16 +2975,18 @@ begin
   begin
     for i:=0 to length(SourcedAttribs)-1 do
     begin
-      TargetNode:=SourcedAttribs[i].TheNode;
+      //TargetNode:=SourcedAttribs[i].TheNode;
       //refresh the current value of the target attribute in the SourcedAttribs list...
-      SourcedAttribs[i].TheAttribute.AttribValue:=TargetNode.GetAttribute(SourcedAttribs[i].TheAttribute.AttribName,false).AttribValue;
+      //SourcedAttribs[i].TheAttribute.AttribValue:=TargetAttrib.AttribValue;
 
-      if (SourcedAttribs[i].TheAttribute.AttribSource.InputNodeName = SourceNode.NodeName)
-      and (not AttributeValuesEquivalent(SourcedAttribs[i].TheAttribute.AttribValue,SourceAttrib.AttribValue,SourcedAttribs[i].TheAttribute.AttribType))
+      if (SourcedAttribs[i].TheAttribute.AttribSource.InputNodeName = FromNode.NodeName)
+      and (SourcedAttribs[i].TheAttribute.AttribSource.InputNameSpace = FromNode.NameSpace)
+      and (SourcedAttribs[i].TheAttribute.AttribSource.InputAttribName = FromAttrib.AttribName)
+      and (not AttributeValuesEquivalent(SourcedAttribs[i].TheAttribute.AttribValue,FromAttrib.AttribValue,SourcedAttribs[i].TheAttribute.AttribType))
       and (SourcedAttribs[i].InProgress=false)
       then
       begin
-        PushThisAttributeValue(i,SourceNode);
+        PushThisAttributeValue(i,FromNode);
       end;
     end;
   end;
@@ -2941,36 +2994,81 @@ end;
 
 procedure PushAllSourcesToAttributes;
 var
-  i:integer;
+  i,iteration:integer;
   TargetAttrib,SourceAttrib:TNodeAttribute;
   SourceNode,TargetNode:TDataNode;
   Done:boolean;
+
+  function SelfRefFound(thisAttrib:TNodeAttribute):Boolean;
+  var
+    testAttr:TNodeAttribute;
+    source:TAttribSourceRec;
+    sourceNode:TDataNode;
+    sourceAttr:TNodeAttribute;
+  begin
+    result:=false;
+    testAttr:=thisAttrib;
+    while (testAttr<>sourceAttr)
+    and (testAttr<>nil) do
+    begin
+      source:=testAttr.AttribSource;
+      sourceNode:=FindDataNodeById(SystemNodeTree,source.InputNodeName,source.InputNameSpace,true);
+      if sourceNode<>nil then
+      begin
+        sourceAttr:=sourceNode.GetAttribute(source.InputAttribName,false);
+        if testAttr=sourceAttr then
+        begin
+          result:=true;
+          EXIT;
+        end;
+        testAttr:=sourceAttr;
+      end
+      else
+        EXIT;
+    end;
+  end;
+
 begin
   // use the 'quick list' of sourced attributes (SourcedAttribs)...
   // eg. built on entry to run mode (XIDE project)
   // record:  TSourcedAttrib
+
+  // look for circular references...
+  for i:=0 to length(SourcedAttribs)-1 do
+  begin
+    if SelfRefFound(SourcedAttribs[i].TheAttribute) then
+    begin
+      showmessage('There is a circular reference in sourced attributes');
+      EXIT;
+    end;
+  end;
+
+  iteration:=0;
   if length(SourcedAttribs)>0 then
   begin
     //showmessage('PushAllSourcesToAttributes');
     Done:=false;
+    iteration:=iteration+1;
+    if iteration<50 then          // fail-safe?
     while Done=false do
     begin
       Done:=true;
       for i:=0 to length(SourcedAttribs)-1 do
       begin
         begin
-          TargetNode:=SourcedAttribs[i].TheNode;
-          //refresh the current value of the target attribute in the SourcedAttribs list...
-          SourcedAttribs[i].TheAttribute.AttribValue:=TargetNode.GetAttribute(SourcedAttribs[i].TheAttribute.AttribName,false).AttribValue;
-
           //SourcedAttribs[i] is the attribute which contains a source reference
+          TargetNode:=SourcedAttribs[i].TheNode;
+          TargetAttrib:=SourcedAttribs[i].TheAttribute;
+          //refresh the current value of the target attribute in the SourcedAttribs list...
+          TargetAttrib.AttribValue:=TargetNode.GetAttribute(TargetAttrib.AttribName,false).AttribValue;
+
           SourcedAttribs[i].InProgress:=true;     //prevent circular updates
 
           if SourcedAttribs[i].SourceNode<>nil then
           begin
             SourceNode:=SourcedAttribs[i].SourceNode;
-            SourceAttrib:=SourceNode.GetAttribute(SourcedAttribs[i].TheAttribute.AttribSource.InputAttribName,false);
-            if not AttributeValuesEquivalent(SourcedAttribs[i].TheAttribute.AttribValue,SourceAttrib.AttribValue,SourcedAttribs[i].TheAttribute.AttribType) then
+            SourceAttrib:=SourceNode.GetAttribute(TargetAttrib.AttribSource.InputAttribName,false);
+            if not AttributeValuesEquivalent(TargetAttrib.AttribValue,SourceAttrib.AttribValue,TargetAttrib.AttribType) then
             begin
               Done:=false;
               //showmessage('PushAllSourcesToAttributes  src='+SourceNode.NodeName+' '+SourceAttrib.AttribName);
@@ -3016,7 +3114,7 @@ end;
 
 procedure EditNodeAttributeValue(targetNode:TDataNode; SourceAttrib:TNodeAttribute;AddIfMissing:Boolean);
 var
-    targetAttrib:TNodeAttribute;
+    targetAttrib,SourcedAttrib:TNodeAttribute;
     myObj:TObject;
     tmp,AttrNameToEdit,newValue:String;
     IsReadOnly:Boolean;
@@ -3026,9 +3124,8 @@ begin
   newValue:=SourceAttrib.AttribValue;
   IsReadOnly:=SourceAttrib.AttribReadOnly;
   targetAttrib:=targetNode.GetAttributeAnyCase(AttrNameToEdit,AddIfMissing);
-  if (targetAttrib.AttribName<>'') then
+  if (targetAttrib<>nil) then
   begin
-    AttrNameToEdit:=targetAttrib.AttribName;
     targetAttrib.AttribReadOnly:=IsReadOnly;
     if (SourceAttrib.AttribType<>'String')
     and (targetAttrib.AttribType='String') then
@@ -3044,7 +3141,7 @@ begin
     {$endif}
 
     if (myObj<>nil)
-    and (IsReadOnly=false)
+    //and (IsReadOnly=false)           //????
     and (IsPublishedProp(myObj,AttrNameToEdit)) then
     begin
       SetXObjectProperty(myObj,targetNode,AttrNameToEdit,targetAttrib.AttribType,newValue);
@@ -3052,7 +3149,7 @@ begin
     else
     begin
       // no screen or interface object associated with this node - just set the node attribute value
-      targetNode.SetAttributeValue(AttrNameToEdit,newValue);
+      targetNode.SetAttributeValue(AttrNameToEdit,newValue,targetAttrib.AttribType,IsReadOnly);
     end;
 
     // If this is a dynamic node, then the attribute source may also need to be set.
@@ -3060,13 +3157,15 @@ begin
     begin
       if SourceAttrib.AttribSource.InputNodeName<>'' then
       begin
-        for i:=0 to length(TargetNode.NodeAttributes)-1 do
-          if TargetNode.NodeAttributes[i].AttribName = SourceAttrib.AttribName then
-            TargetNode.NodeAttributes[i].AttribSource:=SourceAttrib.AttribSource;
+        SourcedAttrib:=TargetNode.GetAttribute(SourceAttrib.AttribName,false);
+        //for i:=0 to length(TargetNode.NodeAttributes)-1 do
+        //  if TargetNode.NodeAttributes[i].AttribName = SourceAttrib.AttribName then
+        //    TargetNode.NodeAttributes[i].AttribSource:=SourceAttrib.AttribSource;
+        SourcedAttrib.AttribSource:=SourceAttrib.AttribSource;
       end;
       // If this is a dynamic node, then this may be a source for other node attribute(s).
       // Find them, and push the new value.
-      PushSourceToAttributes(targetNode,SourceAttrib);
+      PushSourceToAttributes(targetNode,targetAttrib);
     end;
 
   end;
@@ -3082,51 +3181,40 @@ begin
     EditNodeAttributeValue(targetNode,SourceAttrib,AddIfMissing);
   end;
 end;
+
+procedure EditAttributeValue(NodeToEdit:TDataNode;AttrNameToEdit,newValue:String;AddIfMissing:Boolean=false);
+var
+  SourceAttrib,NodeAttrib:TNodeAttribute;
+begin
+  NodeAttrib:=NodeToEdit.GetAttributeAnyCase(AttrNameToEdit,AddIfMissing);
+  if NodeAttrib<>nil then
+  begin
+    SourceAttrib:=TNodeAttribute.Create(nil,AttrNameToEdit);
+    SourceAttrib.AttribValue:=newValue;
+    SourceAttrib.AttribType:=NodeAttrib.AttribType;
+    SourceAttrib.AttribReadOnly:=NodeAttrib.AttribReadOnly;
+    EditNodeAttributeValue(NodeToEdit,SourceAttrib,AddIfMissing);
+    SourceAttrib.Free;
+  end;
+end;
+
 procedure EditAttributeValue(NodeNameToEdit,NameSpace:String; AttrNameToEdit,newValue:String;AddIfMissing:Boolean=false);
 var
   targetNode:TDataNode;
-  SourceAttrib:TNodeAttribute;
 begin
   targetNode:=FindDataNodeById(SystemNodetree,NodeNameToEdit,NameSpace,true);
   if targetNode<>nil then
-  begin
-    SourceAttrib.AttribName:=AttrNameToEdit;
-    SourceAttrib.AttribValue:=newValue;
-    SourceAttrib.AttribType:='String';
-    SourceAttrib.AttribReadOnly:=false;
-    EditNodeAttributeValue(targetNode,SourceAttrib,AddIfMissing);
-  end;
+    EditAttributeValue(targetNode,AttrNameToEdit,newValue,AddIfMissing);
 end;
-procedure EditAttributeValue(NodeToEdit:TDataNode;AttrNameToEdit,newValue:String;AddIfMissing:Boolean=false);
-var
-  SourceAttrib:TNodeAttribute;
-begin
-  SourceAttrib.AttribName:=AttrNameToEdit;
-  SourceAttrib.AttribValue:=newValue;
-  SourceAttrib.AttribType:='String';
-  SourceAttrib.AttribReadOnly:=false;
-  EditNodeAttributeValue(NodeToEdit,SourceAttrib,AddIfMissing);
-end;
+
 {$ifndef JScript}
 procedure EditAttributeValue(NodeNameToEdit,NameSpace,AttrNameToEdit,newValue:PChar);
-var
-  SourceAttrib:TNodeAttribute;
 begin
-  SourceAttrib.AttribName:=AttrNameToEdit;
-  SourceAttrib.AttribValue:=StrPas(newValue);
-  SourceAttrib.AttribType:='String';
-  SourceAttrib.AttribReadOnly:=false;
-  EditAttributeValue(NodeNameToEdit,NameSpace,SourceAttrib,false);
+  EditAttributeValue(NodeNameToEdit,NameSpace,AttrNameToEdit,StrPas(newValue),false);
 end;
 procedure EditAttributeValue(NodeToEdit:TDataNode;AttrNameToEdit,newValue:PChar);
-var
-  SourceAttrib:TNodeAttribute;
 begin
-  SourceAttrib.AttribName:=AttrNameToEdit;
-  SourceAttrib.AttribValue:=StrPas(newValue);
-  SourceAttrib.AttribType:='String';
-  SourceAttrib.AttribReadOnly:=false;
-  EditNodeAttributeValue(NodeToEdit,SourceAttrib,false);
+  EditAttributeValue(NodeToEdit,AttrNameToEdit,StrPas(newValue),false);
 end;
 {$else}
 procedure EditAttributeValue2(NodeNameToEdit,NameSpace,AttrNameToEdit,newValue:String); // for direct calls via JS (doesn't handle overloads)
@@ -3150,7 +3238,7 @@ begin
   if targetNode<>nil then
   begin
     targetAttrib:=targetNode.GetAttributeAnyCase(AttrNameToEdit);
-    if targetAttrib.AttribName<>'' then
+    if targetAttrib<>nil then
     begin
       AttrNameToEdit:=targetAttrib.AttribName;
 
@@ -3383,88 +3471,6 @@ begin
 
 end;
 
-(*
-{$ifndef JScript}
-procedure Initialiselinks(StartNode:TDataNode);
-var
-  i:integer;
-  targetNode:TDataNode;
-  myLink:TXPropertyLink;
-begin
-  // system has been loaded.  Look for links specified in all nodes and
-  // locate the named target nodes.
- //showmessage('init links '+StartNode.NodeName);
-
-  //!!!!  TBA ?
-
-  for i := 0 to length(StartNode.ChildNodes) -1 do
-  begin
-//     showmessage('child '+inttostr(i)+' of '+StartNode.NodeName+' - '+StartNode.ChildNodes[i].NodeName);
-     Initialiselinks(StartNode.ChildNodes[i]);
-  end;
-end;
-{$else}
-procedure Initialiselinks(StartNode:TDataNode);
-var
-  i:integer;
-  targetNode:TDataNode;
-  myLink:TXPropertyLink;
-begin
-  // system has been loaded.  Look for links specified in all nodes and
-  // locate the named target nodes.
- //showmessage('init links '+StartNode.NodeName);
-  if (StartNode is TInterfaceObject) then
-    if TInterfaceObject(StartNode).Link <> nil then
-    begin
-      myLink:=TInterfaceObject(StartNode).Link;
-      if myLink.TIObjectName<>'' then
-      begin
-        targetNode:=FindDataNodeById(SystemNodeTree,myLink.TIObjectName,false);
-        if targetNode<>nil then
-           myLink.TIObject := targetNode
-        else
-           showmessage('Initialiselinks.  Node is nil. '+myLink.TIObjectName);
-      end;
-    end;
-  for i := 0 to length(StartNode.ChildNodes) -1 do
-  begin
-//     showmessage('child '+inttostr(i)+' of '+StartNode.NodeName+' - '+StartNode.ChildNodes[i].NodeName);
-     Initialiselinks(StartNode.ChildNodes[i]);
-  end;
-end;
-
-procedure PushTolinks(AObject:TObject; PropName:string; PropValue:String; StartNode:TDataNode);
-var
-  i:integer;
-  MyPropType:TTypeKind;
-begin
-  // a component property has changed.  Look for links in other components that
-  // reference this property, and update those values.
-  // Propname is the property in AObject that has changed.
- //showmessage('PushTolinks 1. '+StartNode.NodeName);
-  if (StartNode is TInterfaceObject) then
-    if TInterfaceObject(StartNode).Link <> nil then
-      if (TInterfaceObject(StartNode).Link.FTIObject = AObject)
-      and (TInterfaceObject(StartNode).Link.TIPropertyName = PropName) then
-      begin
-        MyPropType := PropType(AObject, PropName);
-        if MyPropType = tkString then
-          SetStringProp(AObject,PropName,PropValue)
-        else if MyPropType = tkBool then
-          SetBoolProp(AObject,PropName,myStrToBool(PropValue))
-        else
-          showmessage('PushTolinks.  Need to handle property type for '+PropName);
-      end;
-  //showmessage('PushTolinks 2');
-  //for i := 0 to length(TDataNode(AObject).ChildNodes) -1 do
-  for i := 0 to length(StartNode.ChildNodes) -1 do
-     PushToLinks(AObject,PropName,PropValue,StartNode.ChildNodes[i]);
-  //showmessage('PushTolinks done');
-end;
-
-{$endif}
-*)
-
 function CompareAttribName(const Attr1, Attr2: TNodeAttribute): Integer;
 begin
   Result := CompareText(Attr1.AttribName, Attr2.AttribName);
@@ -3584,7 +3590,44 @@ begin
 end;
 {$endif}
 
-
+procedure TDataNode.DebugEvents(sometext:String);
+var
+  i:integer;
+  txt:string;
+begin
+  {$ifdef JScript}
+  txt:='';
+  asm console.log(sometext); end;
+  for i:=0 to self.myEventTypes.count-1 do
+    txt:=txt + inttostr(i)+ ' >'+ self.myEventTypes[i] + '<  ';
+  asm console.log(txt); end;
+  txt:='';
+  for i:=0 to length(self.myEventHandlers)-1 do
+  begin
+    txt:=txt+inttostr(i)+':';
+    if self.myEventHandlers[i]<>nil then
+      txt:=txt + '*  '
+    else
+      txt:=txt + 'nil  ';
+  end;
+  asm console.log(txt); end;
+  {$endif}
+end;
+procedure TDataNode.LogAttributes(sometext:String);
+var
+  i:integer;
+  txt:string;
+begin
+  {$ifdef JScript}
+  txt:='';
+  asm console.log(sometext); end;
+  for i:=0 to length(self.NodeAttributes)-1 do
+  begin
+    txt:='  '+inttostr(i)+ ': >'+ self.NodeAttributes[i].AttribName + '<  '+self.NodeAttributes[i].AttribValue + ' '+mybooltostr(self.NodeAttributes[i].AttribReadOnly);
+    asm console.log(txt); end;
+  end;
+  {$endif}
+end;
 
 //-------------------------------------------------------------------------------------------
 begin

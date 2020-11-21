@@ -333,7 +333,7 @@ procedure TXCode.SetMessagesHeight(AValue:string);
  begin
   tc:=self.TheMessages;
   myNode.SetAttributeValue('MessagesHeight',AValue);
-  SetHeightWidth(self.myNode,tc,'EditorWidth','MessagesHeight');
+  SetHeightWidth(self.myNode,tc,'ContainerWidth','MessagesHeight');
   tc.Update;
 end;
 
