@@ -65,7 +65,6 @@ procedure handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue,PropNa
 procedure handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue:string);           overload;
 procedure handleEvent(MyEventType,nodeID,NameSpace,myValue:string);                          overload;
 {$ifndef JScript}
-//procedure handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue:PChar);            overload;
 function FindNodeId(MyControl:TObject; var outer:TObject; var NameSpace:String):String;
 {$endif}
 

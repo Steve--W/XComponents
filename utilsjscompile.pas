@@ -423,7 +423,7 @@ begin
   BatchString:= '<!DOCTYPE HTML>'  +LineEnding
     +'<html  lang="en">'  +LineEnding
     +'<style> '  +LineEnding
-    +'  * {  '  +LineEnding
+    +'  body {  '  +LineEnding
     +'    font-family: sans-serif;  '  +LineEnding
     +'    font-size:12px;           '  +LineEnding
     +'  } '  +LineEnding

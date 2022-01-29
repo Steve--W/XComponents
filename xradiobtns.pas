@@ -171,7 +171,11 @@ procedure TXRadioBtns.RadioGroupChange(Sender: TObject) ;
    and not (csLoading in componentState) then
    begin
     RadioButtonGroup :=  TCustomRadioGroup(sender) ;
-    self.ItemValue:=RadioButtonGroup.Items[RadioButtonGroup.ItemIndex];
+    if RadioButtonGroup.ItemIndex>-1 then
+      self.ItemValue:=RadioButtonGroup.Items[RadioButtonGroup.ItemIndex]
+    else
+      if RadioButtonGroup.Items.count>0 then
+        self.ItemValue:=RadioButtonGroup.Items[0];  //why are we here? !!!!
     CallHandleEvent('Change',self.ItemValue,Sender);
    end;
  end;
@@ -349,7 +353,9 @@ begin
   if NewIndex>-1 then
   begin
      TRadioGroup(myControl).ItemIndex:=NewIndex;
-  end;
+  end
+  else
+     NewIndex:=-1;         //??? needs checking out !!!!
   {$else}
   asm
   //alert('setitemvalue to '+AValue);
@@ -369,6 +375,7 @@ begin
   {$ifndef JScript}
   //TRadioGroup(myControl).items:=ListStringToStringList(AValue);
   TRadioGroup(myControl).items:=JSONStringToStringList(AValue);
+  NewIndex:=TRadioGroup(myControl).ItemIndex;
   {$else}
   myName:=self.NameSpace+self.NodeName;
   myCaption:=myNode.GetAttribute('Caption',true).AttribValue;

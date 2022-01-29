@@ -39,6 +39,8 @@ type
     function GetSource:string;
     function GetImageWidth:string;
     function GetImageHeight:string;
+    function GetClickXPos:integer;
+    function GetClickYPos:integer;
 
     procedure SetSource(AValue:string);
     procedure SetImageWidth(AValue:string);
@@ -66,6 +68,8 @@ type
     property Source: String read GetSource write SetSource;
     property ImageHeight: String read GetImageHeight write SetImageHeight;
     property ImageWidth: String read GetImageWidth write SetImageWidth;
+    property ClickXPos: integer read GetClickXPos;
+    property ClickYPos: integer read GetClickYPos;
 
     {$ifndef JScript}
     // Events to be visible in Lazarus IDE
@@ -76,6 +80,8 @@ type
 
   {$ifndef JScript}
   procedure Register;
+  {$else}
+  procedure SaveClickPos(NodeName:String; X,Y:integer);
   {$endif}
 
 implementation
@@ -149,10 +155,19 @@ begin
 end;
 
 procedure TXImage.ImageClick(Sender: TObject) ;
+    var
+      Pi: TPoint;         // "image" coordinates (=pixels)
 begin
   if not (csDesigning in componentState) then
-     CallHandleEvent('Click',self.myNode.NodeName,self);
+  begin
+    Pi := TImage(sender).ScreenToClient(Mouse.CursorPos);
+    //showmessage('mousepos '+IntToStr(pi.X)+' '+IntToStr(pi.Y));
+    myNode.SetAttributeValue('ClickXPos',intToStr(Pi.X));
+    myNode.SetAttributeValue('ClickYPos',intToStr(Pi.Y));
+    CallHandleEvent('Click',self.myNode.NodeName,self);
+  end;
 end;
+
 
 procedure TXImage.SetImageWidth(AValue:string);
     var
@@ -187,6 +202,17 @@ begin
 
 end;
 
+procedure SaveClickPos(NodeName:String; X,Y:integer);
+var
+myNode:TDataNode;
+begin
+  myNode:=FindDataNodeById(SystemNodeTree,NodeName,'',true);      //namespace??
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ClickXPos',intToStr(X));
+    myNode.SetAttributeValue('ClickYPos',intToStr(Y));
+  end;
+end;
 
 function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
@@ -200,7 +226,7 @@ begin
                            +glbMarginSpacing+' '
                            +glbMarginSpacing+' '
                            +glbMarginSpacing+';';
-  OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', '''');" ';
+  OnClickString:='onclick="event.stopPropagation();pas.XImage.SaveClickPos('''+ScreenObjectName+''',event.offsetX,event.offsetY);pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', '''');" ';
 
   asm
     try{
@@ -211,7 +237,7 @@ begin
 
     var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'">'+LabelText+'</label>';
 
-    var ImageString = ' <img  id='+MyObjectName+ ' style="display: inline-block;" src='+Source+' '+
+    var ImageString = ' <img  id='+MyObjectName+ ' style="display: inline-block; height:90%; width:90%" src='+Source+' '+
                          OnClickString +
                          ' >';
 
@@ -240,7 +266,8 @@ procedure TXImage.SetImageWidth(AValue:string);
 begin
   myNode.SetAttributeValue('ImageWidth',AValue);
   asm
-  var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+  //var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+  var ob = document.getElementById(this.NameSpace+this.NodeName);
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
   end;
 end;
@@ -249,7 +276,8 @@ procedure TXImage.SetImageHeight(AValue:string);
 begin
   myNode.SetAttributeValue('ImageHeight',AValue);
   asm
-  var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+  //var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
+  var ob = document.getElementById(this.NameSpace+this.NodeName);
   pas.HTMLUtils.SetHeightWidthHTML(this,ob,'H',AValue);
   end;
 end;
@@ -268,6 +296,19 @@ function TXImage.GetImageWidth:string;
 begin
   result:=MyNode.getAttribute('ImageWidth',true).AttribValue;
 end;
+function TXImage.GetClickXPos:integer;
+begin
+  result:=-1;
+  if myNode<>nil then
+    result:=StrToInt(myNode.GetAttribute('ClickXPos',false).AttribValue);
+end;
+function TXImage.GetClickYPos:integer;
+begin
+  result:=-1;
+  if myNode<>nil then
+    result:=StrToInt(myNode.GetAttribute('ClickYPos',false).AttribValue);
+end;
+
 
 procedure TXImage.SetSource(AValue:string);
 {$ifndef JScript}
@@ -330,6 +371,8 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Right','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Image','',false);
   AddDefaultAttribute(myDefaultAttribs,'Source','String','','',false);  //default loads resource dfltImage (in resource file XImage.lrs)
+  AddDefaultAttribute(myDefaultAttribs,'ClickXPos','Integer','','',true,false);
+  AddDefaultAttribute(myDefaultAttribs,'ClickYPos','Integer','','',true,false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);

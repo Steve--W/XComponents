@@ -6,27 +6,6 @@ uses
   LazsUtils, Dialogs,
   {$endif}
   WrapperPanel,StringUtils, EventsInterface, XForm, XVBox, XMemo, XLabel, XButton, NodeUtils;
-(*
-type
-
-  { TPasteDialog }
-
-  TPasteDialog = class(TXForm)
-    Popup1Root: TXVBox;
-    PasteTarget: TXMemo;
-    PasteLabel: TXLabel;
-    PasteDoneBtn: TXButton;
-    {$ifndef JScript}
-    procedure FormCreate(Sender: TObject);
-    {$endif}
-    procedure PasteDoneBtnHandleButtonClick(e: TEventStatus;
-      nodeID: AnsiString; myValue: AnsiString);
-  private
-    { private declarations }
-  public
-    { public declarations }
-  end;
- *)
 
 type TpasteDialogEvents = class(TObject)
   procedure PasteDoneBtnHandleButtonClick(e: TEventStatus;
@@ -45,16 +24,6 @@ var
 
 implementation
 
-{ TPasteDialog }
-
-//{$ifndef JScript}
-//procedure TPasteDialog.FormCreate(Sender: TObject);
-//begin
-//  myNode:=DoXFormCreated(self);
-//
-//end;
-//{$endif}
-
 procedure TPasteDialogEvents.PasteDoneBtnHandleButtonClick(e: TEventStatus;
   nodeID: AnsiString; myValue: AnsiString);
 var
@@ -63,9 +32,7 @@ begin
   StringToCopy:=PasteTarget.ItemValue;
   {$ifdef JScript}
   asm
-    // alert('click done button handler');
      pas.NodeUtils.myCopyToClip('HTML System',StringToCopy);
-    // alert('copy done');
   end;
   {$endif}
   PasteDialog.Showing:='No';

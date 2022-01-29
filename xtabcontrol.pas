@@ -1640,5 +1640,7 @@ begin
   SuppressDesignerProperty('TXTabControl','LabelText');
   SuppressDesignerProperty('TXTabSheet','LabelPos');
   SuppressDesignerProperty('TXTabSheet','LabelText');
+  SuppressDesignerProperty('TXTabControl','Border');
+  SuppressDesignerProperty('TXTabSheet','Border');
   {$endif}
 end.

@@ -38,9 +38,8 @@ type
 
 var myProjectEvents:TMyProjectEvents;
 
+type
 
-
-  type
   TXDesignerExtension = class
   private
     function AddClicked(ADesigner: TIDesigner;

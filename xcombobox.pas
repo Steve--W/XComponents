@@ -454,6 +454,7 @@ begin
   {$endif}
   SuppressDesignerProperty('TXComboBox','ItemValue');
   SuppressDesignerProperty('TXComboBox','BgColor');
+  SuppressDesignerProperty('TXComboBox','Border');
   SuppressDesignerProperty(MyNodeType,'ContainerHeight');
   SuppressDesignerProperty(MyNodeType,'ContainerWidth');
 

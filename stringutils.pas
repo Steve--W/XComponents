@@ -56,6 +56,7 @@ function JsonStringTo3DNumArray(const str:String):T3DNumArray;
 function QuoteIt(str:String):String;
 procedure ShowAllChars(str:String);
 function IsStrFloatNum(str: string): Boolean;
+//function TryStrToInt(str:String;var ok:boolean):integer;
 
 
 {$ifndef JScript}
@@ -108,6 +109,23 @@ begin
  if poserror>0 then
    result:=false;
 end;
+
+(*function TryStrToInt(str:String;var ok:boolean):longint;
+var
+ i:longint;
+begin
+  ok:=true;
+  try
+    i:=strtoint(str);
+  except
+    on e:exception do
+    begin
+      i:=-1;
+      ok:=false;
+    end;
+  end;
+  result:=i;
+end; *)
 
 function QuoteIt(str:String):String;
 begin

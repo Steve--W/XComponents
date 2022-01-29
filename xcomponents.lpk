@@ -49,7 +49,7 @@
         <Verbosity>
           <ShowAll Value="True"/>
         </Verbosity>
-        <CustomOptions Value="//-dChromium"/>
+        <CustomOptions Value="-dChromium"/>
       </Other>
     </CompilerOptions>
     <Files Count="43">

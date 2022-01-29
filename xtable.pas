@@ -729,7 +729,6 @@ begin
         }
       }
     }
-    //alert(myArray[0]);
   end;
   result:=myArray;
 end;
@@ -1410,7 +1409,6 @@ begin
   i:=self.NumCols;
   self.NumCols:=self.NumCols;
   self.NumRows:=self.NumRows;
-  //{$ifdef JScript}showmessage(TXTable(self).NameSpace+TXTable(self).NodeName+' SetTableData done ');{$endif}
 end;
 
 begin
@@ -1430,7 +1428,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'NumCols','Integer','3','',false,false);
   AddDefaultAttribute(myDefaultAttribs,'NumRows','Integer','2','',false,false);
   AddDefaultAttribute(myDefaultAttribs,'ColWidth','Integer','40','',false);
-  AddDefaultAttribute(myDefaultAttribs,'SelectedValue','String','','',false);
+  AddDefaultAttribute(myDefaultAttribs,'SelectedValue','String','','',false,false);
   AddDefaultAttribute(myDefaultAttribs,'IncludeDataInSave','Boolean','True','If false, the table contents will be excluded from saved system data',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
@@ -1445,6 +1443,7 @@ begin
   AddNodeFuncLookup(MyNodeType,@CreateinterfaceObj,@CreateWidget);
   {$endif}
   SuppressDesignerProperty('TXTable','BgColor');
+  SuppressDesignerProperty('TXTable','Border');
   SuppressDesignerProperty(MyNodeType,'ContainerHeight');
   SuppressDesignerProperty(MyNodeType,'ContainerWidth');
 end.

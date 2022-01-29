@@ -1427,7 +1427,8 @@ end;
   begin
     myNode.SetAttributeValue('XMLString',AValue);
 
-    pn:=FindParentOfNode(SystemNodeTree,MyNode);
+    //pn:=FindParentOfNode(SystemNodeTree,MyNode);
+    pn:=MyNode.NodeParent;
     if pn<>nil then
     begin
       {$ifndef JScript}

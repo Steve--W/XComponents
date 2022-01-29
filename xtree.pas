@@ -95,6 +95,7 @@ type TMyTreeView = class(TTreeView)
   function AddATreeNode(ParentNode:TTreeNode; nodeText,TreeName:string):TTreeNode;
   procedure PopulateMeFromJSONData(NodeTreeString,RootName:String;openlvl:integer);
   procedure selectNodeByText(NodeText:String);
+  procedure selectNodeByTextPath(PathText:String);
   procedure selectNodeById(NodeId:String);
   function AddNewNode(NodeItems:TTreeNodes;ParentNode:TTreeNode; NodeString,TreeName:string):TTreeNode;
   function AddChildren(jData: TJSONData; ParentNode:TTreeNode;RootName:String):TTreeNode;
@@ -173,6 +174,7 @@ type
     function BuildTreeDataString:String;
     procedure SelectTreeNodeById(NodeId:string);
     procedure SetSelectedNodeId(AValue:String);
+    procedure SelectTreeNodeByPath(NodePath:string);
     {$ifndef JScript}
     procedure SelectTreeNodeByText(NodeText:string);
     {$else}
@@ -231,7 +233,7 @@ const MyNodeType='TXTree';
 
 
 const
-  ExampleNodeTree = '["myTreeName",["Layout","TestStuff"],"SimpleItems","Collection Items",["Media items","TestMoreStuff"],"Option Forms"]';
+  ExampleNodeTree = '["Root",["Item1","Level2 Item"],"Item2","Item3",["Item4","Child Item"],"Item5"]';
 
 var
   myDefaultAttribs:TDefaultAttributesArray;
@@ -549,6 +551,24 @@ begin
     self.ClearSelection();
 end;
 
+procedure TmyTreeView.selectNodeByTextPath(PathText:String);
+// path is '/' delimited
+var
+  TargetNode:TTreeNode;
+begin
+  if PathText<>'' then
+  begin
+    TargetNode:=TTreeNode(self.Items.FindNodeWithTextPath(PathText));
+    if TargetNode<>nil then
+    begin
+      if TargetNode<>self.Selected then
+        self.Select(TargetNode);        // In Lazarus this will automatically open any parent nodes   //  this fires a change event????
+    end;
+  end
+  else
+    self.ClearSelection();
+end;
+
 
 procedure TmyTreeView.selectNodeById(NodeId:String);
 var
@@ -583,7 +603,6 @@ begin
       begin
         MyRecPtr:=Node.Data;
         NodeID:=MyRecPtr^.ID;
-        //TXTree(outer).SelectedNodeText:=Node.Text;
         TXTree(outer).myNode.SetAttributeValue('SelectedNodeText',Node.Text);
         pth:=TXTree(outer).SelectedTextPath;   // this sets the value for attribute 'SelectedTextPath'
         CallHandleEvent('TreeNodeClick',NodeID,Sender);
@@ -680,7 +699,7 @@ var
   str:String;
   parentNode:TTreeNode;
 begin
-  str:=inttostr(thisNode.index)+':'+thisNode.Text;
+  str:=inttostr(thisNode.index)+'~:~'+thisNode.Text;
   parentNode:=thisNode;
   while parentNode.Parent<>nil do
   begin
@@ -754,7 +773,8 @@ begin
   // Create the Hint text for this node, if specified.
   if (self.Parent<>nil) and (self.Parent is TXTree) then
     if TXTree(self.Parent).TreeNodeHintFunc<>nil then
-      MyRecPtr^.NodeHint := TXTree(self.Parent).TreeNodeHintFunc(NodeString);
+
+    MyRecPtr^.NodeHint := TXTree(self.Parent).TreeNodeHintFunc(NodeString);
 
   MyRecPtr^.OriginalText := NewTreeNode.Text;   // save node text to workaround user edits (can't disable editing!!!!)
   result:=NewTreeNode;
@@ -971,8 +991,9 @@ asm
       }
       if (StyleIsSet == false){
          //<-------------- Styles to switch the child marker on and off on the summary line ---------------
-         var styletext = '<style> summary.noChildren::-webkit-details-marker { display:none; } </style>'
-                        + '<style> summary.hasChildren {color:black; }</style> ';
+         //var styletext = '<style> summary.noChildren::-webkit-details-marker { display:none; } </style>'
+         var styletext = '<style> summary.noChildren { list-style: none;} </style>'
+                       + '<style> summary.hasChildren {color:black; }</style> ';
          //----------------------------- now append the style declarations to the head of the HTML page
          document.head.innerHTML = document.head.innerHTML+styletext;
       }
@@ -1069,6 +1090,7 @@ begin
 end;
 
 //  HTML Tree Structure is...
+// wrapper div id is (eg A=<NodeName>Node0)
 //      A
 //        B
 //        C
@@ -1077,7 +1099,7 @@ end;
 //        F
 //          G
 //
-//     <DIV  id=AOuterDiv >
+//     <DIV  id=AOuterDiv >                     (eg <NodeName>Node0OuterDiv)
 //        <DETAILS id=A >
 //          <SUMMARY  id=ASummary />
 //          <DIV  id=BOuterDiv >
@@ -1120,7 +1142,7 @@ begin
 asm
  try{
 
- //alert('addTreeNode '+WrapperNodeId+' parentName='+parentName+' SummaryText='+SummaryText);
+  //console.log('addTreeNode '+WrapperNodeId+' parentName='+parentName+' SummaryText='+SummaryText);
 
   var SystemNodeText='';
   if (Array.isArray(SummaryText)){
@@ -1129,7 +1151,7 @@ asm
   else {
     SystemNodeText=SummaryText;
     }
- // alert('addTreeNode '+WrapperNodeId+' parentName='+parentName+' nodetext='+SystemNodeText);
+ //console.log('addTreeNode '+WrapperNodeId+' parentName='+parentName+' nodetext='+SystemNodeText);
 
   var myHint='';
   if (NodeHintFunc!=null) {
@@ -1211,8 +1233,7 @@ begin
 
 asm
    try {
-   //alert('addnode: '+WrapperNodeId+' '+ParentName+' '+currentNodeTree+' newnode='+IdOfNodeBeingAdded);
-   //alert('addnode: '+WrapperNodeId+' parentname:'+ParentName+'  newnode='+IdOfNodeBeingAdded);
+   //console.log('addnode: '+WrapperNodeId+' parentname:'+ParentName+'  newnode='+IdOfNodeBeingAdded);
        var isopen=false;
        if (level<OpenToLevel) {isopen=true;}  //by default just show the first n levels of the tree
        var localcurrentNodeTree=currentNodeTree;
@@ -1564,11 +1585,8 @@ end;
 procedure HandleTreeNodeClick(WrapperNodeId,NameSpace,SelectedNodeObjectId:String);
 var
   myNode:TDataNode;
-  NodeText:String;
 begin
-//  showmessage('HandleTreeNodeClick WrapperNodeId='+WrapperNodeId+' NodeObjectId='+SelectedNodeObjectId+' NS='+NameSpace);
    myNode:=FindDataNodeById(SystemNodetree,WrapperNodeId,NameSpace,true);
-   NodeText:=NodeTextFromId(myNode,SelectedNodeObjectId);
    TXTree(myNode).SelectedNodeId:=SelectedNodeObjectId;
 end;
 
@@ -2119,7 +2137,7 @@ begin
   {$else}
     // build the text path from the defined nodes
     localSelectedNodeId :=self.SelectedNodeId;
-    //asm console.log('localSelectedNodeId='+localSelectedNodeId); end;
+    //asm console.log('TXTree.GetSelectedTextPath localSelectedNodeId='+localSelectedNodeId); end;
     if localSelectedNodeId<>'' then
     begin
       pth:=GetPathToNode(self.NodeName,localSelectedNodeId);
@@ -2251,6 +2269,39 @@ begin
       {$endif}
     end;
   end;
+end;
+
+procedure TXTree.SelectTreeNodeByPath(NodePath:string);
+var
+  TreeName,NodeId,pth:String;
+  bits,bits2:TStringList;
+  i:integer;
+begin
+  // path is delimited with embedded indices, same as format of self.SelectedTextPath.
+  // This must be split into elements
+  {$ifndef JScript}
+  TMyTreeView(self.myControl).selectNodeByTextPath(NodePath);  // (Windows) this selects the node in the datatree component, if changed.
+  {$else}
+  // find the relevant div element in the HTML tree
+  //asm console.log('SelectTreeNodeByPath Looking for nodepath '+NodePath);  end;
+  TreeName:=self.NodeName;
+  NodeId:=TreeName+'Node0';
+  bits:=stringsplit(NodePath,'~/~',false);
+  for i:=1 to bits.count-1 do      // skip the root node element
+  begin
+    bits2 := stringsplit(bits[i],'~:~',false);
+    if bits2.count>1 then
+    begin
+      NodeId:=NodeId + '_' + bits2[0];
+    end;
+  end;
+  //asm console.log('Looking for div id '+NodeId);  end;
+  self.SelectedNodeId:=NodeId;
+  pth:=self.SelectedTextPath;   // this sets the value for attribute 'SelectedTextPath'
+
+  bits.Free;
+  bits2.Free;
+  {$endif}
 end;
 
 begin

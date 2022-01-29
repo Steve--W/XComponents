@@ -25,6 +25,7 @@ type TStringArray = Array of String;
 type T2DNumArray = Array of TNumArray;
 type T3DNumArray = Array of T2DNumArray;
 type T2DStringArray = Array of TStringArray;
+type TObjArray = Array of TObject;
 
 type TEventStatus = class(TObject)
 public
@@ -32,21 +33,35 @@ public
   NodeId:String;
   NameSpace:String;
   InitRunning:Boolean;           // true for an event that is running (or has run) the initialisation phase, but not yet the main phase.
+  InitDone:Boolean;
   AsyncProcsRunning:TStringList; // list of async procs fired off during the initialisation phase.
   ContinueAfterTrappers:Boolean; // is true unless the event was intercepted by a trapper, and stopped.
   ReturnString:String;           // used by TXThreads, and also for completion stage of async events (eg. in copyfromclip)
-  eventValue:String;             // to carry original event value, for trapper events
-  ValueObject:TObject;
+  AsyncReturnObject:TObjArray;   // for completion stage of async event(s) (eg. returned data from local db storage)
+  eventValue:String;             // to carry original event value, eg. for trapper events
+  ValueObject:TObject;           // used in tree node operations, eg. drag/drop
   constructor Create(EvType,NdId:String);
   function EventHasWaitingAsyncProcs():Boolean;
   function ClearAsync(ProcName:string):Boolean;
-
 end;
+
 type TNodeEventValue = class(TObject)
   myTree:TObject;
   SourceName,SrcText,DstText:String;
   myNode:TObject;
 end;
+
+type
+  TGPUPixelArray    = array of array of T2DNumArray ;
+
+type TDSKeyValue = record
+  DSKeyType:String;   // 'I','F','S'
+  DSKeyInt:integer;
+  DSKeyFloat:double;
+  DSKeyString:String;
+end;
+type TDSKeyArray = array of TDSKeyValue;
+
 var
   glbEvent:TEventStatus;
 
@@ -55,10 +70,13 @@ implementation
 constructor TEventStatus.Create(EvType,NdId:String);
 begin
   self.InitRunning:=false;
+  self.InitDone:=false;
   self.ContinueAfterTrappers:=true;
   self.EventType:=EvType;
   self.NodeId:=NdId;
   self.AsyncProcsRunning:=TStringList.Create;
+  self.ValueObject:=nil;
+  setlength(self.AsyncReturnObject,0);
 end;
 
 function TEventStatus.EventHasWaitingAsyncProcs():Boolean;
@@ -81,6 +99,7 @@ begin
     result:=true;
   end;
 end;
+
 
 end.
 

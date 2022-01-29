@@ -339,6 +339,7 @@ begin
   SuppressDesignerProperty('TXButton','LabelPos');
   SuppressDesignerProperty('TXButton','LabelText');
   SuppressDesignerProperty('TXButton','BgColor');
+  SuppressDesignerProperty('TXButton','Border');
   SuppressDesignerProperty('TXButton','ContainerHeight');
   SuppressDesignerProperty('TXButton','ContainerWidth');
 

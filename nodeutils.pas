@@ -214,18 +214,19 @@ function CreateFormNode(myForm:TForm):TDataNode;
 function AddFormToNodeTree(myForm:TForm):TdataNode;
 function InitialiseCodeTree:TdataNode;
 procedure AddDefaultsToTable(MyNodeType:String;myDefaultAttribs:TDefaultAttributesArray);
-function GetDefaultAttribs(NodeType:String):TDefaultAttributesArray;
 function GetDefaultAttrib(NodeType,AttrName:String):TDefaultAttribute;
 function IsADefaultAttrib(NodeType,AttrName:String):Boolean;
 procedure AddDefaultAttribs(myComponent:TObject;NewNode:TDataNode;defaultAttribs:TDefaultAttributesArray);
 procedure AddDefaultAttribute(var Attribs:TDefaultAttributesArray;AttrName,AttrType,AttrValue,AttrHint:String; ro:Boolean);
 procedure AddDefaultAttribute(var Attribs:TDefaultAttributesArray;AttrName,AttrType,AttrValue,AttrHint:String; ro,incl:Boolean);
 procedure AddExclusionAttribToTable(NodeType,AttribName,TargetAttrib:String);
+function GetDefaultAttribs(NodeType:String):TDefaultAttributesArray;
 procedure AddAttrib(var AttrParams:TNodeAttributesArray;attrName,attrType,attrValue:string;attrReadOnly:Boolean);
 procedure AddChildToParentNode(var ParentNode, ChildNode:TDataNode; position:integer);
 function NodeTreeToXML(CurrentItem,ParentNode:TDataNode;DynamicOnly,QuotedString:Boolean):String;
 function FindDataNodeById(InTree:TDataNode; ScreenObjectID,NameSpace:String;showerror:boolean):TDataNode;
-function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode;showerror:Boolean=false):TDataNode;  overload;
+function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode;showerror:Boolean=false):TDataNode; // overload;
+function FindAncestorByType(childNode:TdataNode;NodeType:String;showerror:Boolean=false):TDataNode;
 procedure ReParentNode(MyNode,NewParent:TDataNode);
 procedure DeleteNode(ParentNode,MyNode:TDataNode);
 function CopyNode(SourceNode:TDataNode;DrillDown:Boolean):TDataNode;
@@ -245,13 +246,14 @@ function AlignmentResetInvalidCombinations(OldAlignment,myName,myClass:string;Pa
 procedure SortAttribs(var Attribs: TNodeAttributesArray);
 procedure AddAttribOptions(ComponentType,AttribName:string;Options:array of string);
 function LookupAttribOptions(ComponentType,AttribName:string):TstringList;
+function DeleteAttribOptions(ComponentType,AttribName:string):TstringList;
 function XMLToNodeTree(XMLString:String; UIParentNode:TDataNode; ExpandingComposite:Boolean=false):String;
 procedure SetXObjectProperty(myObj:TObject;targetNode:TdataNode;PropName,AttrType,newValue:String);
 
 
 procedure EditNodeAttributeValue(targetNode:TDataNode; SourceAttrib:TNodeAttribute;AddIfMissing:Boolean);
 procedure EditAttributeValue(NodeNameToEdit,NameSpace:String; SourceAttrib:TNodeAttribute;AddIfMissing:Boolean=false); overload;
-procedure EditAttributeValue(NodeNameToEdit,NameSpace,AttrNameToEdit,newValue:String;AddIfMissing:Boolean=false); overload;
+procedure EditAttributeValue(NodeNameToEdit,NameSpace,AttrNameToEdit,newValue:String;AddIfMissing:Boolean=false;Context:TDataNode=nil); overload;
 procedure EditAttributeValue(NodeToEdit:TDataNode;AttrNameToEdit,newValue:String;AddIfMissing:Boolean=false);
 {$ifndef JScript}
 procedure EditAttributeValue(NodeNameToEdit,NameSpace,AttrNameToEdit,newValue:PChar); overload;
@@ -334,7 +336,7 @@ const SystemRootName= 'UIRootNode';
 const CodeRootName= 'CodeUnits';
 const PortraitMode=false;
 
-var SystemNodeTree,UIRootNode,CodeRootNode:TDataNode;
+var SystemNodeTree,UIRootNode,CodeRootNode, DMRoot:TDataNode;
 var StartingUp:Boolean;
 
 var   NodeFuncsLookup:TNodeFuncsTable;             // lookup table used in data node creation
@@ -346,7 +348,7 @@ const delimiterBetweenAttribsAndEvents = '|@@|';
 const attributeListdelimiter='|;'  ;
 const NameValuePairdelimiter= '|=' ;
 const AttribBitsDelimiter= '|{'   ;
-const AttribLinkDelimiter= '|}'   ;
+const DataDelimiter= '|}'   ;
 
 const StartXMLString =  '<';
 const ToggleFlagMarker = '/';
@@ -990,7 +992,8 @@ begin
   NewNode.MyForm:=TForm(myOwner);
   NewNode.IsDynamic:=IsDynamic;
 
-  SetObjectProp(myComponent,'myNode',NewNode);
+  if myComponent<>nil then
+    SetObjectProp(myComponent,'myNode',NewNode);
 
   AddDefaultAttribs(myComponent,NewNode,defaultAttribs);
 
@@ -1023,46 +1026,46 @@ end;
 
 {$endif}
 
-function ScanChildrenForNode(CurrentItem:TDataNode;targetNode:TdataNode;var FoundParent:TDataNode; var position:Integer):TDataNode;
-var FoundItem,TempItem:TDataNode;
-    TempArrayOfChildren:TChildNodesArray;
-    NumChildren,i:integer;
-begin
-   FoundItem:=nil;
-   FoundParent:=nil;
-   if CurrentItem = targetNode
-   then
-   begin
-     FoundItem:= CurrentItem
-   end
-   else
-   begin
-      TempArrayOfChildren:= CurrentItem.ChildNodes;
-      NumChildren:=Length(TempArrayOfChildren);
-      i:=0;
-      while i < NumChildren do
-      begin
-         if FoundItem=nil then  // object has not been found so keep looking
-         begin
-           //showmessage('parent='+CurrentItem.NodeName+' i='+inttostr(i));
-            TempItem := CurrentItem.ChildNodes[i];
-            //showmessage('TempItem='+TempItem.NodeName);
-            if TempItem = targetNode
-            then
-            begin
-              FoundItem:= TempItem;
-              FoundParent:=CurrentItem;
-              position:=i;
-              i:=NumChildren;
-            end
-            else
-              FoundItem:= ScanChildrenForNode(TempItem,targetNode,FoundParent,position);
-         end;
-         i:=i+1;
-      end;
-   end;
-   result:=FoundItem;
-end;
+//function ScanChildrenForNode(CurrentItem:TDataNode;targetNode:TdataNode;var FoundParent:TDataNode; var position:Integer):TDataNode;
+//var FoundItem,TempItem:TDataNode;
+//    TempArrayOfChildren:TChildNodesArray;
+//    NumChildren,i:integer;
+//begin
+//   FoundItem:=nil;
+//   FoundParent:=nil;
+//   if CurrentItem = targetNode
+//   then
+//   begin
+//     FoundItem:= CurrentItem
+//   end
+//   else
+//   begin
+//      TempArrayOfChildren:= CurrentItem.ChildNodes;
+//      NumChildren:=Length(TempArrayOfChildren);
+//      i:=0;
+//      while i < NumChildren do
+//      begin
+//         if FoundItem=nil then  // object has not been found so keep looking
+//         begin
+//           //showmessage('parent='+CurrentItem.NodeName+' i='+inttostr(i));
+//            TempItem := CurrentItem.ChildNodes[i];
+//            //showmessage('TempItem='+TempItem.NodeName);
+//            if TempItem = targetNode
+//            then
+//            begin
+//              FoundItem:= TempItem;
+//              FoundParent:=CurrentItem;
+//              position:=i;
+//              i:=NumChildren;
+//            end
+//            else
+//              FoundItem:= ScanChildrenForNode(TempItem,targetNode,FoundParent,position);
+//         end;
+//         i:=i+1;
+//      end;
+//   end;
+//   result:=FoundItem;
+//end;
 
 
 function ScanChildrenForNodeByName(CurrentItem:TDataNode;ScreenObjectID,NameSpace:String;var FoundParent:TDataNode):TDataNode;
@@ -1151,11 +1154,12 @@ begin
 end;
 
 
-function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode;showerror:Boolean=false):TDataNode;  overload;
+function FindParentOfNode(InTree:TDataNode;targetNode:TdataNode;showerror:Boolean=false):TDataNode; // overload;
 var
   FoundItem, TempItem, FoundParent :TDataNode;
   position:integer;
 begin
+  FoundItem:=nil;
   //showmessage('FindParentOfNode '+ScreenObjectID+' in tree '+InTree.NodeName);
    if targetNode.NodeParent<>nil then
      FoundItem:=targetNode.NodeParent
@@ -1163,34 +1167,40 @@ begin
    begin
      if targetNode.Nodename<>'ApplicationRoot' then
        showMessage('oops: node '+TargetNode.NodeType+'('+TargetNode.NodeName+') has no "NodeParent" set');
-   FoundItem:=nil;
-   TempItem:=nil;
-   FoundParent:=nil;
-   TempItem:=ScanChildrenForNode(InTree,targetNode,FoundParent,position);
-
-   if (TempItem<>nil) and (FoundParent<>nil) then
-   begin
-       FoundItem:= FoundParent ;
-   end
-   else
-     if showError then
-       showmessage('Error in Nodeutils.FindParentOfNode >'+targetNode.NodeType+'('+targetNode.NodeName+')'+' < not found');
+//   FoundItem:=nil;
+//   TempItem:=nil;
+//   FoundParent:=nil;
+//   TempItem:=ScanChildrenForNode(InTree,targetNode,FoundParent,position);
+//
+//   if (TempItem<>nil) and (FoundParent<>nil) then
+//   begin
+//       FoundItem:= FoundParent ;
+//   end
+//   else
+//     if showError then
+//       showmessage('Error in Nodeutils.FindParentOfNode >'+targetNode.NodeType+'('+targetNode.NodeName+')'+' < not found');
    end;
 
    result:=FoundItem;
 end;
 
-function FindParentOfNodeByName(InTree:TDataNode;ScreenObjectID,Namespace:String;showerror:Boolean=false):TDataNode;
+function FindAncestorByType(childNode:TdataNode;NodeType:String;showerror:Boolean=false):TDataNode;
 var
   TempItem, FoundParent :TDataNode;
 begin
-   TempItem:=nil;
+   TempItem:=childNode;
    FoundParent:=nil;
-   TempItem:=ScanChildrenForNodeByName(InTree,ScreenObjectID,Namespace,FoundParent);
+   while (FoundParent=nil)
+   and (TempItem.NodeParent<>nil) do
+   begin
+     tempitem:=tempitem.NodeParent;
+      if (tempitem.NodeType = NodeType) then
+        FoundParent:=tempitem;
+   end;
 
-   if (TempItem=nil) or (FoundParent=nil) then
+   if (FoundParent=nil) then
      if showError then
-       showmessage('Error in Nodeutils.FindParentOfNode >'+ScreenObjectID+'< not found');
+       showmessage('Error in Nodeutils.FindAncestorByType. >'+NodeType+'< ancestor of >'+childNode.NodeName+'< not found');
    result:=FoundParent;
 end;
 
@@ -1233,7 +1243,7 @@ begin
   tempstr:=myStringReplace(tempstr,attributeListdelimiter,'&aldlm;',-1,-1);
   tempstr:=myStringReplace(tempstr,EventListdelimiter,'&eldlm;',-1,-1);
   tempstr:=myStringReplace(tempstr,AttribBitsDelimiter,'&abdlm;',-1,-1);
-  tempstr:=myStringReplace(tempstr,AttribLinkDelimiter,'&akdlm;',-1,-1);
+  tempstr:=myStringReplace(tempstr,DataDelimiter,'&akdlm;',-1,-1);
   tempstr:=myStringReplace(tempstr,'https:','&hhttppss;',-1,-1);
   tempstr:=myStringReplace(tempstr,'http:','&hhttpp;',-1,-1);
   result:=tempstr;
@@ -1257,7 +1267,7 @@ begin
   tempstr:=myStringReplace(tempstr,attributeListdelimiter,'&aldlm;',-1,-1);
   tempstr:=myStringReplace(tempstr,EventListdelimiter,'&eldlm;',-1,-1);
   tempstr:=myStringReplace(tempstr,AttribBitsDelimiter,'&abdlm;',-1,-1);
-  tempstr:=myStringReplace(tempstr,AttribLinkDelimiter,'&akdlm;',-1,-1);
+  tempstr:=myStringReplace(tempstr,DataDelimiter,'&akdlm;',-1,-1);
   tempstr:=myStringReplace(tempstr,'https:','&hhttppss;',-1,-1);
   tempstr:=myStringReplace(tempstr,'http:','&hhttpp;',-1,-1);
   result:=tempstr;
@@ -1279,7 +1289,7 @@ begin
   tempstr:=myStringReplace(tempstr,'&aldlm;',attributeListdelimiter,-1,-1);
   tempstr:=myStringReplace(tempstr,'&eldlm;',EventListdelimiter,-1,-1);
   tempstr:=myStringReplace(tempstr,'&abdlm;',AttribBitsDelimiter,-1,-1);
-  tempstr:=myStringReplace(tempstr,'&akdlm;',AttribLinkDelimiter,-1,-1);
+  tempstr:=myStringReplace(tempstr,'&akdlm;',DataDelimiter,-1,-1);
   tempstr:=myStringReplace(tempstr,'&hhttppss;','https:',-1,-1);
   tempstr:=myStringReplace(tempstr,'&hhttpp;','http:',-1,-1);
   tempstr:=myStringReplace(tempstr,'&crlf;',LineEnding,-1,-1);
@@ -1341,6 +1351,7 @@ begin
   or (CurrentItem.NodeClass='NV')
   or (CurrentItem.NodeClass='SVG')
   or (CurrentItem.NodeClass='Code')
+  or (CurrentItem.NodeClass='DM')
   // special case (for XIDE) include the set of composites in the resources tree
   or ((CurrentItem.NodeType='TXComposite') and (CurrentItem.NodeClass='RUI'))
   or ((CurrentItem.NodeName='Composites') and (CurrentItem.NodeClass='RUI'))
@@ -1363,10 +1374,14 @@ begin
       myAttribs:= CurrentItem.NodeAttributes;
       numAttributes:=length(myAttribs);
       for i:=0 to numAttributes-1 do
+      if CurrentItem.NodeAttributes[i].AttribName<>'' then
       begin
         DfltAttrib:=GetDefaultAttrib(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName);
         if DfltAttrib.AttribName='' then
-          DfltAttrib.AttribIncludeInSave:=true;
+          if (CurrentItem.NodeClass<>'DM') then
+            DfltAttrib.AttribIncludeInSave:=true
+          else
+            DfltAttrib.AttribIncludeInSave:=false;
         if (FindSuppressedProperty(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName)<0)
         and (DfltAttrib.AttribIncludeInSave = true)
         and (IsExcluded(CurrentItem,CurrentItem.NodeAttributes[i]) = false)
@@ -1503,12 +1518,16 @@ end;
 
 Procedure SaveSystemToIncFile;
 var
-  systemstring,eventstring,fullstring:string;
+  systemstring,fullstring:string;
   interfaceString:string;
+  i:integer;
 begin
   interfaceString:=NodeTreeToInterfaceString(SystemNodeTree,MainForm.Name);
   WriteToFile(ProjectDirectory+'tempinc/systemintface.inc',interfaceString);
   systemstring:= NodeTreeToXML(SystemNodeTree,nil,false,true);
+  if DMRoot<>nil then
+    for i:=0 to length(DMRoot.ChildNodes)-1 do
+      systemstring:=systemstring+NodeTreeToXML(DMRoot.ChildNodes[i],DMRoot,false,true);
 
   fullstring:= systemstring;
 
@@ -1761,7 +1780,6 @@ begin
   // remove the node from its existing parent, if any
   if ChildNode.NodeName<>'' then
   begin
-    //pn:= FindParentOfNode(SystemNodeTree,ChildNode);
     pn:=ChildNode.NodeParent;
     if pn<>nil then
     begin
@@ -1770,30 +1788,31 @@ begin
   end;
   ChildNode.NodeParent:=ParentNode;
 
-  // add the node to its new parent
-  numchildren:= Length(ParentNode.ChildNodes);
-  SetLength(ParentNode.ChildNodes,numchildren+1) ;
+  if ParentNode<>nil then
+  begin
+    // add the node to its new parent
+    numchildren:= Length(ParentNode.ChildNodes);
+    SetLength(ParentNode.ChildNodes,numchildren+1) ;
 
-  if position=-1 then
-  begin
-    ParentNode.ChildNodes[numchildren]:=ChildNode;
-  end
-  else
-  begin
-     for i:=numchildren downto position+1 do
-     begin
+    if position=-1 then
+    begin
+      ParentNode.ChildNodes[numchildren]:=ChildNode;
+    end
+    else
+    begin
+      for i:=numchildren downto position+1 do
+      begin
         ParentNode.ChildNodes[i]:=ParentNode.ChildNodes[i-1];
-     end;
-     ParentNode.ChildNodes[position]:=ChildNode;
+      end;
+      ParentNode.ChildNodes[position]:=ChildNode;
+    end;
+    {$ifndef JScript}
+    if ChildNode.NodeClass='UI' then
+      SetAlignProperty(ParentNode,ChildNode);
+    {$endif}
+
+    ChildNode.SetAttributeValue( 'ParentName', ParentNode.NodeName);
   end;
-  {$ifndef JScript}
-  if ChildNode.NodeClass='UI' then
-    SetAlignProperty(ParentNode,ChildNode);
-  {$endif}
-
-  ChildNode.SetAttributeValue( 'ParentName', ParentNode.NodeName);
-
-
 end;
 
 function NodeNameIsUnique(myNode:TDataNode;NodeName,Namespace:string; showerror:Boolean):Boolean;
@@ -1844,6 +1863,7 @@ begin
     newNode:=TDataNode.Create(MyClass,MyName,NameSpace,MyType);
     newNode.NodeAttributes:=MyAttributes;
     newNode.NodeParent:=ParentNode;
+    newNode.AddAttribute('ParentName','String', ParentNode.NodeName,true);
     for i:=0 to length(MyAttributes)-1 do
     begin
       MyAttributes[i].OwnerNode:=newNode;
@@ -1863,6 +1883,7 @@ begin
        ParentNode.ChildNodes[position]:=newNode;
        result:=  ParentNode.ChildNodes[position];
     end;
+
   end
   else
     result:=nil;
@@ -1965,29 +1986,38 @@ begin
   begin
     if (SourceNode.NodeClass = 'UI')
     or (SourceNode.NodeClass = 'NV')
+    or (SourceNode.NodeClass = 'DM')
     or (SourceNode.NodeClass = 'SVG') then
     begin
       // create the screen object and data node...
       begin
-        myself:=AddDynamicWidget(SourceNode.NodeType,ParentNode.MyForm,ParentNode,SourceNode.NodeName,SourceNode.NameSpace,'Left',position);
-        myself.NameSpace:=SourceNode.NameSpace;
-        CopyEventHandlers(myself,SourceNode,((SourceNode.NodeType='TXCompositeIntf')or(SourceNode.NodeType='TXComposite')));
-        for i:=0 to length(SourceNode.NodeAttributes)-1 do
+        if (SourceNode.NodeClass <> 'DM') then
         begin
-          DfltAttrib:=GetDefaultAttrib(SourceNode.NodeType,SourceNode.NodeAttributes[i].AttribName);
-          if (SourceNode.NodeAttributes[i].AttribReadOnly=false)
-          or (DfltAttrib.AttribIncludeInSave=true)            //!! ??
-          or (SourceNode.NodeType='TXComposite')
-          or (SourceNode.NodeType='TXCompositeIntf') then
+          myself:=AddDynamicWidget(SourceNode.NodeType,ParentNode.MyForm,ParentNode,SourceNode.NodeName,SourceNode.NameSpace,'Left',position);
+          myself.NameSpace:=SourceNode.NameSpace;
+          CopyEventHandlers(myself,SourceNode,((SourceNode.NodeType='TXCompositeIntf')or(SourceNode.NodeType='TXComposite')));
+          for i:=0 to length(SourceNode.NodeAttributes)-1 do
           begin
-            if SourceNode.NodeAttributes[i].AttribName<>'ParentName' then
+            DfltAttrib:=GetDefaultAttrib(SourceNode.NodeType,SourceNode.NodeAttributes[i].AttribName);
+            if (SourceNode.NodeAttributes[i].AttribReadOnly=false)
+            or (DfltAttrib.AttribIncludeInSave=true)            //!! ??
+            or (SourceNode.NodeType='TXComposite')
+            or (SourceNode.NodeType='TXCompositeIntf') then
             begin
-              EditNodeAttributeValue(myself,SourceNode.NodeAttributes[i],true);
-              if (SourceNode.NodeType='TXCompositeIntf')
-              and (SourceNode.NodeAttributes[i].AttribHint<>'') then
-                myself.GetAttribute(SourceNode.NodeAttributes[i].AttribName,false).AttribHint:=SourceNode.NodeAttributes[i].AttribHint;
+              if SourceNode.NodeAttributes[i].AttribName<>'ParentName' then
+              begin
+                EditNodeAttributeValue(myself,SourceNode.NodeAttributes[i],true);
+                if (SourceNode.NodeType='TXCompositeIntf')
+                and (SourceNode.NodeAttributes[i].AttribHint<>'') then
+                  myself.GetAttribute(SourceNode.NodeAttributes[i].AttribName,false).AttribHint:=SourceNode.NodeAttributes[i].AttribHint;
+              end;
             end;
           end;
+        end
+        else
+        begin
+          myself:=SourceNode;
+          AddChildToParentNode(ParentNode,myself,position);
         end;
 
         // now insert any child nodes
@@ -2012,9 +2042,11 @@ end;
 function AttribsFromXML(attributeList:TStringList;offset:integer;NodeClass,NodeType:String;var ParentName:String;NameSpace:String):TNodeAttributesArray;
 var
   myAttribs:TNodeAttributesArray;
+  dfltAttribs:TDefaultAttributesArray;
   LinkSet,AttribBits, sourceBits:TStringList;
   i,j:integer;
   tmp,anm:String;
+  found:boolean;
 begin
   //showmessage('AttribsFromXML. count='+inttostr(attributeList.count)+' offset='+inttostr(offset));
   setlength(myAttribs,0);
@@ -2060,6 +2092,35 @@ begin
         ParentName:=AttribBits[2];
     end;
   end;
+
+  // add any missing attribs (defined in default attribs)
+  dfltAttribs := GetDefaultAttribs(NodeType);
+  for i:=0 to length(dfltAttribs)-1 do
+  if dfltAttribs[i].AttribIncludeInSave  then
+  begin
+    j:=0;
+    found:=false;
+    while j < length(myAttribs) do
+    begin
+      if myAttribs[j].AttribName = dfltAttribs[i].AttribName then
+      begin
+        found:=true;
+        j:=length(myAttribs);
+      end;
+      j:=j+1;
+    end;
+    if (not found)
+    and (FindSuppressedProperty(NodeType,dfltAttribs[i].AttribName)<0) then
+    begin
+      setlength(myAttribs,length(myAttribs)+1);
+      myAttribs[length(myAttribs)-1]:=TNodeAttribute.Create(nil,dfltAttribs[i].AttribName);
+      myAttribs[length(myAttribs)-1].AttribType:=dfltAttribs[i].AttribType;
+      myAttribs[length(myAttribs)-1].AttribValue:=dfltAttribs[i].AttribValue;
+      myAttribs[length(myAttribs)-1].AttribReadOnly:=dfltAttribs[i].AttribReadOnly;
+      myAttribs[length(myAttribs)-1].AttribHint:=dfltAttribs[i].AttribHint;
+    end;
+  end;
+
 
   result:=myAttribs;
 end;
@@ -2150,6 +2211,12 @@ begin
    // first find the node class, type and name
    ScreenObjectType:=attributeList[0];
    if ScreenObjectType='RawUnit' then ScreenObjectType:='PasUnit';
+   if ScreenObjectType='DMClassRef' then ScreenObjectType:='DMContains';
+   if ScreenObjectType='DMPkg' then
+   begin
+     ScreenObjectType:='';
+     EXIT;
+   end;
 
    NameValuePair :=  stringsplit(attributeList[1],NameValuePairdelimiter);
    NodeClass := TrimWhiteSpace(NameValuePair[1]);
@@ -2256,7 +2323,7 @@ function addComponentFromXML(XMLString:String; DefaultParent:TDataNode; BaseName
 
 begin
   result:=true;
-  //{$ifdef JScript} ShowMessage('addComponentFromXML  : '+XMLString); {$endif}
+  //{$ifdef JScript} asm console.log('addComponentFromXML  : '+XMLString); end;{$endif}
 
   //loading a composite component direct from xml file: BaseNameSpace is '';  SourceNode.nameSpace is 'whatever'
   //expanding a new composite component from resource:  BaseNameSpace is 'parentname';  SourceNode.namespace is 'parentname'+'whatever'
@@ -2287,7 +2354,14 @@ begin
      end
      else if ParentName<>'' then
      begin
-       ParentNode:=FindDataNodeByID(SystemNodeTree,ParentName,BaseNameSpace,false);
+       if SourceNode.NodeClass<>'DM' then
+         ParentNode:=FindDataNodeByID(SystemNodeTree,ParentName,BaseNameSpace,false)
+       else
+       begin
+         ParentNode:=FindDataNodeByID(DMRoot,ParentName,'',false);
+         if ParentNode=nil then
+           ParentNode:=DMRoot;
+       end;
 
        //parent might be in same namespace
        if (ParentNode=nil) and (SourceNode.NameSpace<>'') then
@@ -2377,62 +2451,63 @@ begin
          if mynode=nil then showmessage('mynode is nil in addComponentFromXML');
        end
        else if (SourceNode.NodeClass='Code')
-         or (SourceNode.NodeClass='RUI') then
+         or (SourceNode.NodeClass='RUI')
+         or (SourceNode.NodeClass='DM') then
        begin
          myNode:=SourceNode;
        end;
      end;
-     //asm console.log('created node.  Name='+mynode.NameSpace+'.'+mynode.NodeName+' dynamic='+mynode.IsDynamic); end;
-
-     ReparentNode(myNode,ParentNode);
-     //asm console.log('Reparented to '+mynode.NameSpace+'.'+ParentNode.NodeName); end;
-
-     if ((SourceNode.NodeClass='UI') and (SourceNode.NodeType<>''))
-     or ((SourceNode.NodeClass='NV') and (SourceNode.NodeType<>''))
-     or (SourceNode.NodeClass = 'SVG') then
+     if myNode<>nil then
      begin
-       for i:=0 to length(SourceNode.NodeAttributes)-1 do
-         if (SourceNode.NodeAttributes[i]<>nil)
-         and (SourceNode.NodeAttributes[i].AttribName<>'') then
-         begin
-           myAttrib:=mynode.GetAttribute(SourceNode.NodeAttributes[i].AttribName,true);
-           myAttrib.AttribType:=SourceNode.NodeAttributes[i].AttribType;
-           myAttrib.AttribValue:=SourceNode.NodeAttributes[i].AttribValue;
-           myAttrib.AttribHint:=SourceNode.NodeAttributes[i].AttribHint;
-           myAttrib.AttribReadOnly:=SourceNode.NodeAttributes[i].AttribReadOnly;
-           myAttrib.AttribSource:=SourceNode.NodeAttributes[i].AttribSource;
-           //mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
-           //!! ???? should we be checking here for 'non-default' attributes??
-         end;
-       if MainForm<>nil then
-         mf:=MainForm.Name
-       else
-         mf:='.';
+       //asm console.log('created node.  Name='+mynode.NameSpace+'.'+mynode.NodeName+' dynamic='+mynode.IsDynamic); end;
 
-       pos:=-1;
-       asm
-         if (ScreenObjectName!=mf) {
-           // object may already exist if this is a system re-load, so delete the old one.
-           var ob = document.getElementById(NewNameSpace+ScreenObjectName);
-           if (ob!=null) {
-             //alert('looking for inner component of parent '+ParentNode.NodeName);
-             var Parent = pas.HTMLUtils.ScreenObjectInnerComponent(ParentNode);
-             if (Parent!=null) {
-                console.log('removing object '+NewNameSpace+ScreenObjectName+' while loading '+XMLString);
-                pos=Array.from(ob.parentNode.children).indexOf(ob);
-                Parent.removeChild(ob); }
+       ReparentNode(myNode,ParentNode);
+
+       if ((SourceNode.NodeClass='UI') and (SourceNode.NodeType<>''))
+       or ((SourceNode.NodeClass='NV') and (SourceNode.NodeType<>''))
+       or (SourceNode.NodeClass = 'SVG') then
+       begin
+         for i:=0 to length(SourceNode.NodeAttributes)-1 do
+           if (SourceNode.NodeAttributes[i]<>nil)
+           and (SourceNode.NodeAttributes[i].AttribName<>'') then
+           begin
+             myAttrib:=mynode.GetAttribute(SourceNode.NodeAttributes[i].AttribName,true);
+             myAttrib.AttribType:=SourceNode.NodeAttributes[i].AttribType;
+             myAttrib.AttribValue:=SourceNode.NodeAttributes[i].AttribValue;
+             myAttrib.AttribHint:=SourceNode.NodeAttributes[i].AttribHint;
+             myAttrib.AttribReadOnly:=SourceNode.NodeAttributes[i].AttribReadOnly;
+             myAttrib.AttribSource:=SourceNode.NodeAttributes[i].AttribSource;
+             //mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
+             //!! ???? should we be checking here for 'non-default' attributes??
+           end;
+         if MainForm<>nil then
+           mf:=MainForm.Name
+         else
+           mf:='.';
+
+         pos:=-1;
+         asm
+           if (ScreenObjectName!=mf) {
+             // object may already exist if this is a system re-load, so delete the old one.
+             var ob = document.getElementById(NewNameSpace+ScreenObjectName);
+             if (ob!=null) {
+               //alert('looking for inner component of parent '+ParentNode.NodeName);
+               var Parent = pas.HTMLUtils.ScreenObjectInnerComponent(ParentNode);
+               if (Parent!=null) {
+                  //console.log('removing object '+NewNameSpace+ScreenObjectName+' while loading '+XMLString);
+                  pos=Array.from(ob.parentNode.children).indexOf(ob);
+                  Parent.removeChild(ob); }
+             }
            }
-         }
+         end;
+         // Create a screen object by running the registered instantiation function for the node type
+         fn:=LookupComponentFunc(SourceNode.NodeType);
+         fn(myNode,ParentNode,SourceNode.NodeName,NewNameSpace,pos,'Left');        //!! set initial alignment from source?
        end;
-       if myNode=nil then showmessage('oops no node '+SourceNode.NodeType+' '+SourceNode.NameSpace+':'+SourceNode.NodeName);
-       // Create a screen object by running the registered instantiation function for the node type
-       fn:=LookupComponentFunc(SourceNode.NodeType);
-       fn(myNode,ParentNode,SourceNode.NodeName,NewNameSpace,pos,'Left');        //!! set initial alignment from source?
+
+       if myNode.HasAttribute('SuspendRefresh') then
+         myNode.SetAttributeValue('SuspendRefresh','False');
      end;
-
-     if myNode.HasAttribute('SuspendRefresh') then
-       myNode.SetAttributeValue('SuspendRefresh','False');
-
      {$endif}
     end;
   end;
@@ -2455,7 +2530,6 @@ begin
   PasteDialogUnit.PasteLabel.LabelCaption:='Waiting for a copy/paste action';
   PasteDialogUnit.PasteTarget.IsVisible:=true;
 
-  // showmessage('mygetClipboardData');
   OpenModal('PasteDialog');
 
   asm
@@ -2478,7 +2552,6 @@ end;
 function closeClipboardPasteDialog(myValue:String):string;
 begin
       asm
-      //alert('closeClipboardPasteDialog '+myValue);
       try {
              myTimeout(function() {
                 try {
@@ -2493,6 +2566,8 @@ begin
                  if (pas.PasteDialogUnit.CompletionEvent!=null) {
                     //alert('call completion event '+pas.PasteDialogUnit.CompletionEvent.EventType+' '+pas.PasteDialogUnit.CompletionEvent.NodeId);
                     pas.PasteDialogUnit.CompletionEvent.ReturnString=PasteString;
+                    //console.log('calling handleevent '+ pas.PasteDialogUnit.CompletionEvent.EventType);
+                    //console.log(pas.PasteDialogUnit.CompletionEvent);
                     pas.Events.handleEvent(pas.PasteDialogUnit.CompletionEvent,
                                            pas.PasteDialogUnit.CompletionEvent.EventType,
                                            pas.PasteDialogUnit.CompletionEvent.NodeId,
@@ -3198,11 +3273,14 @@ begin
   end;
 end;
 
-procedure EditAttributeValue(NodeNameToEdit,NameSpace:String; AttrNameToEdit,newValue:String;AddIfMissing:Boolean=false);
+procedure EditAttributeValue(NodeNameToEdit,NameSpace:String; AttrNameToEdit,newValue:String;AddIfMissing:Boolean=false;Context:TDataNode=nil);
 var
   targetNode:TDataNode;
 begin
-  targetNode:=FindDataNodeById(SystemNodetree,NodeNameToEdit,NameSpace,true);
+  if Context=nil then
+    targetNode:=FindDataNodeById(SystemNodetree,NodeNameToEdit,NameSpace,true)
+  else
+    targetNode:=FindDataNodeById(Context,NodeNameToEdit,NameSpace,true);
   if targetNode<>nil then
     EditAttributeValue(targetNode,AttrNameToEdit,newValue,AddIfMissing);
 end;
@@ -3412,7 +3490,6 @@ begin
 
     StartingUp:=true;
    {$ifdef JScript}
-//   showmessage('XMLToNodeTree. Node '+SystemRootName+' has '+inttostr(length(systemnodetree.childnodes))+' children');
    RootNodeName:=SystemRootName;
    asm
       var ob=document.getElementById(RootNodeName);
@@ -3444,7 +3521,7 @@ begin
         if (BracesToggleFlag=true) then
         begin
           ok:=addComponentFromXML(newstring,UIParentNode,NewNameSpace,ExpandingComposite);// process the record string if this was a leading xml string such as "< type; name= ''; attr_1 = '???' etc>"
-//          {$ifdef JScript} showmessage('done addComponentFromXML for '+newstring); {$endif}
+//          {$ifdef JScript} asm console.log('done addComponentFromXML for '+newstring);end; {$endif}
           if not ok then
             i:=length(XMLString);   //stop
         end;
@@ -3507,14 +3584,32 @@ procedure AddAttribOptions(ComponentType,AttribName:string;Options:array of stri
 var
   AttribOptionsRec:TAttribOptionsRec;
   i:integer;
+  found:Boolean;
 begin
   AttribOptionsRec.ComponentType:=ComponentType;
   AttribOptionsRec.AttribName:=AttribName;
   AttribOptionsRec.Options:=TStringList.Create;
   for i:=0 to length(options)-1 do
     AttribOptionsRec.Options.Add(Options[i]);
-  setlength(AttribOptionsArray,length(AttribOptionsArray)+1);
-  AttribOptionsArray[length(AttribOptionsArray)-1]:=AttribOptionsRec;
+  // does this already exist?
+  found:=false;
+  i:=0;
+  while i < length(AttribOptionsArray) do
+  begin
+    if (AttribOptionsArray[i].ComponentType=ComponentType)
+    and (AttribOptionsArray[i].AttribName=AttribName) then
+    begin
+      AttribOptionsArray[i]:=AttribOptionsRec;
+      found:=true;
+      i:= length(AttribOptionsArray);
+    end;
+    i:=i+1;
+  end;
+  if not found then
+  begin
+    setlength(AttribOptionsArray,length(AttribOptionsArray)+1);
+    AttribOptionsArray[length(AttribOptionsArray)-1]:=AttribOptionsRec;
+  end;
 end;
 
 function LookupAttribOptions(ComponentType,AttribName:string):TstringList;
@@ -3535,6 +3630,26 @@ begin
   end;
 end;
 
+function DeleteAttribOptions(ComponentType,AttribName:string):TstringList;
+var
+  i,j:integer;
+begin
+  i:=0;
+  result:=nil;
+  while i < length(AttribOptionsArray) do
+  begin
+    if (AttribOptionsArray[i].ComponentType=ComponentType)
+    and (AttribOptionsArray[i].AttribName=AttribName)  then
+    begin
+      for j:=i to length(AttribOptionsArray)-2 do
+        AttribOptionsArray[j]:=AttribOptionsArray[j+1];
+      i:=length(AttribOptionsArray);
+      setlength(AttribOptionsArray,length(AttribOptionsArray)-1);
+    end;
+    i:=i+1;
+  end;
+end;
+
 
 procedure InitSystemNodetree;
 begin
@@ -3545,6 +3660,8 @@ begin
   // create a parent node for all Code nodes
   CodeRootNode:=TDataNode.Create('Code',CodeRootName,'','Root',false);
   AddChildToParentNode(SystemNodeTree,CodeRootNode,-1);
+  DMRoot:=TDataNode.Create('Root','DMRoot','','Root',false);
+  AddChildToParentNode(SystemNodeTree,DMRoot,-1);
 end;
 
 {$ifndef JScript}

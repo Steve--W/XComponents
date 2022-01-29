@@ -169,10 +169,11 @@ end;
 procedure DOMVisitor_OnDocAvailable_TXGPUCanvas(const browser: ICefBrowser; const frame: ICefFrame; const document: ICefDomDocument);
 var
   msg: ICefProcessMessage;
-  otxt,stxt:String;
+  otxt,stxt,actxt:String;
 begin
   otxt:=SimpleNodeSearch(document,'TXGPUCanvas','oarr');
   stxt:=SimpleNodeSearch(document,'TXGPUCanvas','sarr');
+  actxt:=SimpleNodeSearch(document,'TXGPUCanvas','acdiv');
 
   // Send back results to the browser process
   // Notice that the 'sendGPUarrays' message name needs to be recognized in
@@ -180,6 +181,21 @@ begin
   msg := TCefProcessMessageRef.New('sendGPUarrays');
   msg.ArgumentList.SetString(0, otxt);
   msg.ArgumentList.SetString(1, stxt);
+  msg.ArgumentList.SetString(2, actxt);
+  frame.SendProcessMessage(PID_BROWSER, msg);
+end;
+procedure DOMVisitor_OnDocAvailable_TXGPUCanvas2(const browser: ICefBrowser; const frame: ICefFrame; const document: ICefDomDocument);
+var
+  msg: ICefProcessMessage;
+  actxt:String;
+begin
+  actxt:=SimpleNodeSearch(document,'TXGPUCanvas','acdiv');
+
+  // Send back results to the browser process
+  // Notice that the 'sendGPUcounter' message name needs to be recognized in
+  // a Chromium OnProcessMessageReceived method
+  msg := TCefProcessMessageRef.New('sendGPUcounter');
+  msg.ArgumentList.SetString(0, actxt);
   frame.SendProcessMessage(PID_BROWSER, msg);
 end;
 
@@ -220,6 +236,16 @@ begin
         if TempFrame<>nil then
         begin
           TempVisitor := TCefFastDomVisitor2.Create(browser, frame, @DOMVisitor_OnDocAvailable_TXGPUCanvas);
+          TempFrame.VisitDom(TempVisitor);
+        end;
+        aHandled := True;
+      end
+      else if (message.name = 'getGPUCounter')  then
+      begin
+        TempFrame:=frame;
+        if TempFrame<>nil then
+        begin
+          TempVisitor := TCefFastDomVisitor2.Create(browser, frame, @DOMVisitor_OnDocAvailable_TXGPUCanvas2);
           TempFrame.VisitDom(TempVisitor);
         end;
         aHandled := True;

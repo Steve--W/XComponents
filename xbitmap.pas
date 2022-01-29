@@ -71,6 +71,7 @@ private
   fBitMapHeight:integer;
   fCharsPerColor:integer;
   fNumColors:integer;
+  FullyInstantiated:Boolean;
 
   {$ifndef JScript}
   procedure ImageClick(Sender:TObject);
@@ -185,6 +186,7 @@ var
 myxpmArray:TStringList;
 //mystream:TMemoryStream;
 begin
+  FullyInstantiated:=false;
   self.BorderSpacing.Around:=glbBorderSpacing;
 
   myControl:=TImage.Create(self);
@@ -575,6 +577,7 @@ procedure TXBitMap.SetMapPixelArray(AValue:TstringArray);
 var
   bits:TStringList;
   i:integer;
+  NewMapData:string;
 begin
   fMapPixelArray:=AValue;
   bits:=TStringList.Create;
@@ -583,7 +586,17 @@ begin
   for i:=0 to length(AValue)-1 do
     bits.Add(AValue[i]);
 
-  myNode.SetAttributeValue('MapPixelArray',bits.Text,'StringArray',true);
+  if (myNode.GetAttribute('MapPixelArray',true).AttribValue<>bits.Text)
+  and (bits.Count>0) then
+  begin
+    myNode.SetAttributeValue('MapPixelArray',bits.Text,'StringArray',true);
+    self.BitMapHeight:=bits.count;
+    self.BitMapWidth:=length(bits[0]);
+    RebuildXPMDataString;
+    NewMapData:=myNode.GetAttribute('MapData',false).AttribValue;
+    myNode.SetAttributeValue('MapData','...');   // fudge so that the following SetMapData will see a change.
+    MapData:=NewMapData; //redisplays bitmap
+  end;
 
   bits.Free;
 end;
@@ -617,6 +630,7 @@ begin
   newData:=myStringReplace(newData,chr(10),'',-1,-1);
 
   myxpmArray.Text:=newData;
+  if myxpmArray.Count<2 then ok:=false;
 
   //showmessage('myxpmArray initial count='+inttostr(myxpmArray.Count));
 
@@ -625,13 +639,17 @@ begin
   begin
      oldData:=MyNode.getAttribute('MapData',true).AttribValue;
      if (AValue<>'')
-     and (AValue<>oldData) then
+     and ((AValue<>oldData) or (FullyInstantiated = false))
+     and (ok=true)
+     then
      begin
 
        mystream:=TMemoryStream.Create;
        myxpmArray.SaveToStream(mystream);
        mystream.Position:= 0;
 
+
+       myNode.SetAttributeValue('MapData',AValue);
        if TheBitMap.IsStreamFormatSupported(mystream) then
        begin
          try
@@ -644,11 +662,12 @@ begin
            DestRect:=TImage(myControl).ClientRect;
            TImage(myControl).Canvas.StretchDraw(DestRect,TheBitMap);      // make the image fit the container size
 
-           myNode.SetAttributeValue('MapData',AValue);
+           FullyInstantiated:=true;
 
          except
            on e:exception do
            begin
+             EditAttributeValue('XMemo1','','ItemValue',AValue,false);
              showmessage('SetMapData - unable to load XPM data');
              ok:=false;
            end;
@@ -656,6 +675,7 @@ begin
        end
        else
        begin
+         EditAttributeValue('XMemo1','','ItemValue',AValue,false);
          showmessage('SetMapData - invalid XPM formatting');
          ok:=false;
        end;
@@ -843,7 +863,8 @@ begin
       else
       begin
         //{$ifdef JScript} asm console.log('skip '+i); end; {$endif}  //529
-        if length(myxpmarray[i])<lengthOfPixelsLine then
+        if (length(myxpmarray[i])<lengthOfPixelsLine)
+        and (i<myxpmarray.Count-1) then
         begin
           // add this to the next one
           myxpmarray[i+1]:='",'+myxpmarray[i]+myxpmarray[i+1];
@@ -890,12 +911,12 @@ var
 begin
   newmapdata:= '/* XPM */' +
     'static char * XMap[] = {' +
-    '/* <Values>*/' +
+    '/* <Values> */' +
     '/* <width/columns> <height/rows> <colors> <chars per pixel>*/' +
     '"'+inttostr(fBitMapWidth)+' '+inttostr(fBitMapHeight)+' '+inttostr(fNumColors)+' '+inttostr(fCharsPerColor)+'",'+
-    '/* <Colors>*/';
+    '/* <Colors> */';
   for i:=0 to fColorsArray.Count-1 do
-    newmapdata:=newmapdata + fColorsArray[i] + ',';
+    newmapdata:=newmapdata + fColorsArray[i] + '",';
   newmapdata:=newmapdata + '/* <Pixels>*/';
   for i:=0 to length(fMapPixelArray)- 1 do
     if i< length(fMapPixelArray) then
@@ -922,7 +943,7 @@ begin
 
     bits:=TStringList.Create;
     bits.StrictDelimiter:=true;
-    bits.LineBreak:=',';
+    bits.LineBreak:='",';
     bits.Text:=AValue;
 
     fColorsArray.Clear;
@@ -957,12 +978,13 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'LabelPos','String','Right','',false);
   AddDefaultAttribute(myDefaultAttribs,'LabelText','String','Bitmap Image','',false);
   AddDefaultAttribute(myDefaultAttribs,'MapColors','String','','',false,false);
+  AddDefaultAttribute(myDefaultAttribs,'MapPixelArray','String','','',false,false);
   AddDefaultAttribute(myDefaultAttribs,'MapData','String','/* XPM */' +
       'static char * XMap[] = {' +
-      '/* <Values>' +
+      '/* <Values> */' +
       '/* <width/columns> <height/rows> <colors> <chars per pixel>*/' +
       '"48 20 2 1",' +
-      '/* <Colors>*/' +
+      '/* <Colors> */' +
       '"a c #ffffff",' +
       '"b c #000000",' +
       '/* <Pixels>*/' +

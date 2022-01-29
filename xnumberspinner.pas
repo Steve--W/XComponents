@@ -146,6 +146,7 @@ begin
   TSpinEdit(myControl).OnEditingDone:=@self.myeditingDone;
 
   TSpinEdit(myControl).OnChange:=@self.SpinnerChange;
+  //TSpinEdit(myControl).OnExit:=@self.SpinnerChange;
   TSpinEdit(myControl).OnClick:=@self.SpinnerClick;
 
   self.SetMyEventTypes;

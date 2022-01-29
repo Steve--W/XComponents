@@ -66,6 +66,7 @@ type
     procedure SetHTMLSource(AValue:string);
     procedure HandleClick(Sender:TObject);
     procedure HandleHotSpotClick(Sender:TObject; const Target:UnicodeString; const AnURL:UnicodeString; var Handled:boolean);
+    procedure HandleObjectClick(Sender, Obj: TObject; const XOnClick: ThtString);
     procedure ShowHTML(Src: string);
     procedure WinLaunchBrowser(URL:String; var Handled:Boolean);
     {$endif}
@@ -157,6 +158,7 @@ begin
   TFrameViewer(myControl).OnHotSpotTargetClick:=@self.HandleHotSpotClick;
   TFrameViewer(myControl).OnClick:=@self.HandleClick;
   TFrameViewer(myControl).DefBackground:=clWhite;
+  TFrameViewer(myControl).OnObjectClick:=@self.HandleObjectClick;      //  TObjectClickEvent   procedure(Sender, Obj: TObject; const OnClick: ThtString) of object;
 
   self.SetMyEventTypes;
   CreateComponentDataNode2(self,MyNodeType,myDefaultAttribs, self.myEventTypes, TheOwner,IsDynamic);
@@ -181,8 +183,17 @@ end;
 
 procedure TXHTMLText.HandleClick(Sender:TObject);
 begin
+  // ?? don't think the component picks this up (clicks are ignored)
   if not (csDesigning in componentState) then
      CallHandleEvent('Click',self.myNode.NodeName,self);
+end;
+
+procedure TXHTMLText.HandleObjectClick(Sender, Obj: TObject; const XOnClick: ThtString);
+var
+  xx:ThtString;
+begin
+  // ?? don't think the component picks this up (clicks are ignored)
+  xx:=XOnClick;
 end;
 
 procedure TXHTMLText.WinLaunchBrowser(URL:String; var Handled:Boolean);
@@ -431,6 +442,7 @@ begin
     hnd:=mc.HandleAllocated;
     if (hnd) then
       TFrameViewer(myControl).Load(ProjectDirectory+nm+'.html');
+
   end;
 end;
 {$endif}
