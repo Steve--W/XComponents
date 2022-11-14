@@ -48,6 +48,7 @@ type
     function GetOptionList:String;
     function GetCaption:String;
     function GetBoxWidth:string;
+    function GetItemIndex:integer;
 
     procedure SetReadOnly(AValue:Boolean);
     procedure SetItemValue(AValue:String);
@@ -79,6 +80,7 @@ type
     // Properties defined for this class...
     property ReadOnly: Boolean read GetReadOnly write SetReadOnly;
     property ItemValue: String read GetItemValue write SetItemValue;
+    property ItemIndex: integer read GetItemIndex;
     property Caption: String read GetCaption write SetCaption;
     property OptionList: String read GetOptionList write SetOptionList;
     property BoxWidth: String read GetBoxWidth write SetBoxWidth;
@@ -143,7 +145,7 @@ begin
   myControl.OnClick:=@self.RadioGroupClick;
   TRadioGroup(myControl).OnSelectionChanged:=@self.RadioGroupChange;
 
-
+  myControl.AutoSize:=true;      // so the box grows with the number of buttons (desktop)
   self.SetMyEventTypes;
 
   CreateComponentDataNode2(self,MyNodeType,myDefaultAttribs, self.myEventTypes, TheOwner,IsDynamic);
@@ -166,6 +168,7 @@ end;
 procedure TXRadioBtns.RadioGroupChange(Sender: TObject) ;
  var
     RadioButtonGroup : TCustomRadioGroup;
+    idx:integer;
  begin
    if not (csDesigning in componentState)
    and not (csLoading in componentState) then
@@ -176,6 +179,7 @@ procedure TXRadioBtns.RadioGroupChange(Sender: TObject) ;
     else
       if RadioButtonGroup.Items.count>0 then
         self.ItemValue:=RadioButtonGroup.Items[0];  //why are we here? !!!!
+    idx:=self.ItemIndex;
     CallHandleEvent('Change',self.ItemValue,Sender);
    end;
  end;
@@ -311,6 +315,19 @@ function TXRadioBtns.GetItemValue:String;
 begin
   result:=MyNode.getAttribute('ItemValue',true).AttribValue;
 end;
+function TXRadioBtns.GetItemIndex:integer;
+var
+  selectedOption:String;
+  opts:TStringList;
+  idx:integer;
+begin
+  selectedOption := MyNode.getAttribute('ItemValue',true).AttribValue;
+  //{$ifdef JScript} asm console.log('GetItemIndex  selectedOption',selectedOption); end; {$endif}
+  opts:=JSONStringToStringList(MyNode.getAttribute('OptionList',true).AttribValue);
+  idx:=opts.IndexOf(selectedOption);
+  myNode.SetAttributeValue('ItemIndex',inttostr(idx),'Integer',true);     // just so the attribute is set in the node
+  result:=idx;
+end;
 function TXRadioBtns.GetOptionList:String;
 begin
   result:=MyNode.getAttribute('OptionList',true).AttribValue;
@@ -355,41 +372,55 @@ begin
      TRadioGroup(myControl).ItemIndex:=NewIndex;
   end
   else
+  begin
      NewIndex:=-1;         //??? needs checking out !!!!
+     TRadioGroup(myControl).ItemIndex:=-1;
+     //myNode.SetAttributeValue('ItemValue','');
+  end;
+  myNode.SetAttributeValue('ItemIndex',inttostr(NewIndex),'Integer',true);     // just so the attribute is set in the node
   {$else}
   asm
-  //alert('setitemvalue to '+AValue);
     var ob = document.getElementById(this.NameSpace+this.NodeName+AValue);
     if (ob!=null) {
        ob.checked=true;  }
    end;
+   NewIndex := self.ItemIndex;
   {$endif}
 end;
 
 procedure TXRadioBtns.SetOptionList(AValue:String);
 var
-  NewIndex:integer;
-  myName,myCaption:string;
+  NewIndex,OldIndex:integer;
+  myName,myCaption,OldValue:string;
 begin
+  OldValue:=self.ItemValue;
+  //OldIndex:=StrToInt(myNode.GetAttribute('ItemIndex',true).AttribValue);
   myNode.SetAttributeValue('OptionList',AValue);
   {$ifndef JScript}
-  //TRadioGroup(myControl).items:=ListStringToStringList(AValue);
+  TRadioGroup(myControl).Items.Clear;
   TRadioGroup(myControl).items:=JSONStringToStringList(AValue);
-  NewIndex:=TRadioGroup(myControl).ItemIndex;
+  NewIndex := TRadioGroup(myControl).Items.IndexOf(OldValue);
+  if NewIndex < 0 then
+  begin
+    TRadioGroup(myControl).ItemIndex:=-1;
+    myNode.SetAttributeValue('ItemValue','');
+    myNode.SetAttributeValue('ItemIndex',inttostr(-1),'Integer',true);
+  end;
+  TRadioGroup(myControl).ItemIndex:=NewIndex;
   {$else}
   myName:=self.NameSpace+self.NodeName;
   myCaption:=myNode.GetAttribute('Caption',true).AttribValue;
   asm
-    //alert('setoptionlist. AValue='+AValue);
+    //console.log('SetOptionList. AValue='+AValue);
     var ob = document.getElementById(myName+'Contents');
     if (ob!=null) {
       var Legend='<legend id='+myName+'ContentsLegend >"'+myCaption+'"</legend>';
       var ItemValue=ob.value;
       var Buttons=$mod.CreateButtonsList(this.myNode,AValue);
-      //alert('setting innerHTML to '+Legend+Buttons);
       ob.innerHTML=Legend+Buttons;
     }
   end;
+  NewIndex := self.ItemIndex;   // this resets the ItemIndex node attribute
   {$endif}
 end;
 
@@ -428,6 +459,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'Caption','String','Radio Buttons','',false);
   AddDefaultAttribute(myDefaultAttribs,'OptionList','String','["Option 1","Option 2","Option 3"]','',false);
   AddDefaultAttribute(myDefaultAttribs,'ItemValue','String','Option 1','',false);
+  AddDefaultAttribute(myDefaultAttribs,'ItemIndex','Integer','-1','',true,false);       // read-only
   AddDefaultAttribute(myDefaultAttribs,'ReadOnly','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'BoxWidth','String','300','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);

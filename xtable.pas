@@ -16,7 +16,7 @@ unit XTable;
 
 interface
 uses
-  Classes, SysUtils, TypInfo, NodeUtils, StringUtils,EventsInterface,
+  Classes, SysUtils, TypInfo, NodeUtils, StringUtils,EventsInterface,StrUtils,
   {$ifndef JScript}
   fpjson,    jsonparser,
   LResources, Forms, Controls, ComCtrls, StdCtrls, Grids,Graphics, Dialogs, ExtCtrls, Propedits,RTTICtrls,
@@ -103,12 +103,14 @@ type
     procedure PopulateStringGrid(gridData:String);
     procedure AddRowFromJSONData(rownum:integer; jData : TJSONData);
     {$endif}
+    function QuoteCellForJSON(cellval:String; rownum:integer):String;
     function ConstructDataString:String;
     function ConstructTableStringFromArray(myArray:TTableCellsArray):String;
     function ConstructTableStringFromNumArray(myArray:T2DNumArray):String;
     function ConstructTableStringFromExcelCopy(CopiedString:String):String;
     procedure LoadTableFromExcelCopy(CopiedString:String);
     procedure LoadTableFromNumArray(NumArray:T2DNumArray);
+    procedure LoadTableFromStringArray(StrArray:T2DStringArray);
     function GetCellValue(row,col:integer):string;
     procedure SetCellValue(row,col:integer;AValue:string);
     function GetCellsAsArray(SkipHeader:Boolean):TTableCellsArray;
@@ -119,7 +121,6 @@ type
     procedure DeleteColumn(c:integer);
     procedure DeleteSelectedRow;
     procedure DeleteSelectedColumn;
-    function QuoteCellForJSON(cellval:String; rownum:integer):String;
   published
     { Published declarations }
     // Properties defined for this class...
@@ -258,7 +259,8 @@ begin
   TStringGrid(Sender).MouseToCell(X,Y,c,r);
   self.SelectedRow:=r;
   self.SelectedCol:=c;
-  self.SelectedValue:=self.GetCellValue(r,c);
+  if (r>-1) and (c>-1) then
+    self.SelectedValue:=self.GetCellValue(r,c);
 end;
 procedure TXTable.TableMouseDown(Sender: TObject;Button: TMouseButton; Shift: TShiftState; X,Y:Longint);
 // added this because trouble with mousedown vs. click events (order of firing???)
@@ -268,7 +270,8 @@ begin
   TStringGrid(Sender).MouseToCell(X,Y,c,r);
   self.SelectedRow:=r;
   self.SelectedCol:=c;
-  self.SelectedValue:=self.GetCellValue(r,c);
+  if (r>-1) and (c>-1) then
+    self.SelectedValue:=self.GetCellValue(r,c);
 end;
 
 procedure TXTable.TableClick(Sender: TObject) ;
@@ -350,26 +353,40 @@ begin
       jData := nil;
     end;
   end;
-  if jData<>nil then
-  begin
-    TStringGrid(myControl).ColCount:=1;
-    rowcount:=jData.Count;
-    TStringGrid(myControl).RowCount:= rowcount;
-    for i :=0 to rowcount-1 do
+  try
+    if jData<>nil then
     begin
-      AddRowFromJSONData(i, jData.Items[i]);
-      if i=0 then
-        for j:=0 to TStringGrid(myControl).ColCount-1 do
-          TStringGrid(myControl).ColWidths[j]:=cw;
-    end;
-    if self.HasHeaderRow then
-      TStringGrid(myControl).FixedRows:=1
-    else
+      TStringGrid(myControl).ColCount:=1;
+      rowcount:=jData.Count;
+
       TStringGrid(myControl).FixedRows:=0;
-    jData.Free;
-  end
-  else
-    TStringGrid(myControl).ColCount:=0;
+      TStringGrid(myControl).RowCount:= rowcount;
+      for i :=0 to rowcount-1 do
+      begin
+        AddRowFromJSONData(i, jData.Items[i]);
+        if i=0 then
+          for j:=0 to TStringGrid(myControl).ColCount-1 do
+            TStringGrid(myControl).ColWidths[j]:=cw;
+      end;
+      if (self.HasHeaderRow)
+      and (rowcount>0) then
+        TStringGrid(myControl).FixedRows:=1
+      else
+        TStringGrid(myControl).FixedRows:=0;
+      jData.Free;
+    end
+    else
+      TStringGrid(myControl).ColCount:=0;
+  except
+    on E: Exception do
+    begin
+      showmessage('Error loading table data: '+e.Message);
+      showmessage(GridString);
+      TStringGrid(myControl).FixedRows:=0;
+      TStringGrid(myControl).ColCount:=0;
+      TStringGrid(myControl).RowCount:= 0;
+    end;
+  end;
 
   TStringGrid(myControl).FixedCols:=0;
 end;
@@ -385,24 +402,29 @@ var
   i,j,r:integer;
   myArray:TTableCellsArray;
 begin
-  if SkipHeader then
-    SetLength(myArray, TStringGrid(myControl).RowCount-1)
-  else
-    SetLength(myArray, TStringGrid(myControl).RowCount);
-  r:=-1;
-  for i:= 0 to TStringGrid(myControl).RowCount-1 do
+  if TStringGrid(myControl).RowCount>0 then
   begin
-    if (Skipheader=false)
-    or (i>0) then
+    if SkipHeader then
+      SetLength(myArray, TStringGrid(myControl).RowCount-1)
+    else
+      SetLength(myArray, TStringGrid(myControl).RowCount);
+    r:=-1;
+    for i:= 0 to TStringGrid(myControl).RowCount-1 do
     begin
-      r:=r+1;
-      setlength(myArray[r],TStringGrid(myControl).ColCount);
-      for j:=0 to TStringGrid(myControl).ColCount-1 do
+      if (Skipheader=false)
+      or (i>0) then
       begin
-        myArray[r,j]:=TStringGrid(myControl).Cells[j, i];
+        r:=r+1;
+        setlength(myArray[r],TStringGrid(myControl).ColCount);
+        for j:=0 to TStringGrid(myControl).ColCount-1 do
+        begin
+          myArray[r,j]:=TStringGrid(myControl).Cells[j, i];
+        end;
       end;
     end;
-  end;
+  end
+  else
+    SetLength(myArray,0);
   result:=myArray;
 end;
 
@@ -667,11 +689,8 @@ begin
 end;
 
   MyNode.ScreenObject:=MyNode;
-  //showmessage('create table widget - refresh props');
-  //showmessage('current TableData is '+MyNode.getAttribute('TableData',true).AttribValue);
   RefreshComponentProps(myNode);
 
-  //showmessage('create table widget - done');
   result:=myNode;
 end;
 
@@ -850,21 +869,6 @@ end;
 
 {$endif}
 
-function TXTable.QuoteCellForJSON(cellval:String; rownum:integer):String;
-begin
-  if (self.IsNumeric=false)
-  or (cellval='')
-  or ((rownum=0) and (self.HasHeaderRow=true))
-  or ((rownum=0) and (IsStrFloatNum(cellVal)=false)) then
-  begin
-    result:=QuoteIt(cellval);
-  end
-  else
-  begin
-    result:=cellval;
-  end;
-end;
-
 procedure TXTable.SetCellValue(row,col:integer;AValue:string);
 begin
   if (row>=0) and (col>=0) then
@@ -893,6 +897,23 @@ begin
       }
     end;
   {$endif}
+  end;
+end;
+
+function TXTable.QuoteCellForJSON(cellval:String; rownum:integer):String;
+begin
+  cellval:= trim(cellval);
+  if (self.IsNumeric = false)
+  or (cellval = '')
+  or ((rownum=0) and (self.HasHeaderRow=true))
+  or ((rownum=0) and (IsStrFloatNum(cellVal)=false)) then
+  begin
+    if length(cellval)>0 then cellval:=DoEscapeQuotes(cellval);
+    result:=QuoteItJSON(cellval)
+  end
+  else
+  begin
+    result:=cellval;
   end;
 end;
 
@@ -1025,6 +1046,14 @@ var
   tdata:String;
 begin
   tdata:=ConstructTableStringFromNumArray(NumArray);
+  self.TableData:=tdata;
+end;
+
+procedure TXTable.LoadTableFromStringArray(StrArray:T2DStringArray);
+var
+  tdata:String;
+begin
+  tdata:=ConstructTableStringFromArray(StrArray);
   self.TableData:=tdata;
 end;
 
@@ -1343,7 +1372,7 @@ end;
 
 procedure TXTable.SetTableData(const AValue:String);
 var
-  cw:String;
+  cw,dta:String;
   hasHeaders:Boolean;
   i:integer;
 begin
@@ -1409,6 +1438,10 @@ begin
   i:=self.NumCols;
   self.NumCols:=self.NumCols;
   self.NumRows:=self.NumRows;
+
+  //...and reset the TableData attribute again from the grid, so that the format is browser JSON-compatible
+  dta:=self.ConstructDataString;
+  myNode.SetAttributeValue('TableData',dta,'TableString');
 end;
 
 begin

@@ -1324,6 +1324,37 @@ var
   AQuote1,AQuote2:string;
   DfltAttrib:TDefaultAttribute;
   strg:string;
+
+procedure AppendAttribute;
+begin
+  DfltAttrib:=GetDefaultAttrib(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName);
+  if DfltAttrib.AttribName='' then
+    if (CurrentItem.NodeClass<>'DM') then
+      DfltAttrib.AttribIncludeInSave:=true
+    else
+      DfltAttrib.AttribIncludeInSave:=false;
+  if (FindSuppressedProperty(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName)<0)
+  and (DfltAttrib.AttribIncludeInSave = true)
+  and (IsExcluded(CurrentItem,CurrentItem.NodeAttributes[i]) = false)
+  and (CurrentItem.NodeAttributes[i].AttribName<>'ParentName')        // is re-generated on load
+  and ((CurrentItem.NodeAttributes[i].AttribName<>'XMLString')
+       or ((CurrentItem.NodeAttributes[i].AttribName='XMLString') and (CurrentItem.IsDynamic=false))) then
+  begin
+    XMLString:=XMLString
+                     + CurrentItem.NodeAttributes[i].AttribName
+                     + AttribBitsDelimiter+' '+CurrentItem.NodeAttributes[i].AttribType
+                     + AttribBitsDelimiter+ SubstituteSpecials(CurrentItem.NodeAttributes[i].AttribValue)
+                     + AttribBitsDelimiter+ myBoolToStr(CurrentItem.NodeAttributes[i].AttribReadOnly)
+                     + AttribBitsDelimiter+ CurrentItem.NodeAttributes[i].AttribSource.InputNodeName
+                                          + '.'+CurrentItem.NodeAttributes[i].AttribSource.InputAttribName;
+    if (CurrentItem.NodeType = 'TXCompositeIntf') then
+      XMLString:=XMLString
+                     + AttribBitsDelimiter+CurrentItem.NodeAttributes[i].AttribHint;
+    XMLString:=XMLString
+                     + attributeListdelimiter;
+  end;
+end;
+
 begin
 
   XMLString:='';
@@ -1373,36 +1404,19 @@ begin
 
       myAttribs:= CurrentItem.NodeAttributes;
       numAttributes:=length(myAttribs);
+
       for i:=0 to numAttributes-1 do
-      if CurrentItem.NodeAttributes[i].AttribName<>'' then
+      if CurrentItem.NodeAttributes[i].AttribName='OptionList' then
       begin
-        DfltAttrib:=GetDefaultAttrib(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName);
-        if DfltAttrib.AttribName='' then
-          if (CurrentItem.NodeClass<>'DM') then
-            DfltAttrib.AttribIncludeInSave:=true
-          else
-            DfltAttrib.AttribIncludeInSave:=false;
-        if (FindSuppressedProperty(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName)<0)
-        and (DfltAttrib.AttribIncludeInSave = true)
-        and (IsExcluded(CurrentItem,CurrentItem.NodeAttributes[i]) = false)
-        and (CurrentItem.NodeAttributes[i].AttribName<>'ParentName')        // is re-generated on load
-        and ((CurrentItem.NodeAttributes[i].AttribName<>'XMLString')
-             or ((CurrentItem.NodeAttributes[i].AttribName='XMLString') and (CurrentItem.IsDynamic=false))) then
-        begin
-          XMLString:=XMLString
-                           + CurrentItem.NodeAttributes[i].AttribName
-                           + AttribBitsDelimiter+' '+CurrentItem.NodeAttributes[i].AttribType
-                           + AttribBitsDelimiter+ SubstituteSpecials(CurrentItem.NodeAttributes[i].AttribValue)
-                           + AttribBitsDelimiter+ myBoolToStr(CurrentItem.NodeAttributes[i].AttribReadOnly)
-                           + AttribBitsDelimiter+ CurrentItem.NodeAttributes[i].AttribSource.InputNodeName
-                                                + '.'+CurrentItem.NodeAttributes[i].AttribSource.InputAttribName;
-          if (CurrentItem.NodeType = 'TXCompositeIntf') then
-            XMLString:=XMLString
-                           + AttribBitsDelimiter+CurrentItem.NodeAttributes[i].AttribHint;
-          XMLString:=XMLString
-                           + attributeListdelimiter;
-        end;
+        AppendAttribute;
       end;
+      for i:=0 to numAttributes-1 do
+      if (CurrentItem.NodeAttributes[i].AttribName<>'')
+      and (CurrentItem.NodeAttributes[i].AttribName<>'OptionList') then
+      begin
+        AppendAttribute;
+      end;
+
       // add the ParentName attribute
       XMLString:=XMLString
                        + 'ParentName'
@@ -2096,7 +2110,7 @@ begin
   // add any missing attribs (defined in default attribs)
   dfltAttribs := GetDefaultAttribs(NodeType);
   for i:=0 to length(dfltAttribs)-1 do
-  if dfltAttribs[i].AttribIncludeInSave  then
+  if dfltAttribs[i].AttribIncludeInSave  then           // ???? mustn't do this for 'derived' attributes, like table numrows.
   begin
     j:=0;
     found:=false;
@@ -2479,6 +2493,7 @@ begin
              myAttrib.AttribSource:=SourceNode.NodeAttributes[i].AttribSource;
              //mynode.SetAttributeValue(SourceNode.NodeAttributes[i].AttribName,SourceNode.NodeAttributes[i].AttribValue);
              //!! ???? should we be checking here for 'non-default' attributes??
+
            end;
          if MainForm<>nil then
            mf:=MainForm.Name
@@ -2954,7 +2969,6 @@ begin
     {$else}
     if pType = tkString then
     begin
-      //showmessage('setting string property '+PropName+' '+newValue);
       SetStringProp(myObj,PropName,NewValue);
     end
     else if pType = tkInteger then
@@ -3521,7 +3535,7 @@ begin
         if (BracesToggleFlag=true) then
         begin
           ok:=addComponentFromXML(newstring,UIParentNode,NewNameSpace,ExpandingComposite);// process the record string if this was a leading xml string such as "< type; name= ''; attr_1 = '???' etc>"
-//          {$ifdef JScript} asm console.log('done addComponentFromXML for '+newstring);end; {$endif}
+          //{$ifdef JScript} asm console.log('done addComponentFromXML for '+NewString);end; {$endif}
           if not ok then
             i:=length(XMLString);   //stop
         end;
@@ -3542,7 +3556,7 @@ begin
   end
   else
   begin
-    ShowMessage('Error .....Unable to load data');
+    ShowMessage('Error .....Unable to load system data');
     showmessage(XMLString);
   end;
 

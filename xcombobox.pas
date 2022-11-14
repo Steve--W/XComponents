@@ -386,7 +386,6 @@ var
   options:TStringList;
 begin
   options:=JSONStringToStringList(self.OptionList);
-
   i:=options.IndexOf(AValue);
   self.ItemIndex:=i;            // see setItemIndex
 end;

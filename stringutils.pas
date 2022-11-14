@@ -17,7 +17,7 @@ unit StringUtils;
 interface
 
 uses
-  Classes, SysUtils, Math, TypInfo, EventsInterface
+  Classes, SysUtils, Math, TypInfo, EventsInterface, StrUtils
   {$ifndef JScript}
   , fpjson  , jsonparser
   , Forms, Dialogs, Controls, Graphics;
@@ -53,7 +53,9 @@ function NumArrayToJSONString(NumArray:TNumArray):String;
 function Num3DArrayToJsonString(arr:T3DNumArray):String;
 function Num2dArrayToString(NumArray:T2dNumArray):String;
 function JsonStringTo3DNumArray(const str:String):T3DNumArray;
+function DoEscapeQuotes(cellval:string):string;
 function QuoteIt(str:String):String;
+function QuoteItJSON(str:String):String;
 procedure ShowAllChars(str:String);
 function IsStrFloatNum(str: string): Boolean;
 //function TryStrToInt(str:String;var ok:boolean):integer;
@@ -137,9 +139,36 @@ begin
     or (str[1]='''') then
       result:=str
     else
+      if pos('"',str)>0 then
+        result:=''''+str+''''
+      else
+        result:='"'+str+'"';
+  end;
+end;
+function QuoteItJSON(str:String):String;
+begin
+  if trim(str)='' then
+    result:='""'
+  else
+  begin
+    if (str[1]='"')
+    then
+      result:=str
+    else
       result:='"'+str+'"';
   end;
 end;
+
+function DoEscapeQuotes(cellval:string):string;
+begin
+  cellval:=ReplaceStr(cellval,'\"','££tmpquot~');
+  if (cellval[1]='"') or (cellval[1]='''') then Delete(cellval,1,1);
+  if (cellval[length(cellval)]='"') or (cellval[length(cellval)]='''') then Delete(cellval,length(cellval),1);
+  cellval:=ReplaceStr(cellval,'"','££tmpquot~');
+  cellval:=ReplaceStr(cellval,'££tmpquot~','\"');
+  result:=cellval;
+end;
+
 
 function IsInStringList(myList:TStringList;elem:string):boolean;
 var
@@ -628,22 +657,43 @@ begin
       // ba now contains the bytes of YourHEXString
       result:=RGBToColor(ba[2],ba[1],ba[0]);
     end;
+    bits.Free;
   end;
 end;
 {$else}
 function JSONStringToStringList(const JSONString:String):TStringList;
 var items : TStringList;
     TempString:String;
+    arr:TStringArray;
+    i:integer;
 begin
   // example optionlist '["Banana","Cherry","Lemon","Carrot","Eggplant","Potato"]'
-  TempString:=JSONString;
-  TempString := StringReplace(TempString, '[', '',[rfReplaceAll]);
-  TempString := StringReplace(TempString, ']', '',[rfReplaceAll]);
-  TempString := StringReplace(TempString, '"', '',[rfReplaceAll]);
+  TempString:=trim(JSONString);
+  //asm console.log('>'+TempString+'<'); end;
+  if (length(TempString)>1) and (TempString[1]='[') then
+  begin
+    Delete(TempString,1,1);
+    Delete(TempString,length(TempString),1);
+  end;
+  TempString := StringReplace(TempString, '[', '&&sqlb',[rfReplaceAll]);
+  TempString := StringReplace(TempString, ']', '&&sqrb',[rfReplaceAll]);
+  TempString := '[' + TempString + ']';
   items := TstringList.Create;
-  items.StrictDelimiter:=true;
-  items.LineBreak:=',';
-  items.text:= TempString;
+  items.clear;
+  asm
+    arr = [];
+    arr=JSON.parse(TempString);
+  end;
+  for i:=0 to length(arr)-1 do
+  begin
+    asm arr[i] = arr[i].toString(); end;
+    if length(arr[i])>5 then
+    begin
+      arr[i] := StringReplace(arr[i], '&&sqlb','[', [rfReplaceAll]);
+      arr[i] := StringReplace(arr[i], '&&sqrb',']', [rfReplaceAll]);
+    end;
+    items.add(arr[i]);
+  end;
   result:=items;
 end;
 

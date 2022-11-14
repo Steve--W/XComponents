@@ -401,15 +401,14 @@ var
   fn:TObject;
 begin
   glbEvent:=e;
-  //showmessage('RunComponentEvent '+EventType+' '+MyNode.NodeName);
   UnitName:=MainUnitname+'Events';
   fn:=FindEventFunction(NameSpace,myName,EventType,MyNode,true);
 
   asm
+  //console.log('RunComponentEvent '+EventType+' '+myName+' '+MyNode.NodeName);
   try {
-      // Execute the function, if found....
+    // Execute the function, if found....
     if (fn!=null)  {
-      //console.log('running function '+NameSpace+' '+myName+' '+EventType+' '+MyNode.NodeName);
       fn(e,myName,MyValue);
     }
   }catch(err) { alert(err.message+'  in Events.RunComponentEvent '+myName+' '+EventType);}
