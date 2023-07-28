@@ -340,7 +340,7 @@ begin
     myMemo.Enabled:=false;
     myMemo.Font.Color:=clGray;
     {$endif}
-
+    //TCEFWindowParent(myControl).
 
      myControl.SetSubComponent(true);  // Tell the IDE to store the modified properties
      // Make sure the embedded component can not be selected/deleted within the IDE
@@ -851,11 +851,12 @@ asm
   }
   ob=null;
   var labelstring='<label for="'+MyObjectName+'" id="'+MyObjectName+'Lbl'+'"></label>';
-  var FrameString = '<iframe  id='+MyObjectName+' name="'+MyObjectName+ '" '+
+  var FrameString = '<iframe  id='+MyObjectName+' name="'+MyObjectName+ '" '+          //style="border:0"
                           'scrolling="no" '+
                           'src="" '+
                           'title="" '+
-                          'style="height:100%;width:100%;border: 1px solid #444444;" '+
+//                          'style="height:100%;width:100%;border: 1px solid #444444;" '+
+                          'style="height:100%;width:100%;border:0" '+
                           'onresize="resized(this);" '+
                           '>'+
                           '</iframe>';

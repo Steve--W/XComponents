@@ -74,9 +74,11 @@ type
     function GetSourceText:String;
     function GetActualWidth:integer;
     function GetActualHeight:integer;
+    function GetAutoScroll:Boolean;
 
     procedure SetSourceText(AValue:String);
     procedure SetBgColor(AValue:TColor); override;
+    procedure SetAutoScroll(AValue:Boolean);
 
   protected
 
@@ -96,6 +98,7 @@ type
     property SourceText: String read GetSourceText write SetSourceText;
     property ActualHeight:integer read GetActualHeight;
     property ActualWidth:integer read GetActualWidth;
+    property AutoScroll: Boolean read GetAutoScroll write SetAutoScroll;
 
     {$ifndef JScript}
     property FrameHeight: String read GetFrameHeight write SetFrameHeight;
@@ -159,6 +162,7 @@ begin
   TFrameViewer(myControl).OnClick:=@self.HandleClick;
   TFrameViewer(myControl).DefBackground:=clWhite;
   TFrameViewer(myControl).OnObjectClick:=@self.HandleObjectClick;      //  TObjectClickEvent   procedure(Sender, Obj: TObject; const OnClick: ThtString) of object;
+  //TFrameViewer(myControl).  ///???? set scrolling behaviour
 
   self.SetMyEventTypes;
   CreateComponentDataNode2(self,MyNodeType,myDefaultAttribs, self.myEventTypes, TheOwner,IsDynamic);
@@ -374,9 +378,16 @@ end;
 function TXHTMLText.CreateTextURL(txt:String):tstringlist;
 var WYSIWYGHEADER,WYSIWYGFOOTER,TheText,OutputStringList: TStringList;
   startstring, endstring:String;
-  BgCol:String;
+  BgCol,oflow:String;
+  Scrollbars:Boolean;
 begin
+  oflow:='';
   BgCol:=MyNode.GetAttribute('BgColor',true).AttribValue;
+  Scrollbars:=MyStrToBool(MyNode.getAttribute('AutoScroll',true).AttribValue);
+  if Scrollbars then
+    oflow:= 'overflow:scroll;'
+  else
+    oflow:= 'overflow:hidden;';
 
 WYSIWYGHEADER:= TStringList.Create;
 WYSIWYGFOOTER:= TStringList.Create;
@@ -403,7 +414,7 @@ WYSIWYGHEADER.Add('</head>');
 WYSIWYGHEADER.Add('<body style="margin:0px; background-color:'+BgCol+'">');
 WYSIWYGHEADER.Add('');
 WYSIWYGHEADER.Add('<div id="FrameContent" ');
-WYSIWYGHEADER.Add(      'style="overflow:scroll; height:'+inttostr(self.actualHeight)+'px; ">');
+WYSIWYGHEADER.Add(      'style="'+oflow+' height:'+inttostr(self.actualHeight)+'px; ">');
 WYSIWYGHEADER.Add('      <div id="thetext" style="height: 100%; width: 100%; ">');
 
 WYSIWYGFOOTER.Add('      </div>');
@@ -494,6 +505,30 @@ begin
 end;
 {$endif}
 
+function TXHTMLText.GetAutoScroll:Boolean;
+begin
+  result:=MyStrToBool(MyNode.getAttribute('AutoScroll',true).AttribValue);
+end;
+procedure TXHTMLText.SetAutoScroll(AValue: Boolean);
+var
+  vchanged:boolean;
+  txt:String;
+begin
+  if self.AutoScroll<>AValue then
+  begin
+    vchanged:=true;
+    //fAutoScroll:=AValue;
+  end
+  else
+    vchanged:=false;
+  myNode.SetAttributeValue('AutoScroll',MyBoolToStr(AValue),'Boolean');
+  if vchanged then
+  begin
+    txt:=myNode.getAttribute('SourceText',true).AttribValue;
+    self.SetSourceText(txt);
+  end;
+end;
+
 begin
   // this is the set of node attributes that each GPUCanvas instance will have (added to the set inherited from TXIFrame or TWrapperPanel).
   AddWrapperDefaultAttribs(myDefaultAttribs);
@@ -507,6 +542,9 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'HTMLSource','String','','',false,false);
   AddDefaultAttribute(myDefaultAttribs,'Showing','Boolean','False','When not embedded, set this to display the text in a standalone browser page',false,false);
   AddDefaultAttribute(myDefaultAttribs,'SourceText','String','...text...','Provide the inner HTML including text to be rendered',false);
+  AddDefaultAttribute(myDefaultAttribs,'ActualHeight','Integer','','',true,false);
+  AddDefaultAttribute(myDefaultAttribs,'ActualWidth','Integer','','',true,false);
+  AddDefaultAttribute(myDefaultAttribs,'AutoScroll','Boolean','True','',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);

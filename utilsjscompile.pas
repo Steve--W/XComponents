@@ -471,7 +471,6 @@ begin
         for i:=0 to ExtraHTML.Count-1 do
           TheLines.insert(i,ExtraHTML[i]);
 
-
       HTMLString:=CreateHTMLWrapper(ProgramName,'FromLaz',true,TheLines.Text);
       WriteToFile(ProgramName+'.html',HTMLString);
 

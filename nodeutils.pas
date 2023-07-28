@@ -2010,6 +2010,28 @@ begin
           myself:=AddDynamicWidget(SourceNode.NodeType,ParentNode.MyForm,ParentNode,SourceNode.NodeName,SourceNode.NameSpace,'Left',position);
           myself.NameSpace:=SourceNode.NameSpace;
           CopyEventHandlers(myself,SourceNode,((SourceNode.NodeType='TXCompositeIntf')or(SourceNode.NodeType='TXComposite')));
+          // pass 1
+          for i:=0 to length(SourceNode.NodeAttributes)-1 do
+          begin
+            if (SourceNode.NodeType='TXNumberSpinner') then
+            begin
+              if (SourceNode.NodeAttributes[i].AttribName = 'MaxVal')
+              or (SourceNode.NodeAttributes[i].AttribName = 'MinVal')
+              then
+              begin
+                EditNodeAttributeValue(myself,SourceNode.NodeAttributes[i],true);
+              end;
+            end
+            else if (SourceNode.NodeType='TXGPUCanvas') then
+            begin
+              if (SourceNode.NodeAttributes[i].AttribName = 'NumKernels')
+              then
+              begin
+                EditNodeAttributeValue(myself,SourceNode.NodeAttributes[i],true);
+              end;
+            end;
+          end;
+          // pass 2
           for i:=0 to length(SourceNode.NodeAttributes)-1 do
           begin
             DfltAttrib:=GetDefaultAttrib(SourceNode.NodeType,SourceNode.NodeAttributes[i].AttribName);

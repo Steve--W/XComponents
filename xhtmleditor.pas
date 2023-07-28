@@ -68,6 +68,18 @@ type
     function GetSourceText:String;
     function GetHeaderHTML:String;
     function GetFooterHTML:String;
+    function GetShowColors:Boolean;
+    function GetShowFontsize:Boolean;
+    function GetShowBlockQuote:Boolean;
+    function GetShowCentre:Boolean;
+    function GetShowOlist:Boolean;
+    function GetShowUlist:Boolean;
+    function GetShowLine:Boolean;
+    function GetShowLink:Boolean;
+    function GetShowAnchor:Boolean;
+    function GetShowUnderline:Boolean;
+    function GetShowStrikethrough:Boolean;
+    function GetShowSuperscript:Boolean;
 
     procedure SetIsEmbedded(AValue:Boolean);
     procedure SetIsEditable(AValue:Boolean);
@@ -75,7 +87,18 @@ type
     procedure SetSourceText(AValue:String);
     procedure SetHeaderHTML(AValue:String);
     procedure SetFooterHTML(AValue:String);
-
+    procedure SetShowColors(AValue:Boolean);
+    procedure SetShowFontsize(AValue:Boolean);
+    procedure SetShowBlockQuote(AValue:Boolean);
+    procedure SetShowCentre(AValue:Boolean);
+    procedure SetShowOlist(AValue:Boolean);
+    procedure SetShowUlist(AValue:Boolean);
+    procedure SetShowLine(AValue:Boolean);
+    procedure SetShowLink(AValue:Boolean);
+    procedure SetShowAnchor(AValue:Boolean);
+    procedure SetShowUnderline(AValue:Boolean);
+    procedure SetShowStrikethrough(AValue:Boolean);
+    procedure SetShowSuperscript(AValue:Boolean);
   protected
 
     Procedure PopUpBrowser;
@@ -113,6 +136,18 @@ type
     property SourceText: String read GetSourceText write SetSourceText;
     property HeaderHTML: String read GetHeaderHTML write SetHeaderHTML;
     property FooterHTML: String read GetFooterHTML write SetFooterHTML;
+    property ShowColors: Boolean read GetShowColors write SetShowColors;
+    property ShowFontsize: Boolean read GetShowFontsize write SetShowFontsize;
+    property ShowBlockQuote:Boolean read GetShowBlockQuote write SetShowBlockQuote;
+    property ShowCentre:Boolean read GetShowCentre write SetShowCentre;
+    property ShowOlist:Boolean read GetShowOlist write SetShowOlist;
+    property ShowUlist:Boolean read GetShowUlist write SetShowUlist;
+    property ShowLine:Boolean read GetShowLine write SetShowLine;
+    property ShowLink:Boolean read GetShowLink write SetShowLink;
+    property ShowAnchor:Boolean read GetShowAnchor write SetShowAnchor;
+    property ShowUnderline:Boolean read GetShowUnderline write SetShowUnderline;
+    property ShowStrikethrough:Boolean read GetShowStrikethrough write SetShowStrikethrough;
+    property ShowSuperscript:Boolean read GetShowSuperscript write SetShowSuperscript;
 
     // Events to be visible in Lazarus IDE
     property HandleChange: TEventHandler read FHandleChange write FHandleChange;
@@ -420,7 +455,55 @@ begin
 end;
 function TXHTMLEditor.GetShowing:Boolean;
 begin
-  result:=myStrToBool(myNode.getAttribute('GetShowing',true).AttribValue);
+  result:=myStrToBool(myNode.getAttribute('Showing',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowColors:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowColors',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowFontsize:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowFontsize',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowBlockQuote:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowBlockQuote',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowCentre:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowCentre',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowOlist:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowOlist',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowUlist:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowUlist',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowLine:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowLine',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowLink:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowLink',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowAnchor:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowAnchor',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowUnderline:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowUnderline',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowStrikethrough:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowStrikethrough',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowSuperscript:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('Superscript',true).AttribValue);
 end;
 
 procedure TXHTMLEditor.SetIsEmbedded(AValue:Boolean);
@@ -463,6 +546,103 @@ begin
     end;
   end;
 end;
+procedure TXHTMLEditor.SetShowColors(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowColors',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+procedure TXHTMLEditor.SetShowFontsize(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowFontsize',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+procedure TXHTMLEditor.SetShowBlockQuote(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowBlockQuote',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+procedure TXHTMLEditor.SetShowCentre(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowCentre',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+procedure TXHTMLEditor.SetShowOlist(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowOlist',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+procedure TXHTMLEditor.SetShowUlist(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowUlist',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+procedure TXHTMLEditor.SetShowLine(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowLine',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+procedure TXHTMLEditor.SetShowLink(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowLink',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+procedure TXHTMLEditor.SetShowAnchor(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowAnchor',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+procedure TXHTMLEditor.SetShowUnderline(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowUnderline',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+procedure TXHTMLEditor.SetShowStrikethrough(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowStrikethrough',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+procedure TXHTMLEditor.SetShowSuperscript(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowSuperscript',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
+
 procedure TXHTMLEditor.SetSourceText(AValue:String);
 Var URLStringList:TStringList;
 begin
@@ -740,6 +920,8 @@ WYSIWYGFOOTER.Add('    state: () => queryCommandState("italic"),');
 WYSIWYGFOOTER.Add('    result: () => exec("italic")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+if self.ShowUnderline = true then
+begin
 WYSIWYGFOOTER.Add('underline: {');
 WYSIWYGFOOTER.Add('    icon: "<u>U</u>",');
 WYSIWYGFOOTER.Add('    title: "Underline",');
@@ -747,6 +929,9 @@ WYSIWYGFOOTER.Add('    state: () => queryCommandState("underline"),');
 WYSIWYGFOOTER.Add('    result: () => exec("underline")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
+if self.ShowStrikethrough = true then
+begin
 WYSIWYGFOOTER.Add('strikethrough: {');
 WYSIWYGFOOTER.Add('    icon: "<strike>S</strike>",');
 WYSIWYGFOOTER.Add('    title: "Strike-through",');
@@ -754,12 +939,16 @@ WYSIWYGFOOTER.Add('    state: () => queryCommandState("strikeThrough"),');
 WYSIWYGFOOTER.Add('    result: () => exec("strikeThrough")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
+if self.ShowSuperscript = true then
+begin
 WYSIWYGFOOTER.Add(' Superscript: {');
 WYSIWYGFOOTER.Add('      icon: "<b><sup>s</sup></b>",');
 WYSIWYGFOOTER.Add('      title: "superscript",');
 WYSIWYGFOOTER.Add('      result: () => exec("superscript")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
 //WYSIWYGFOOTER.Add('heading1: {');
 //WYSIWYGFOOTER.Add('    icon: "<b>H<sub>1</sub></b>",');
 //WYSIWYGFOOTER.Add('    title: "Heading 1",');
@@ -786,6 +975,8 @@ WYSIWYGFOOTER.Add('');
 //WYSIWYGFOOTER.Add('');
 
 //WYSIWYGFOOTER.Add('    result: () => document.execCommand("fontSize",false, "110%")');
+if self.ShowFontsize = true then
+begin
 WYSIWYGFOOTER.Add('small: {');
 WYSIWYGFOOTER.Add('    icon: "S",');
 WYSIWYGFOOTER.Add('    title: "Small font",');
@@ -810,39 +1001,56 @@ WYSIWYGFOOTER.Add('    title: "xlarge font",');
 WYSIWYGFOOTER.Add('    result: () => document.execCommand("fontSize",false, "7")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
 
 
-
+if self.ShowBlockQuote = true then
+begin
 WYSIWYGFOOTER.Add('quote: {');
 WYSIWYGFOOTER.Add('    icon: "&#8220; &#8221;",');
 WYSIWYGFOOTER.Add('    title: "Quote (This indents the text)",');
 WYSIWYGFOOTER.Add('    result: () => exec(formatBlock, "<blockquote>")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
+if self.ShowCentre = true then
+begin
 WYSIWYGFOOTER.Add('centre: {');
 WYSIWYGFOOTER.Add('    icon: "<b>c</b>",');
 WYSIWYGFOOTER.Add('    title: "Centre the selected text",');
 WYSIWYGFOOTER.Add('    result: () => document.execCommand("justifycenter")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
+if self.ShowOlist= true then
+begin
 WYSIWYGFOOTER.Add('olist: {');
 WYSIWYGFOOTER.Add('    icon: "&#35;",');
 WYSIWYGFOOTER.Add('    title: "Ordered List",');
 WYSIWYGFOOTER.Add('    result: () => exec("insertOrderedList")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
+if self.ShowUlist= true then
+begin
 WYSIWYGFOOTER.Add('ulist: {');
 WYSIWYGFOOTER.Add('    icon: "&#8226;",');
 WYSIWYGFOOTER.Add('    title: "Unordered List",');
 WYSIWYGFOOTER.Add('    result: () => exec("insertUnorderedList")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
+if self.ShowLine= true then
+begin
 WYSIWYGFOOTER.Add('line: {');
 WYSIWYGFOOTER.Add('    icon: "&#8213;",');
 WYSIWYGFOOTER.Add('    title: "Horizontal Line",');
 WYSIWYGFOOTER.Add('    result: () => exec("insertHorizontalRule")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
+if self.ShowColors = true then
+begin
 WYSIWYGFOOTER.Add('red: {');
 WYSIWYGFOOTER.Add('    icon: "<b>r</b>",');
 WYSIWYGFOOTER.Add('    title: "Red",');
@@ -874,6 +1082,9 @@ WYSIWYGFOOTER.Add('      Color: "#FFFFFF",');
 WYSIWYGFOOTER.Add('      result: () =>document.execCommand("foreColor",false, "#000000")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
+if self.ShowLink = true then
+begin
 WYSIWYGFOOTER.Add('link: {');
 WYSIWYGFOOTER.Add('    icon: "&#128279;",');
 WYSIWYGFOOTER.Add('    title: "Link",');
@@ -883,6 +1094,9 @@ WYSIWYGFOOTER.Add('      if (url) exec("createLink", url)');
 WYSIWYGFOOTER.Add('    }');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
+if self.ShowAnchor = true then
+begin
 WYSIWYGFOOTER.Add('anchor: {');
 WYSIWYGFOOTER.Add('    icon: "<b>a</b>",');
 WYSIWYGFOOTER.Add('    title: "Anchor (link using #name)",');
@@ -894,6 +1108,7 @@ WYSIWYGFOOTER.Add('        }');
 WYSIWYGFOOTER.Add('      }');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
+end;
 WYSIWYGFOOTER.Add('Undo: {');
 WYSIWYGFOOTER.Add('    icon: "<b>Undo</b>",');
 WYSIWYGFOOTER.Add('    title: "Undo",');
@@ -1100,6 +1315,18 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'SourceText','String','...text...','',false);
   AddDefaultAttribute(myDefaultAttribs,'HeaderHTML','String','','',false);
   AddDefaultAttribute(myDefaultAttribs,'FooterHTML','String','','',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowColors','Boolean','True','Allow text colours to be set',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowFontsize','Boolean','True','Allow text sizes to be set',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowBlockQuote','Boolean','True','Allow block quote to be edited',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowCentre','Boolean','True','Allow text to  be centred',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowOlist','Boolean','True','Allow ordered list to be created/edited',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowUlist','Boolean','True','Allow unordered list to be created/edited',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowLine','Boolean','True','Allow lines to be created/edited',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowLink','Boolean','True','Allow links to be created/edited',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowAnchor','Boolean','True','Allow anchors to be created/edited',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowUnderline','Boolean','True','Allow text underline to be set',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowStrikethrough','Boolean','True','Allow text strikethrough to be set',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowSuperscript','Boolean','True','Allow text superscript to be set',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);

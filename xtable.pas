@@ -110,7 +110,7 @@ type
     function ConstructTableStringFromExcelCopy(CopiedString:String):String;
     procedure LoadTableFromExcelCopy(CopiedString:String);
     procedure LoadTableFromNumArray(NumArray:T2DNumArray);
-    procedure LoadTableFromStringArray(StrArray:T2DStringArray);
+    procedure LoadTableFromStringArray(StrArray:TTableCellsArray);
     function GetCellValue(row,col:integer):string;
     procedure SetCellValue(row,col:integer;AValue:string);
     function GetCellsAsArray(SkipHeader:Boolean):TTableCellsArray;
@@ -684,7 +684,7 @@ begin
     var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
   }
-  catch(err) { alert(err.message+'  in XCheckBox.CreateXCheckBox');}
+  catch(err) { alert(err.message+'  in XTable.CreateWidget');}
 
 end;
 
@@ -1049,7 +1049,7 @@ begin
   self.TableData:=tdata;
 end;
 
-procedure TXTable.LoadTableFromStringArray(StrArray:T2DStringArray);
+procedure TXTable.LoadTableFromStringArray(StrArray:TTableCellsArray);
 var
   tdata:String;
 begin
@@ -1385,11 +1385,26 @@ begin
   hasHeaders:=self.HasHeaderRow;
   cw:=myNode.GetAttribute('ColWidth',true).AttribValue;
   //showmessage('settabledata with colwidth '+cw);
+  //CleanValue:=myStringReplace(AValue,LineEnding,'\\n',-1,-1);
   asm
+    // fudge... (problem with newline embedded)....
+    var CleanValue = '';
+    for ( var c = 0; c < AValue.length; c++ ) {
+      if (AValue.charCodeAt(c) != 10) {CleanValue = CleanValue + AValue[c];}
+      else {CleanValue = CleanValue + '\\n';}
+      }
+    // this failed to work....
+    //var CleanValue = AValue.replace(/\\n/g, "\\n")
+    //                         .replace(/\\&/g, "\\&")
+    //                         .replace(/\\r/g, "\\r")
+    //                         .replace(/\\t/g, "\\t")
+    //                         .replace(/\\b/g, "\\b")
+    //                         .replace(/\\f/g, "\\f");
+    //console.log(CleanValue);
     try {
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if ((ob!=null)&&(AValue!='')) {
-      var localtestdata=JSON.parse(AValue);
+      var localtestdata=JSON.parse(CleanValue);
       var RowCount =localtestdata.length;
       var ColCount = 0;
       for ( var i = 0; i < RowCount; i++ ) {

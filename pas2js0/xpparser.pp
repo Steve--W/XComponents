@@ -4815,7 +4815,7 @@ procedure TPasParser.ParseProcedureOrFunctionHeader(Parent: TPasElement;
 
 
 Var
-  Tok , tinc, mev: String;
+  Tok , tinc{, mev}: String;
   aRow,aColumn:integer;
   pitem:TUserProcItem;
   CC : TCallingConvention;
@@ -5017,9 +5017,8 @@ begin
   and (Parent.Parent is TImplementationSection)
   then
   begin
-//    XIDEProcsList.Add(Parent.GetModule.SourceFilename);
     tinc:= leftstr(Parent.GetModule.SourceFilename,length(XIDEProjectDir+'tempinc\'));
-    mev:= leftstr(Parent.GetModule.SourceFilename,length(XIDEProjectDir+'resources\project\XIDE'));
+    //mev:= leftstr(Parent.GetModule.SourceFilename,length(XIDEProjectDir+'resources\project\XIDE'));
     if (tinc=XIDEProjectDir+'tempinc\') then
     begin
       pitem:=TUserProcItem.Create;
@@ -5029,17 +5028,7 @@ begin
       pitem.LineNum := aRow;
       setlength(XIDEProcsList,length(XIDEProcsList)+1);
       XIDEProcsList[length(XIDEProcsList)-1]:=pitem;
-      //XIDEProcsList.Add(rightstr(Parent.SourceFilename,length(Parent.SourceFilename)-length(tinc))+' '+Parent.Name);
     end;
-//    if (mev=XIDEProjectDir+'resources\project\XIDE') then
-//    begin
-//      pitem:=TUserProcItem.Create;
-//      pitem.Name:=Parent.Name;
-//      pitem.FileName:=rightstr(Parent.SourceFilename,length(Parent.SourceFilename)-length(mev)+4);
-//      setlength(XIDEProcsList,length(XIDEProcsList)+1);
-//      XIDEProcsList[length(XIDEProcsList)-1]:=pitem;
-//      //XIDEProcsList.Add(rightstr(Parent.SourceFilename,length(Parent.SourceFilename)-length(mev)+4)+' '+Parent.Name);
-//    end;
   end;
 
 

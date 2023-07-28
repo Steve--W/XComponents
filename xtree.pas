@@ -426,50 +426,52 @@ begin
     DestTreeNode := TTreeNode(TTreeView(Sender).GetNodeAt(X, Y)) ;
     Src := TTreeView(Source).Selected;
 
-    Accept:=true;
-    // Decide whether a drop is allowed here
-    // 1) is there a function? (in the form, or registered, or in user code)
-    // 2) execute the function - send in SourceName,Src.Text,DstText
-    // 3) get the result (e.ReturnString)
-    if (DestTreeNode<>nil) then
+    if (Src<>nil) then
     begin
-      DstText:=DestTreeNode.Text;
-      DestNode:=TXTree(self.parent).myNode;
-      e:=TEventStatus.Create('DropAccepted',DestName);
-      ob:=TNodeEventValue.Create;
-      ob.DstText:=DstText;
-      ob.myTree:=TXTree(self.Parent);
-      ob.SrcText:=Src.Text;
-      ob.SourceName:=SourceName;
-      ob.myNode:=DestTreeNode;
-      e.ValueObject:=ob;
-      ExecuteEventHandler(e,'DropAccepted',DestName,'',DestNode);   //bypasses event trappers
-      Accept := MyStrToBool(e.ReturnString);
-    end;
-
-    if (Src<>nil)
-    and (self.IsDropTarget = false)
-    then
-    begin
-      if (Source=Sender) then
-        CallHandleEvent('DragStart',Src.Text,Sender);    // pick up source node for dragging
-      if (Accept) then
+      Accept:=true;
+      // Decide whether a drop is allowed here
+      // 1) is there a function? (in the form, or registered, or in user code)
+      // 2) execute the function - send in SourceName,Src.Text,DstText
+      // 3) get the result (e.ReturnString)
+      if (DestTreeNode<>nil) then
       begin
-         self.IsDropTarget:=true;
+        DstText:=DestTreeNode.Text;
+        DestNode:=TXTree(self.parent).myNode;
+        e:=TEventStatus.Create('DropAccepted',DestName);
+        ob:=TNodeEventValue.Create;
+        ob.DstText:=DstText;
+        ob.myTree:=TXTree(self.Parent);
+        ob.SrcText:=Src.Text;
+        ob.SourceName:=SourceName;
+        ob.myNode:=DestTreeNode;
+        e.ValueObject:=ob;
+        ExecuteEventHandler(e,'DropAccepted',DestName,'',DestNode);   //bypasses event trappers
+        Accept := MyStrToBool(e.ReturnString);
+      end;
+
+      if (Src<>nil)
+      and (self.IsDropTarget = false)
+      then
+      begin
+        if (Source=Sender) then
+          CallHandleEvent('DragStart',Src.Text,Sender);    // pick up source node for dragging
+        if (Accept) then
+        begin
+          self.IsDropTarget:=true;
+        end;
+      end;
+
+      if (Accept)
+      and (DestTreeNode<>nil) then
+      begin
+        // mark the node as available for drop
+        if DestTreeNode.HasChildren then
+           TTreeView(Sender).SetInsertMark(DestTreeNode,tvimAsFirstChild)
+        else
+           TTreeView(Sender).SetInsertMark(DestTreeNode,tvimAsPrevSibling);
+        TTreeView(Sender).Update;
       end;
     end;
-
-    if (Accept)
-    and (DestTreeNode<>nil) then
-    begin
-      // mark the node as available for drop
-      if DestTreeNode.HasChildren then
-         TTreeView(Sender).SetInsertMark(DestTreeNode,tvimAsFirstChild)
-      else
-         TTreeView(Sender).SetInsertMark(DestTreeNode,tvimAsPrevSibling);
-      TTreeView(Sender).Update;
-    end;
-
   end;
 end;
 
@@ -887,7 +889,7 @@ begin
     except
       on E: Exception do
       begin
-        showmessage('JSON error: '+e.Message);
+        showmessage(RootName+'  JSON error: '+e.Message);
         jData := nil;
       end;
     end;
@@ -1233,7 +1235,7 @@ begin
 
 asm
    try {
-   //console.log('addnode: '+WrapperNodeId+' parentname:'+ParentName+'  newnode='+IdOfNodeBeingAdded);
+       //console.log('addnode: '+WrapperNodeId+' parentname:'+ParentName+'  newnode='+IdOfNodeBeingAdded);
        var isopen=false;
        if (level<OpenToLevel) {isopen=true;}  //by default just show the first n levels of the tree
        var localcurrentNodeTree=currentNodeTree;
@@ -1512,6 +1514,7 @@ begin
   //showmessage('TXTree CreateWidget '+NameSpace+'.'+ScreenObjectName);
 
   NodeTree:=MyNode.GetAttribute('TreeData',true).AttribValue;
+  if NodeTree='' then NodeTree:=ExampleNodeTree;
   //SelectedNodeString:=MyNode.GetAttribute('SelectedNodeText',true).AttribValue;
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
   LabelPos:= UpperCase(MyNode.getAttribute('LabelPos',true).AttribValue);
@@ -1542,7 +1545,7 @@ begin
 
 
     // put in a scrollbox to contain all the tree nodes
-    //alert('tree container id='+wrapperid+'Node');
+    //console.log('tree container id='+wrapperid+'Node');
     var ContainerString = '<div style = "overflow:scroll; display:inline-block;'+
                                 'background-color:'+normalColor+';'+Ht+Wd+'" '+
                                 'id='+wrapperid+'Node class="'+NameSpace+ScreenObjectName+'"></div> ';
@@ -1550,7 +1553,7 @@ begin
 
     var TreeName = wrapperid+'Node';
     var localNodeTree =JSON.parse(NodeTree);
-    //alert('NodeName='+NodeName+' Treename='+TreeName);
+    //console.log('NodeName='+NodeName+' Treename='+TreeName);
 
     pas.XTree.addnode(NodeName,NameSpace,TreeName,localNodeTree,(TreeName+'0'),
                       openlvl,0,normalColor,NodeHintFunc,true) ;
@@ -2164,6 +2167,8 @@ begin
   {$ifndef JScript}
   TmyTreeView(myControl).PopulateMeFromJSONData(NodeTreeString,myNode.NodeName+'Node',openlvl);
   {$else}
+    if trim(NodeTreeString) = '' then
+      NodeTreeString:=ExampleNodeTree;
     localDraggable:=self.Draggable;
     selectedId:=self.SelectedNodeId;
     myNodeName:=self.NodeName;
@@ -2173,11 +2178,19 @@ begin
     NodeHintFunc:=TXTree(MyNode).TreeNodeHintFunc;
     asm
     try {
+    // fudge... (problem with newline embedded)....
+    var CleanValue = '';
+    for ( var c = 0; c < NodeTreeString.length; c++ ) {
+      if (NodeTreeString.charCodeAt(c) != 10) {CleanValue = CleanValue + NodeTreeString[c];}
+      else {CleanValue = CleanValue + '\\n';}
+      }
+
+
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
     if (ob!=null) {
       //var TreeName = myNameSpace+myNodeName+'ContentsScroll';
       var ParentName = myNameSpace+myNodeName+'Node';
-      var localNodeTree =JSON.parse(NodeTreeString);
+      var localNodeTree =JSON.parse(CleanValue);
       //alert('localNodeTree ='+localNodeTree);
       //alert('SetTreeData '+TreeName+' Namespace='+myNameSpace);
       pas.XTree.addnode(myNodeName,myNameSpace,ParentName,localNodeTree,
