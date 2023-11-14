@@ -289,13 +289,21 @@ begin
   and (self.myNode<>nil)
   then
   begin
-    // Send a cef message to fetch the new value of the text
-    // (Use the ArgumentList property if you need to pass some parameters.)
-    TempMsg := TCefProcessMessageRef.New(XHTMLEDITOR_GETTEXT);
-    //TempMsg.ArgumentList.SetValue(0,newval);              //  msg.ArgumentList.SetString(0, txt);
-
-    myChromium.SendProcessMessage(PID_RENDERER, TempMsg);
-
+    if (pos('id=',NewTitle)=1)
+    and (length(NewTitle)>3) then      // eg. to return an element identifier such as on clicking
+    begin
+      //showmessage(NewTitle);
+      if (StartingUp=false) then
+        CallHandleEventLater('Change',copy(NewTitle,4,length(NewTitle)),self.myControl);   // ???? new event type for this??
+    end
+    else
+    begin
+      // Send a cef message to fetch the new value of the text
+      // (Use the ArgumentList property if you need to pass some parameters.)
+      TempMsg := TCefProcessMessageRef.New(XHTMLEDITOR_GETTEXT);
+      //TempMsg.ArgumentList.SetValue(0,newval);              //  msg.ArgumentList.SetString(0, txt);
+      myChromium.SendProcessMessage(PID_RENDERER, TempMsg);
+    end;
   end;
 end;
 {$endif}
@@ -399,26 +407,36 @@ var
 begin
   if (msg.objid<>'') then
   begin
-    //showmessage('HandleTXHTMLMessage: '+msg.objid+' '+msg.mtype);
+     //asm console.log('HandleTXHTMLMessage: '+msg.objid+' '+msg.mtype); end;
      //this is a notification sent out from within a HTMLEditor frame.
      ItemNode:=findDataNodeById(systemnodetree,msg.objid,msg.NameSpace,false);
      if ItemNode<>nil then
      begin
         if msg.mtype='titleChange' then
         begin
-           //showmessage('message is titleChange');
            message:=msg.mdata;
            if message<>'' then
            begin
-             message:= TXHTMLEditor(ItemNode).ExtractTextFromTitle(message);
-             //showmessage(message);
-             // now save the help text to the SourceText property
-             if (length(trim(message))>0) then // and (StartPos>0)
+             //asm console.log('HandleTXHTMLMessage' + message); end;
+             if (pos('id=',message) = 1)
+             and (length(message)>3) then
              begin
-                TXHTMLEditor(ItemNode).SourceText:= message;
-                //event here (eg) to refresh ob inspector
-                if StartingUp=false then
-                  HandleEvent('Change',ItemNode.NodeName,msg.NameSpace,message);
+               if StartingUp=false then
+                 HandleEvent('Change',ItemNode.NodeName,msg.NameSpace,copy(message,4,length(message)));
+             end
+             else
+             begin
+               message:= TXHTMLEditor(ItemNode).ExtractTextFromTitle(message);
+               // now save the text to the SourceText property
+               if (length(trim(message))>0) then // and (StartPos>0)
+               begin
+                 //asm console.log('HandleTXHTMLMessage setting SourceText ' + message); end;
+                 TXHTMLEditor(ItemNode).SourceText:= message;
+                 //event here (eg) to refresh ob inspector
+                 if StartingUp=false then
+                   //asm console.log('HandleEvent Change for ' + ItemNode.NodeName); end;
+                   HandleEvent('Change',ItemNode.NodeName,msg.NameSpace,message);
+               end;
              end;
            end
            else     // window was closed
@@ -792,6 +810,7 @@ WYSIWYGHEADER.Add('superscripts, centering, colors, undo, save, done and quit fu
 WYSIWYGHEADER.Add('as well as code to return the edited text to the calling program -->');
 WYSIWYGHEADER.Add('');
 WYSIWYGHEADER.Add('<meta name="viewport" content="user-scalable=1.0,initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0">');
+WYSIWYGHEADER.Add('<meta charset="utf-8">');
 
 WYSIWYGHEADER.Add('<title>TXHTMLEditor '+self.myNode.NodeName+'</title>');
 
@@ -1101,9 +1120,12 @@ WYSIWYGFOOTER.Add('anchor: {');
 WYSIWYGFOOTER.Add('    icon: "<b>a</b>",');
 WYSIWYGFOOTER.Add('    title: "Anchor (link using #name)",');
 WYSIWYGFOOTER.Add('    result: () => {');
-WYSIWYGFOOTER.Add('      const aname = window.prompt("Enter the anchor name");');
-WYSIWYGFOOTER.Add('      if (aname) {');
-WYSIWYGFOOTER.Add('        exec("insertHTML","<a id="+aname+">"+aname+"</a>"); ');
+WYSIWYGFOOTER.Add('      const aid = window.prompt("Enter the anchor id");');
+WYSIWYGFOOTER.Add('      if (aid) {');
+WYSIWYGFOOTER.Add('        const aname = window.prompt("Enter link name (eg internal reference)");');
+WYSIWYGFOOTER.Add('        if (aname) {');
+WYSIWYGFOOTER.Add('          exec("insertHTML","<a id="+aid+" href=''#"+aname+"''>["+aname+"]</a>"); ');
+WYSIWYGFOOTER.Add('          }');
 WYSIWYGFOOTER.Add('        }');
 WYSIWYGFOOTER.Add('      }');
 WYSIWYGFOOTER.Add('  },');
@@ -1240,8 +1262,11 @@ WYSIWYGFOOTER.Add('    if (event.key === "Enter" && queryCommandValue(formatBloc
 WYSIWYGFOOTER.Add('      setTimeout(() => exec(formatBlock, `<${defaultParagraphSeparator}>`), 0)');
 WYSIWYGFOOTER.Add('    }');
 WYSIWYGFOOTER.Add('  }');
-WYSIWYGFOOTER.Add('	appendChild(settings.element, content)');
-WYSIWYGFOOTER.Add('	actions.forEach(action => {');
+WYSIWYGFOOTER.Add('    appendChild(settings.element, content)');
+if IsEditable = true
+then
+begin
+WYSIWYGFOOTER.Add('    actions.forEach(action => {');
 WYSIWYGFOOTER.Add('    const button = createElement("button")');
 WYSIWYGFOOTER.Add('    button.className = classes.button');
 WYSIWYGFOOTER.Add('    button.innerHTML = action.icon');
@@ -1257,6 +1282,7 @@ WYSIWYGFOOTER.Add('      addEventListener(button, "click", handler)');
 WYSIWYGFOOTER.Add('    }');
 WYSIWYGFOOTER.Add('    appendChild(actionbar, button)');
 WYSIWYGFOOTER.Add('  })');
+end;
 WYSIWYGFOOTER.Add('  if (settings.styleWithCSS) exec("styleWithCSS")');
 WYSIWYGFOOTER.Add('  exec(defaultParagraphSeparatorString, defaultParagraphSeparator)');
 WYSIWYGFOOTER.Add('  return settings.element');

@@ -174,11 +174,31 @@ begin
   otxt:=SimpleNodeSearch(document,'TXGPUCanvas','oarr');
   stxt:=SimpleNodeSearch(document,'TXGPUCanvas','sarr');
   actxt:=SimpleNodeSearch(document,'TXGPUCanvas','acdiv');
-
+  CefLog('sending sendGPUarrays', 1, CEF_LOG_SEVERITY_INFO, '' );
+  //CefDebugLog('sending sendGPUarrays. sendGPUarrays1 ');
   // Send back results to the browser process
   // Notice that the 'sendGPUarrays' message name needs to be recognized in
   // a Chromium OnProcessMessageReceived method
-  msg := TCefProcessMessageRef.New('sendGPUarrays');
+  msg := TCefProcessMessageRef.New('sendGPUarrays1');
+  msg.ArgumentList.SetString(0, otxt);
+  msg.ArgumentList.SetString(1, stxt);
+  msg.ArgumentList.SetString(2, actxt);
+  frame.SendProcessMessage(PID_BROWSER, msg);
+end;
+procedure DOMVisitor_OnDocAvailable_TXGPUCanvasD(const browser: ICefBrowser; const frame: ICefFrame; const document: ICefDomDocument);
+var
+  msg: ICefProcessMessage;
+  otxt,stxt,actxt:String;
+begin
+  otxt:=SimpleNodeSearch(document,'TXGPUCanvas','oarr');
+  stxt:=SimpleNodeSearch(document,'TXGPUCanvas','sarr');
+  actxt:=SimpleNodeSearch(document,'TXGPUCanvas','acdiv');
+  CefLog('sending sendGPUarrays', 1, CEF_LOG_SEVERITY_INFO, '' );
+  //CefDebugLog('sending sendGPUarrays. sendGPUarrays2 '+stxt);
+  // Send back results to the browser process
+  // Notice that the 'sendGPUarrays' message name needs to be recognized in
+  // a Chromium OnProcessMessageReceived method
+  msg := TCefProcessMessageRef.New('sendGPUarrays2');
   msg.ArgumentList.SetString(0, otxt);
   msg.ArgumentList.SetString(1, stxt);
   msg.ArgumentList.SetString(2, actxt);
@@ -230,12 +250,22 @@ begin
             end;
           aHandled := True;
         end
-      else if (message.name = 'getGPUData')  then
+      else if (message.name = 'getGPUData1')  then
       begin
         TempFrame:=frame;
         if TempFrame<>nil then
         begin
           TempVisitor := TCefFastDomVisitor2.Create(browser, frame, @DOMVisitor_OnDocAvailable_TXGPUCanvas);
+          TempFrame.VisitDom(TempVisitor);
+        end;
+        aHandled := True;
+      end
+      else if (message.name = 'getGPUData2')  then
+      begin
+        TempFrame:=frame;
+        if TempFrame<>nil then
+        begin
+          TempVisitor := TCefFastDomVisitor2.Create(browser, frame, @DOMVisitor_OnDocAvailable_TXGPUCanvasD);
           TempFrame.VisitDom(TempVisitor);
         end;
         aHandled := True;

@@ -257,7 +257,8 @@ begin
   myNode.SetAttributeValue('BarWidth',AValue);
   asm
     var ob = document.getElementById(this.NameSpace+this.NodeName+'Contents');
-    pas.HTMLUtils.SetHeightWidthHTML(this,ob,'W',AValue);
+    ob.style.width='100%';
+    pas.HTMLUtils.SetHeightWidthHTML(this,ob.ParentNode,'W',AValue);
   end;
 end;
 

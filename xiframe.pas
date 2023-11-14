@@ -1306,6 +1306,7 @@ begin
   h:=myControl.Height;
   {$else}
   h:=GetCurrentHeight(self.NodeName);
+  if h=0 then h:=400;                //####!!!! find sensible height
   {$endif}
   myNode.SetAttributeValue('ActualHeight',inttostr(h),'Integer',true);     // just so the attribute exists
   result:=h;
@@ -1319,6 +1320,7 @@ begin
   wd:=myControl.Width;
   {$else}
   wd:=GetCurrentWidth(self.NodeName);
+  if wd=0 then wd:=400;               //####!!!! find sensible width
   {$endif}
   myNode.SetAttributeValue('ActualWidth',inttostr(wd),'Integer',true);     // just so the attribute exists
   result:=wd;

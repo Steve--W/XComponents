@@ -67,6 +67,8 @@ function HexRGBToColor(RGBString: String): TColor;
 {$else}
 procedure HexRGBToColor(RGBString: String; var r,g,b,a:integer);
 procedure ShowMessage(text:String);
+function JsonStringTo1DNumArray(const str:String):TNumArray;
+function JsonStringTo2DNumArray(const str:String):T2DNumArray;
 {$endif}
 
 var MainUnitName:String;
@@ -574,7 +576,6 @@ begin
   result:=arr;
 end;
 
-
 function StringListToJsonString(StringList:TStringList):String;
 var
   jData : TJSONData;
@@ -730,6 +731,29 @@ begin
   TempString:=TempString+']';
   result:=TempString;
 end;
+function JsonStringTo1DNumArray(const str:String):TNumArray;
+var
+  arr : TNumArray;
+begin
+  setlength(arr,0);
+  asm
+    arr = [];
+    arr=JSON.parse(str);
+  end;
+  result:=arr;
+end;
+function JsonStringTo2DNumArray(const str:String):T2DNumArray;
+var
+  arr : T2DNumArray;
+begin
+  setlength(arr,0);
+  asm
+    arr = [];
+    arr=JSON.parse(str);
+  end;
+  result:=arr;
+end;
+
 
 //function ImgArrayToJsonString(ImgArray:TImgArray):String;
 //var

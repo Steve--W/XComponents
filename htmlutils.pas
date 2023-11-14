@@ -810,7 +810,10 @@ begin
     var object = {dataValue: TheData, timestamp: new Date().getTime()}
     localStorage.setItem(KeyName, JSON.stringify(object));
 //    localStorage.setItem(KeyName,TheData);
-    }catch(err) { alert(err.message+'  in HTMLUtils.WriteToLocalStore'); }
+    }catch(err) {
+      alert('Error on saving '+KeyName+' to Local Storage. See console for details');
+      console.log(err.message+'  in HTMLUtils.WriteToLocalStore');
+      }
     end;
   end;
 end;
@@ -859,11 +862,12 @@ begin
   asm
     var ob = document.getElementById(ObjectName);
     if (ob!=null) {
-      //var style = window.getComputedStyle(ob);
-      //var hh = style.height;
-      //h = parseInt(hh, 10);
       h = ob.offsetHeight;     //NB returns 0 if element is not yet rendered
-      //console.log('calculated height='+h);
+      if (h == 0) {
+        if (ob.parentNode!=undefined) {
+          h = ob.parentNode.offsetHeight;
+        }
+      }
     }
   end;
   result:=h;
@@ -877,12 +881,13 @@ begin
   asm
     var ob = document.getElementById(ObjectName);
     if (ob!=null) {
-      //var style = window.getComputedStyle(ob);
-      //var ww = style.width;
-      //w = parseInt(ww, 10);
       w = ob.offsetWidth;     //NB returns 0 if element is not yet rendered
-      //console.log('calculated Width='+w);
+      if (w==0) {
+        if (ob.parentNode!=undefined) {
+          w = ob.parentNode.offsetWidth;
+        }
       }
+    }
   end;
   result:=w;
 end;

@@ -1330,6 +1330,9 @@ procedure TXTabControl.SetmyTabIndex(const AValue: longint);
 var
   myTabSheetNode:String;
   idx:longint;
+  {$ifndef JScript}
+  oldpage:TXTabSheet;
+  {$endif}
 begin
   if myNode<>nil then
   begin
@@ -1342,7 +1345,12 @@ begin
     end;
     myNode.SetAttributeValue('TabIndex',inttostr(idx));
     {$ifndef JScript}
+    oldpage:= self.ActivePage;
     inherited TabIndex := idx;
+    if (self.ActivePage <> nil)
+    and (self.ActivePage <> oldpage)
+    and (HasProperty(self.ActivePage,'Name'))  then
+      self.TabPageChanged(self);   // added this here to ensure contents go through the resize steps
     {$else}
     if (idx>-1)
     and (length(myNode.ChildNodes)>idx) then

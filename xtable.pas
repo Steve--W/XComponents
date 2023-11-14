@@ -344,6 +344,8 @@ begin
   // non-numeric cells must be quoted.
   cw:=self.ColWidth;
   try
+    GridString:=GridString.replace(LineEnding,'\n');
+    GridString:=GridString.replace(#10,'\n');
     jData := GetJSON(GridString);
   except
     on E: Exception do
