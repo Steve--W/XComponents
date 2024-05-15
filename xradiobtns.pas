@@ -374,7 +374,7 @@ begin
   else
   begin
      NewIndex:=-1;         //??? needs checking out !!!!
-     TRadioGroup(myControl).ItemIndex:=-1;
+ //????    TRadioGroup(myControl).ItemIndex:=-1;
      //myNode.SetAttributeValue('ItemValue','');
   end;
   myNode.SetAttributeValue('ItemIndex',inttostr(NewIndex),'Integer',true);     // just so the attribute is set in the node

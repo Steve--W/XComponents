@@ -46,12 +46,14 @@ type
     function GetBoxWidth:string;
     function GetPasswordBox:Boolean;
     function GetHasFocus:Boolean;
+    function GetIncludeDataInSave:Boolean;
 
     procedure SetItemValue(AValue:string);
     procedure SetReadOnly(AValue:Boolean);
     procedure SetBoxWidth(AValue:string);
     procedure SetPasswordBox(AValue:Boolean);
     procedure SetHasFocus(AValue:Boolean);
+    procedure SetIncludeDataInSave(AValue:Boolean);
 
   protected
     { Protected declarations }
@@ -79,6 +81,7 @@ type
     property BoxWidth: String read GetBoxWidth write SetBoxWidth;
     property PasswordBox: Boolean read GetPasswordBox write SetPasswordBox;
     property HasFocus: Boolean read GetHasFocus write SetHasFocus;
+    property IncludeDataInSave:Boolean read GetIncludeDataInSave write SetIncludeDataInSave;
 
     {$ifndef JScript}
     // Events to be visible in Lazarus IDE
@@ -368,6 +371,10 @@ begin
   else
     result:=True;
 end;
+function TXEditBox.GetIncludeDataInSave:Boolean;
+begin
+  result:=MyStrToBool(MyNode.getAttribute('IncludeDataInSave',true).AttribValue);
+end;
 
 procedure TXEditBox.SetItemValue(AValue:string);
 begin
@@ -463,6 +470,10 @@ begin
   end;
   {$endif}
 end;
+procedure TXEditBox.SetIncludeDataInSave(AValue:Boolean);
+begin
+  myNode.SetAttributeValue('IncludeDataInSave',MyBoolToStr(AValue),'Boolean');
+end;
 
 begin
   // this is the set of node attributes that each TXEditBox instance will have.
@@ -476,7 +487,10 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'HasFocus','Boolean','False','',false,false);
   AddDefaultAttribute(myDefaultAttribs,'PasswordBox','Boolean','False','',false);
   AddDefaultAttribute(myDefaultAttribs,'ItemValue','String','','',false);
+  AddDefaultAttribute(myDefaultAttribs,'IncludeDataInSave','Boolean','True','If false, the editbox ItemValue will be excluded from saved system data',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
+
+  AddExclusionAttribToTable(MyNodeType,'IncludeDataInSave','ItemValue');
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);
   AddAttribOptions(MyNodeType,'LabelPos',LabelPosOptions);

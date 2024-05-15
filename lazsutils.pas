@@ -19,9 +19,12 @@ interface
 
 uses
   Classes, Controls,StdCtrls, SysUtils, LCLIntf, ProjectIntf, LazIDEIntf, LResources, Dialogs, Types, Forms, Graphics,Clipbrd,
-  PropEdits, RTTICtrls, TypInfo, Menus,
+  PropEdits, RTTICtrls, TypInfo, Menus,  LazHelpHTML,
   {$ifdef Chromium}
   uCEFChromium, uCEFWindowParent, uCEFInterfaces, uCEFConstants, uCEFTypes, uCEFChromiumEvents,
+  {$endif}
+  {$if defined ( windows)}
+  UTF8Process,
   {$endif}
   StringUtils, NodeUtils, Pas2jsCompiler;
 
@@ -89,6 +92,7 @@ function ResourceToString(resName:string):String;
 procedure ResourceToFile(resName,fileName:string);
 procedure CascadeResize(myComponent:TControl);
 procedure ResizeMe(myNode:TDataNode);
+procedure WinLaunchBrowser(FileName:String);
 
 const
   glbBorderWidth:integer = 3;
@@ -1378,6 +1382,40 @@ var
 begin
   str:=ResourceToString(resName);
   WriteToFile(fileName,str);
+end;
+
+procedure WinLaunchBrowser(FileName:String);
+var
+  v: THTMLBrowserHelpViewer;
+  BrowserPath, BrowserParams: string;
+  p: LongInt;
+  BrowserProcess: TProcessUTF8;
+begin
+  // procedure to open a fresh browser instance on the desktop, and load the URL
+  //!! if 2 of these in quick succession, we still get one browser instance with 2 tabs...
+  {$if defined ( windows)}
+  v:=THTMLBrowserHelpViewer.Create(nil);
+  try
+    v.FindDefaultBrowser(BrowserPath,BrowserParams);
+
+//    URL:='http://www.lazarus.freepascal.org';
+    p:=System.Pos('%s', BrowserParams);
+    System.Delete(BrowserParams,p,2);
+    System.Insert(FileName,BrowserParams,p);
+
+    // start browser
+    BrowserParams:='--new-window "'+FileName+'"';       //!! works for Chrome...
+    BrowserProcess:=TProcessUTF8.Create(nil);
+    try
+      BrowserProcess.CommandLine:=BrowserPath+BrowserParams;
+      BrowserProcess.Execute;
+    finally
+      BrowserProcess.Free;
+    end;
+  finally
+    v.Free;
+  end;
+  {$endif}
 end;
 
 

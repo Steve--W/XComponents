@@ -243,7 +243,7 @@ begin
   // expecting this is a URL link to web page...
   // pop up a separate browser (works for windows...)
   if ((FoundString(AnURL,'://') > 0) and (FoundString(AnURL,'http') = 1)) then
-    WinLaunchBrowser(AnURL,Handled);
+    self.WinLaunchBrowser(AnURL,Handled);
   if not Handled then
   begin
     htmlViewer := TFrameViewer(Sender).ActiveViewer;

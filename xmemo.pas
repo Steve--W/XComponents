@@ -263,8 +263,6 @@ begin
   asm
     try{
 
-
-
     var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
     var HTMLString='';
