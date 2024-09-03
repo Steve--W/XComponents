@@ -20,9 +20,9 @@ uses
   {$ifndef JScript}
   fpjson,    jsonparser,
   LResources, Forms, Controls, ComCtrls, StdCtrls, Grids,Graphics, Dialogs, ExtCtrls, Propedits,RTTICtrls,
-  LazsUtils,
+  LazsUtils, Clipbrd,
   {$else}
-  HTMLUtils,
+  HTMLUtils, PasteDialogUnit,
   {$endif}
   WrapperPanel,Events;
 
@@ -31,6 +31,8 @@ procedure AddTableStyles(dummy:string);
 procedure TableChange(Sender:TObject;NodeName,NameSpace:String) ;
 function CellClick(target:TObject; NodeName,NameSpace:String):String;
 function KeyDown(target:TObject; NodeName,NameSpace:String):Boolean;
+procedure CopyButtonClick(target:TObject;NodeName,NameSpace:String);
+procedure PasteButtonClick(target:TObject;NodeName,NameSpace:String);
 {$endif}
 
 type TTableCellsArray = Array of Array of String;
@@ -44,10 +46,17 @@ type
   private
     { Private declarations }
     {$ifndef JScript}
+    btnControlCopy:TButton;
+    btnControlPaste:TButton;
+    btnPanel : TCustomPanel ;
     fHandleClick:TEventHandler;
+    fHandleCopyBtnClick:TEventHandler;
+    fHandlePasteBtnClick:TEventHandler;
 
     procedure Tableclick(Sender:TObject);
     procedure TableChange(Sender:TObject);
+    procedure CopyBtnClick(Sender:TObject);
+    procedure PasteBtnClick(Sender:TObject);
     //procedure TableCellChange(Sender:TObject;ARow,ACol:longint;const AValue:String);
     procedure TableMouseUp(Sender: TObject;Button: TMouseButton; Shift: TShiftState; X,Y:Longint);
     procedure TableMouseDown(Sender: TObject;Button: TMouseButton; Shift: TShiftState; X,Y:Longint);
@@ -68,6 +77,8 @@ type
     function GetHasHeaderRow:Boolean;
     function GetIsNumeric:Boolean;
     function GetIncludeDataInSave:Boolean;
+    function GetShowCopyButton:Boolean;
+    function GetShowPasteButton:Boolean;
 
     procedure SetReadOnly(AValue:Boolean);
     procedure SetTableWidth(AValue:string);
@@ -82,6 +93,8 @@ type
     procedure SetHasHeaderRow(AValue:Boolean);
     procedure SetIsNumeric(AValue:Boolean);
     procedure SetIncludeDataInSave(AValue:Boolean);
+    procedure SetShowCopyButton(AValue:Boolean);
+    procedure SetShowPasteButton(AValue:Boolean);
   protected
     { Protected declarations }
 //    procedure LinkLoadFromProperty(Sender: TObject);  override;
@@ -96,12 +109,14 @@ type
     constructor Create(TheOwner: TComponent;IsDynamic:Boolean); override;
     {$else}
     constructor Create(MyForm:TForm;NodeName,NameSpace:String);
+    procedure PasteButtonCompletion(strg:String);
     {$endif}
 
     {$ifndef JScript}
     procedure PopulateMeFromJSONData(GridString:String);
     procedure PopulateStringGrid(gridData:String);
     procedure AddRowFromJSONData(rownum:integer; jData : TJSONData);
+    procedure ResetAnchors;
     {$endif}
     function QuoteCellForJSON(cellval:String; rownum:integer):String;
     function ConstructDataString:String;
@@ -121,6 +136,7 @@ type
     procedure DeleteColumn(c:integer);
     procedure DeleteSelectedRow;
     procedure DeleteSelectedColumn;
+    procedure ShowHideButtonPanel(ShowPanel,Cpy,Pst:Boolean);
   published
     { Published declarations }
     // Properties defined for this class...
@@ -137,6 +153,8 @@ type
     property HasHeaderRow:Boolean read GetHasHeaderRow write SetHasHeaderRow;
     property IsNumeric:Boolean read GetIsNumeric write SetIsNumeric;
     property IncludeDataInSave:Boolean read GetIncludeDataInSave write SetIncludeDataInSave;
+    property ShowCopyButton:Boolean read GetShowCopyButton write SetShowCopyButton;
+    property ShowPasteButton:Boolean read GetShowPasteButton write SetShowPasteButton;
 
     {$ifndef JScript}
     // Events to be visible in Lazarus IDE
@@ -200,6 +218,40 @@ begin
   TStringGrid(myControl).OnMouseDown:=@self.TableMouseDown;
   TStringGrid(myControl).OnMouseUp:=@self.TableMouseUp;
 
+  /////////////////////  add button panel for copy and paste //////////
+  btnPanel := TCustomPanel.Create(self);
+  btnPanel.parent := self;
+  btnPanel.SetSubComponent(true);
+  btnPanel.Align:=alBottom;
+  btnPanel.ControlStyle := myControl.ControlStyle - [csNoDesignSelectable];
+  btnPanel.Anchors := [akBottom];
+  btnPanel.AnchorSideBottom.Control := self;
+  btnPanel.AnchorSideBottom.Side := asrBottom;
+  btnPanel.BorderStyle:=bsNone;
+  btnPanel.BevelInner:=bvNone;
+  btnPanel.BevelOuter:=bvNone;
+  btnPanel.Height:=30;
+
+  btnControlCopy := TButton.Create(btnPanel);
+  btnControlCopy.parent := btnPanel;
+  btnControlCopy.SetSubComponent(true);
+  btnControlCopy.ControlStyle := myControl.ControlStyle - [csNoDesignSelectable];
+  btnControlCopy.Caption:='Copy';
+  btnControlPaste := TButton.Create(btnPanel);
+  btnControlPaste.parent := btnPanel;
+  btnControlPaste.SetSubComponent(true);
+  btnControlPaste.ControlStyle := myControl.ControlStyle - [csNoDesignSelectable];
+  btnControlPaste.Caption:='Paste';
+  btnControlPaste.Anchors := [akTop,akLeft];
+  btnControlPaste.AnchorSideTop.Control := btnControlCopy;
+  btnControlPaste.AnchorSideLeft.Control := btnControlCopy;
+  btnControlPaste.AnchorSideLeft.Side := asrRight;
+  btnControlCopy.OnClick:=@self.CopyBtnClick;
+  btnControlPaste.OnClick:=@self.PasteBtnClick;
+  /////////////////////////////////////////////////////////////////////
+
+
+
   self.SetMyEventTypes;
 
   CreateComponentDataNode2(self,MyNodeType,myDefaultAttribs, self.myEventTypes, TheOwner,IsDynamic);
@@ -222,6 +274,48 @@ var
 begin
   NewNode:=CreateDynamicLazWidget('TXTable',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
   result:=NewNode;
+end;
+
+procedure TXTable.ResetAnchors;
+var
+  theLbl:TLabel;
+begin
+  // take account of the (non-standard) presence of the button panel within the outer wrapperpanel.
+  TStringGrid(myControl).Anchors := [akTop,akBottom,akLeft,akRight];
+  TStringGrid(myControl).AnchorSideLeft.Control:=self;
+  TStringGrid(myControl).AnchorSideLeft.Side:=asrLeft;
+  TStringGrid(myControl).AnchorSideRight.Control:=self;
+  TStringGrid(myControl).AnchorSideRight.Side:=asrRight;
+  TStringGrid(myControl).AnchorSideTop.Control:=self;
+  TStringGrid(myControl).AnchorSideTop.Side:=asrTop;
+  TStringGrid(myControl).AnchorSideBottom.Control:=self;
+  TStringGrid(myControl).AnchorSideBottom.Side:=asrBottom;
+  if btnPanel.Visible then
+  begin
+    TStringGrid(myControl).AnchorSideBottom.Control:=btnPanel;
+    TStringGrid(myControl).AnchorSideBottom.Side:=asrTop;
+  end;
+
+  if self.myLbl<>nil then
+  begin
+    theLbl := self.myLbl;
+    if self.LabelPos='Top' then
+    begin
+      TStringGrid(myControl).AnchorSideTop.Control:=theLbl;
+      TStringGrid(myControl).AnchorSideTop.Side:=asrBottom;
+    end;
+    if self.LabelPos='Bottom' then
+    begin
+      TStringGrid(myControl).AnchorSideBottom.Control:=theLbl;
+      TStringGrid(myControl).AnchorSideBottom.Side:=asrTop;
+      if btnPanel.Visible then
+      begin
+        theLbl.AnchorSideBottom.Control:=btnPanel;
+        theLbl.AnchorSideBottom.Side:=asrTop;
+      end;
+    end;
+  end;
+
 end;
 
 procedure TXTable.TableChange(Sender:TObject) ;
@@ -285,9 +379,11 @@ procedure TXTable.SetTableWidth(AValue:string);
 var
   tc:TControl;
 begin
-  tc:=self.myControl;
+  //tc:=self.myControl;
+  tc:=self;
   myNode.SetAttributeValue('TableWidth',AValue);
   SetHeightWidth(self.myNode,tc,'TableWidth','TableHeight');
+  self.ResetAnchors;
 
 end;
 
@@ -295,9 +391,11 @@ procedure TXTable.SetTableHeight(AValue:string);
 var
   tc:TControl;
 begin
-  tc:=self.myControl;
+  //tc:=self.myControl;
+  tc:=self;
   myNode.SetAttributeValue('TableHeight',AValue);
   SetHeightWidth(self.myNode,tc,'TableWidth','TableHeight');
+  self.ResetAnchors;
 end;
 
 procedure TXTable.SetColWidth(AValue:integer);
@@ -478,7 +576,28 @@ begin
   else
     result:='';
 end;
-
+procedure TXTable.CopyBtnClick(Sender: TObject) ;
+var
+      strg:String;
+begin
+   if not (csDesigning in componentState) then
+   if (not SuppressEvents) then
+   begin
+     strg:=GetTableDataForExcel;
+     myCopyToClip('String',strg);
+   end;
+end;
+procedure TXTable.PasteBtnClick(Sender: TObject) ;
+var
+      strg:String;
+begin
+   if not (csDesigning in componentState) then
+   if (not SuppressEvents) then
+   begin
+     strg :=  Clipboard.AsText;
+     LoadTableFromExcelCopy(strg);
+   end;
+end;
 {$else}
 constructor TXTable.Create(MyForm:TForm;NodeName,NameSpace:String);
 begin
@@ -637,7 +756,7 @@ end;
 function CreateWidget(MyNode, ParentNode:TDataNode;ScreenObjectName,NameSpace:string;position:integer;Alignment:String):TDataNode;
 var
   Checked,ReadOnly,LabelText,LabelPos:string;
-  OnChangeString, OnFocusOutString, OnClickString, OnKeyString:String;
+  OnChangeString, OnFocusOutString, OnClickString, OnKeyString,BtnClickString1,BtnClickString2:String;
 begin
   //showmessage('create table widget.  current TableData is '+MyNode.getAttribute('TableData',true).AttribValue);
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
@@ -649,6 +768,8 @@ begin
                           '" ';
   OnFocusOutString:='onfocusout="pas.XTable.TableChange(this,'''+ScreenObjectName+''','''+NameSpace+''');"';
   OnKeyString:='onkeydown="if (!pas.XTable.KeyDown(event.target,'''+ScreenObjectName+''','''+NameSpace+''')) {return false;}"';
+  BtnClickString1:='onclick="event.stopPropagation();pas.XTable.CopyButtonClick(event.target,'''+ScreenObjectName+''','''+NameSpace+''');"';
+  BtnClickString2:='onclick="event.stopPropagation();pas.XTable.PasteButtonClick(event.target,'''+ScreenObjectName+''','''+NameSpace+''');"';
   asm
     try{
     pas.XTable.AddTableStyles('');
@@ -671,7 +792,7 @@ begin
                       OnClickString +
                       OnKeyString +
                        OnFocusOutString +
-                       ' style="display:inline-block; overflow:scroll; width:100%; height:100%;" '+
+                       ' style="display:inline-block; overflow:scroll; width:100%; height:90%;" '+
                        ReadOnlyString+' >' +
                          '<tr>'+
                            '<th>1</th>'+
@@ -681,7 +802,20 @@ begin
                          '<tbody></tbody>'+
                        '</table> ';
 
-    HTMLString = labelstring+TableString;
+    var ButtonBarString = '<div  id="'+MyObjectName+'Btns" '+
+                                          'style="height:30px;width:100%; ">'+
+                      '<input type="button" id='+MyObjectName+'Cpy '+
+                                            'style="display: inline-block; float: left;" '+
+                       BtnClickString1+
+                       ' value = "Copy" >'+
+                       '</input>' +
+                       '<input type="button" id='+MyObjectName+'Pst '+
+                                             'style="display: inline-block; float: left;" '+
+                        BtnClickString2+
+                        ' value = "Paste" >'+
+                        '</input>' +
+                       '</div>  ';
+    HTMLString = labelstring+TableString+ButtonBarString;
 
     var wrapper=document.getElementById(wrapperid);
     wrapper.insertAdjacentHTML('beforeend', HTMLString);
@@ -869,7 +1003,40 @@ begin
 
 end;
 
+procedure CopyButtonClick(target:TObject;NodeName,NameSpace:String);
+var
+  TargetNode:TXTable;
+  strg:String;
+begin
+  if (not SuppressEvents) then
+  begin
+    TargetNode:=TXTable(FindDataNodeByid(SystemNodeTree,NodeName,NameSpace,true));
+
+    strg:=TargetNode.GetTableDataForExcel;
+    myCopyToClip('String',strg);
+  end;
+end;
+procedure PasteButtonClick(target:TObject;NodeName,NameSpace:String);
+var
+  TargetNode:TXTable;
+  strg:String;
+begin
+  if (not SuppressEvents) then
+  begin
+    TargetNode:=TXTable(FindDataNodeByid(SystemNodeTree,NodeName,NameSpace,true));
+
+    strg:=mygetClipboardData('TableData',TargetNode);
+  end;
+end;
+procedure TXTable.PasteButtonCompletion(strg:String);
+begin
+  if (not SuppressEvents) then
+  begin
+    LoadTableFromExcelCopy(strg);
+  end;
+end;
 {$endif}
+
 
 procedure TXTable.SetCellValue(row,col:integer;AValue:string);
 begin
@@ -1119,6 +1286,14 @@ function TXTable.GetIncludeDataInSave:Boolean;
 begin
   result:=MyStrToBool(MyNode.getAttribute('IncludeDataInSave',true).AttribValue);
 end;
+function TXTable.GetShowCopyButton:Boolean;
+begin
+  result:=MyStrToBool(MyNode.getAttribute('ShowCopyButton',true).AttribValue);
+end;
+function TXTable.GetShowPasteButton:Boolean;
+begin
+  result:=MyStrToBool(MyNode.getAttribute('ShowPasteButton',true).AttribValue);
+end;
 
 function TXTable.GetSelectedRow:integer;
 var
@@ -1206,6 +1381,63 @@ end;
 procedure TXTable.SetIncludeDataInSave(AValue:Boolean);
 begin
   myNode.SetAttributeValue('IncludeDataInSave',MyBoolToStr(AValue),'Boolean');
+end;
+procedure TXTable.SetShowCopyButton(AValue:Boolean);
+begin
+  myNode.SetAttributeValue('ShowCopyButton',MyBoolToStr(AValue),'Boolean');
+  if (self.ShowCopyButton = True) or (self.ShowPasteButton = True) then
+    self.ShowHideButtonPanel(True,self.ShowCopyButton,self.ShowPasteButton)
+  else
+    self.ShowHideButtonPanel(False,False,False);
+end;
+procedure TXTable.SetShowPasteButton(AValue:Boolean);
+begin
+  myNode.SetAttributeValue('ShowPasteButton',MyBoolToStr(AValue),'Boolean');
+  if (self.ShowCopyButton = True) or (self.ShowPasteButton = True) then
+    self.ShowHideButtonPanel(True,self.ShowCopyButton,self.ShowPasteButton)
+  else
+    self.ShowHideButtonPanel(False,False,False);
+end;
+
+procedure TXTable.ShowHideButtonPanel(ShowPanel,Cpy,Pst:Boolean);
+begin
+  {$ifndef JScript}
+  self.btnPanel.Visible:=ShowPanel;
+  if Cpy then
+    self.btnControlCopy.Visible:=true
+  else
+    self.btnControlCopy.Visible:=false;
+  if Pst then
+    self.btnControlPaste.Visible:=true
+  else
+    self.btnControlPaste.Visible:=false;
+  self.ResetAnchors;
+  {$else}
+  asm
+  var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsBtns');
+  var bcpy = document.getElementById(this.NameSpace+this.NodeName+'ContentsCpy');
+  var bpst = document.getElementById(this.NameSpace+this.NodeName+'ContentsPst');
+  if (ob != null) {
+    if (ShowPanel) {
+      ob.style.display = 'block';
+      if (Cpy) {
+        bcpy.style.display = 'inline-block';
+      }
+      else {
+        bcpy.style.display = 'none';
+      }
+      if (Pst) {
+        bpst.style.display = 'inline-block';
+      }
+      else {
+        bpst.style.display = 'none';
+      }
+      }
+    else {
+      ob.style.display = 'none';}
+  }
+  end;
+  {$endif}
 end;
 
 procedure TXTable.AddTableRows(numRows:integer);
@@ -1480,6 +1712,8 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'ColWidth','Integer','40','',false);
   AddDefaultAttribute(myDefaultAttribs,'SelectedValue','String','','',false,false);
   AddDefaultAttribute(myDefaultAttribs,'IncludeDataInSave','Boolean','True','If false, the table contents will be excluded from saved system data',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowCopyButton','Boolean','False','show the Copy button',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowPasteButton','Boolean','False','show the Paste button',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddExclusionAttribToTable(MyNodeType,'IncludeDataInSave','TableData');

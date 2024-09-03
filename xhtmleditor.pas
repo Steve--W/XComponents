@@ -80,6 +80,7 @@ type
     function GetShowUnderline:Boolean;
     function GetShowStrikethrough:Boolean;
     function GetShowSuperscript:Boolean;
+    function GetShowMaths:Boolean;
 
     procedure SetIsEmbedded(AValue:Boolean);
     procedure SetIsEditable(AValue:Boolean);
@@ -99,6 +100,7 @@ type
     procedure SetShowUnderline(AValue:Boolean);
     procedure SetShowStrikethrough(AValue:Boolean);
     procedure SetShowSuperscript(AValue:Boolean);
+    procedure SetShowMaths(AValue:Boolean);
   protected
 
     Procedure PopUpBrowser;
@@ -148,12 +150,15 @@ type
     property ShowUnderline:Boolean read GetShowUnderline write SetShowUnderline;
     property ShowStrikethrough:Boolean read GetShowStrikethrough write SetShowStrikethrough;
     property ShowSuperscript:Boolean read GetShowSuperscript write SetShowSuperscript;
+    property ShowMaths:Boolean read GetShowMaths write SetShowMaths;
 
     // Events to be visible in Lazarus IDE
     property HandleChange: TEventHandler read FHandleChange write FHandleChange;
   end;
 
    procedure dotest;
+   function BuildMathsMenu:TStringList;
+   function BuildMathsList:TStringList;
 
 implementation
 
@@ -521,7 +526,11 @@ begin
 end;
 function TXHTMLEditor.GetShowSuperscript:Boolean;
 begin
-  result:=myStrToBool(myNode.getAttribute('Superscript',true).AttribValue);
+  result:=myStrToBool(myNode.getAttribute('ShowSuperscript',true).AttribValue);
+end;
+function TXHTMLEditor.GetShowMaths:Boolean;
+begin
+  result:=myStrToBool(myNode.getAttribute('ShowMaths',true).AttribValue);
 end;
 
 procedure TXHTMLEditor.SetIsEmbedded(AValue:Boolean);
@@ -660,6 +669,14 @@ begin
     self.SourceText:=self.SourceText;
   end;
 end;
+procedure TXHTMLEditor.SetShowMaths(AValue:Boolean);
+begin
+  if myNode<>nil then
+  begin
+    myNode.SetAttributeValue('ShowMaths',myBoolToStr(AValue),'Boolean');
+    self.SourceText:=self.SourceText;
+  end;
+end;
 
 procedure TXHTMLEditor.SetSourceText(AValue:String);
 Var URLStringList:TStringList;
@@ -750,7 +767,7 @@ function TXHTMLEditor.CreateTextURL:tstringlist;
 var WYSIWYGHEADER,WYSIWYGFOOTER,HelpText,OutputStringList: TStringList;
   startstring, endstring:String;
   InnerStartLength,InnerEndLength:integer;
-  ActionBarClass:String;
+  ActionBarClass,MathsBarClass:String;
   i:integer;
 begin
 
@@ -862,6 +879,10 @@ WYSIWYGHEADER.Add('.showActionBar {background-color:powderblue; border-style: so
 WYSIWYGHEADER.Add('}');
 WYSIWYGHEADER.Add('.hideActionBar {height:0px;');
 WYSIWYGHEADER.Add('}');
+WYSIWYGHEADER.Add('.showMathsBar {background-color:powderblue; border-style: solid; border-width:thin;');
+WYSIWYGHEADER.Add('}');
+WYSIWYGHEADER.Add('.hideMathsBar {height:0px;');
+WYSIWYGHEADER.Add('}');
 WYSIWYGHEADER.Add('');
 WYSIWYGHEADER.Add('</style>');
 WYSIWYGHEADER.Add('<style>');
@@ -893,13 +914,20 @@ WYSIWYGHEADER.Add('<body>');
 WYSIWYGHEADER.Add('');
 WYSIWYGHEADER.Add('<div id="FrameContent" class="content" style="display:flex;flex-direction:column;background-color:powderblue; height:100%">');
 WYSIWYGHEADER.Add(myNode.GetAttribute('HeaderHTML',false).AttribValue);
+
 if IsEditable=true then ActionBarClass := 'showActionBar'
 else ActionBarClass:='hideActionBar';
 WYSIWYGHEADER.Add('      <div id="MyActionBar" class="'+ActionBarClass+'" >');
 WYSIWYGHEADER.Add('      </div>');
-WYSIWYGHEADER.Add('      <div id="editor" class="wysiwyg" style="flex-grow: 1; width: 100%; overflow:auto;background-color:white; border-style: solid;border-width:thin;">');
 
+if ShowMaths=true then MathsBarClass := 'showMathsBar'
+else MathsBarClass:='hideMathsBar';
+WYSIWYGHEADER.Add('      <div id="MyMathsBar" class="'+MathsBarClass+'" >');
+WYSIWYGHEADER.Add('      </div>');
+
+WYSIWYGHEADER.Add('      <div id="editor" class="wysiwyg" style="flex-grow: 1; width: 100%; overflow:auto;background-color:white; border-style: solid;border-width:thin;">');
 WYSIWYGFOOTER.Add('      </div>');
+
 WYSIWYGFOOTER.Add(myNode.GetAttribute('FooterHTML',false).AttribValue);
 WYSIWYGFOOTER.Add('    </div>');
 WYSIWYGFOOTER.Add('<script>');
@@ -961,10 +989,18 @@ WYSIWYGFOOTER.Add('');
 end;
 if self.ShowSuperscript = true then
 begin
-WYSIWYGFOOTER.Add(' Superscript: {');
+WYSIWYGFOOTER.Add(' superscript: {');
 WYSIWYGFOOTER.Add('      icon: "<b><sup>s</sup></b>",');
 WYSIWYGFOOTER.Add('      title: "superscript",');
+WYSIWYGFOOTER.Add('      state: () => queryCommandState("superscript"),');
 WYSIWYGFOOTER.Add('      result: () => exec("superscript")');
+WYSIWYGFOOTER.Add('  },');
+WYSIWYGFOOTER.Add('');
+WYSIWYGFOOTER.Add(' subscript: {');
+WYSIWYGFOOTER.Add('      icon: "<b><sub>s</sub></b>",');
+WYSIWYGFOOTER.Add('      title: "subscript",');
+WYSIWYGFOOTER.Add('      state: () => queryCommandState("subscript"),');
+WYSIWYGFOOTER.Add('      result: () => exec("subscript")');
 WYSIWYGFOOTER.Add('  },');
 WYSIWYGFOOTER.Add('');
 end;
@@ -1209,7 +1245,11 @@ WYSIWYGFOOTER.Add('//      const url = window.prompt("Enter the image URL")');
 WYSIWYGFOOTER.Add('//      if (url) exec("insertImage", url)');
 WYSIWYGFOOTER.Add('//    }');
 WYSIWYGFOOTER.Add('//  }');
-WYSIWYGFOOTER.Add('}');
+WYSIWYGFOOTER.Add('}');     ////// end of defaultActions list
+
+if ShowMaths = true then
+  WYSIWYGFOOTER.AddStrings(BuildMathsList);
+
 WYSIWYGFOOTER.Add('const defaultClasses = {');
 WYSIWYGFOOTER.Add('  actionbar: "wysiwyg-actionbar",');
 WYSIWYGFOOTER.Add('  button: "wysiwyg-button",');
@@ -1217,6 +1257,8 @@ WYSIWYGFOOTER.Add('  content: "wysiwyg-content",');
 WYSIWYGFOOTER.Add('  selected: "wysiwyg-button-selected"');
 WYSIWYGFOOTER.Add('}');
 WYSIWYGFOOTER.Add('//export');
+
+
 WYSIWYGFOOTER.Add('const init = settings => {');
 WYSIWYGFOOTER.Add('	const actions = settings.actions');
 WYSIWYGFOOTER.Add('    ? (');
@@ -1227,6 +1269,18 @@ WYSIWYGFOOTER.Add('        return action');
 WYSIWYGFOOTER.Add('      })');
 WYSIWYGFOOTER.Add('    )');
 WYSIWYGFOOTER.Add('    : Object.keys(defaultActions).map(action => defaultActions[action])');
+
+WYSIWYGFOOTER.Add('	const maths = settings.maths');
+WYSIWYGFOOTER.Add('    ? (');
+WYSIWYGFOOTER.Add('      settings.maths.map(mathSymbol => {');
+WYSIWYGFOOTER.Add('        if (typeof mathSymbol === "string") return MathsList[mathSymbol]');
+WYSIWYGFOOTER.Add('        else if (MathsList[mathSymbol.name]) return { ...MathsList[mathSymbol.name], ...mathSymbol }');
+WYSIWYGFOOTER.Add('        return mathSymbol');
+WYSIWYGFOOTER.Add('      })');
+WYSIWYGFOOTER.Add('    )');
+WYSIWYGFOOTER.Add('    : Object.keys(MathsList).map(mathSymbol => MathsList[mathSymbol])');
+
+
 WYSIWYGFOOTER.Add('	const classes = { ...defaultClasses, ...settings.classes }');
 WYSIWYGFOOTER.Add('	const defaultParagraphSeparator = settings[defaultParagraphSeparatorString] || "div"');
 
@@ -1247,6 +1301,22 @@ begin
   WYSIWYGFOOTER.Add('      var referenceNode = document.getElementById("editor");');
   WYSIWYGFOOTER.Add('      referenceNode.before(actionbar);');
   WYSIWYGFOOTER.Add('    }');
+
+  WYSIWYGFOOTER.Add('	const mathsbar = createElement("div")');
+  WYSIWYGFOOTER.Add('	mathsbar.style.border = "solid"');
+  WYSIWYGFOOTER.Add('	mathsbar.style.borderWidth="thin"');
+  WYSIWYGFOOTER.Add('	mathsbar.style.width = "100%"');
+  WYSIWYGFOOTER.Add('    mathsbar.className = classes.actionbar');
+  WYSIWYGFOOTER.Add('    // detect IE8 and above, and edge');
+  WYSIWYGFOOTER.Add('    if (document.documentMode || /Edge/.test(navigator.userAgent)) {');
+  WYSIWYGFOOTER.Add('      appendChild(document.getElementById("MyMathsBar"), mathsbar)');
+  WYSIWYGFOOTER.Add('    }');
+  WYSIWYGFOOTER.Add('    else');
+  WYSIWYGFOOTER.Add('    {');
+  WYSIWYGFOOTER.Add('      var referenceNode = document.getElementById("editor");');
+  WYSIWYGFOOTER.Add('      referenceNode.before(mathsbar);');
+  WYSIWYGFOOTER.Add('    }');
+
 end;
 
 WYSIWYGFOOTER.Add('	const content = settings.element.content = createElement("div")');
@@ -1266,7 +1336,7 @@ WYSIWYGFOOTER.Add('    appendChild(settings.element, content)');
 if IsEditable = true
 then
 begin
-WYSIWYGFOOTER.Add('    actions.forEach(action => {');
+WYSIWYGFOOTER.Add('  actions.forEach(action => {');
 WYSIWYGFOOTER.Add('    const button = createElement("button")');
 WYSIWYGFOOTER.Add('    button.className = classes.button');
 WYSIWYGFOOTER.Add('    button.innerHTML = action.icon');
@@ -1282,11 +1352,15 @@ WYSIWYGFOOTER.Add('      addEventListener(button, "click", handler)');
 WYSIWYGFOOTER.Add('    }');
 WYSIWYGFOOTER.Add('    appendChild(actionbar, button)');
 WYSIWYGFOOTER.Add('  })');
+if ShowMaths = true then
+  WYSIWYGFOOTER.AddStrings(BuildMathsMenu);
 end;
 WYSIWYGFOOTER.Add('  if (settings.styleWithCSS) exec("styleWithCSS")');
 WYSIWYGFOOTER.Add('  exec(defaultParagraphSeparatorString, defaultParagraphSeparator)');
 WYSIWYGFOOTER.Add('  return settings.element');
 WYSIWYGFOOTER.Add('}');
+
+
 WYSIWYGFOOTER.Add('//export');
 WYSIWYGFOOTER.Add('//default');
 WYSIWYGFOOTER.Add('// { exec, init }');
@@ -1312,6 +1386,192 @@ WYSIWYGHEADER.Free;
 WYSIWYGFOOTER.Free;
 HelpText.Free;
 
+end;
+
+function BuildMathsList:TStringList;
+var
+  HTMLString:TStringList;
+begin
+  HTMLString:=TStringList.Create;
+  HTMLString.Add('const MathsList = {');
+  HTMLString.Add('');
+  HTMLString.Add('sum: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><span class=&quot;limits&quot;><span class=&quot;limit&quot;><span class=&quot;bigoperator&quot;>∑</span></span></span></span>",');
+  HTMLString.Add('    title: "Sum",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><span class=&quot;limits&quot;><span class=&quot;limit&quot;><span class=&quot;bigoperator&quot;>∑</span></span></span></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('integral: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><span class=&quot;limits&quot;><span class=&quot;limit&quot;><span class=&quot;bigoperator integral&quot;>∫</span></span></span><span class=&quot;scripts&quot;><sup class=&quot;script&quot;>1</sup><sub class=&quot;script&quot;>0</sub></span></span>",');
+  HTMLString.Add('    title: "Integral",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><span class=&quot;limits&quot;><span class=&quot;limit&quot;><span class=&quot;bigoperator integral&quot;>∫</span></span></span><span class=&quot;scripts&quot;><sup class=&quot;script&quot;>1</sup><sub class=&quot;script&quot;>0</sub></span></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('infinity: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;>∞</span>",');
+  HTMLString.Add('    title: "Infinity",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;>∞</span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('greaterOrEqual: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;>≥</span>",');
+  HTMLString.Add('    title: "Greater or Equal",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;>≥</span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('lessOrEqual: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;>≤</span>",');
+  HTMLString.Add('    title: "Less or Equal",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;>≤</span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('equivalent: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;>≡</span>",');
+  HTMLString.Add('    title: "Equivalent",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;>≡</span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('approx: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;>≈</span>",');
+  HTMLString.Add('    title: "Approximately",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;>≈</span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('plusminus: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;>±</span>",');
+  HTMLString.Add('    title: "Plus or Minus",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;>±</span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+
+  HTMLString.Add('bigcup: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><span class=&quot;limits&quot;><span class=&quot;limit&quot;><span class=&quot;bigoperator&quot;>⋃</span></span></span></span>",');
+  HTMLString.Add('    title: "BigCup",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><span class=&quot;limits&quot;><span class=&quot;limit&quot;><span class=&quot;bigoperator&quot;>⋃</span></span></span></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('bigvee: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><span class=&quot;limits&quot;><span class=&quot;limit&quot;><span class=&quot;bigoperator&quot;>⋁</span></span></span></span>",');
+  HTMLString.Add('    title: "BigVee",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><span class=&quot;limits&quot;><span class=&quot;limit&quot;><span class=&quot;bigoperator&quot;>⋁</span></span></span></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('joint: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><span class=&quot;limits&quot;><span class=&quot;limit&quot;><span class=&quot;bigoperator&quot;>∮</span></span></span></span>",');
+  HTMLString.Add('    title: "Joint",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><span class=&quot;limits&quot;><span class=&quot;limit&quot;><span class=&quot;bigoperator&quot;>∮</span></span></span></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+
+  // Greek Letters...............
+  HTMLString.Add('alpha: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><i>α</i></span>",');
+  HTMLString.Add('    title: "alpha",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><i>α</i></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('beta: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><i>β</i></span>",');
+  HTMLString.Add('    title: "beta",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><i>β</i></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('gamma: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><i>γ</i></span>",');
+  HTMLString.Add('    title: "gamma",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><i>γ</i></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('delta: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><i>δ</i></span>",');
+  HTMLString.Add('    title: "delta",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><i>δ</i></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('epsilon: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><i>ϵ</i></span>",');
+  HTMLString.Add('    title: "epsilon",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><i>ϵ</i></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('theta: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><i>θ</i></span>",');
+  HTMLString.Add('    title: "theta",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><i>θ</i></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('lambda: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><i>λ</i></span>",');
+  HTMLString.Add('    title: "lambda",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><i>λ</i></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('mu: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><i>μ</i></span>",');
+  HTMLString.Add('    title: "mu",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><i>μ</i></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('phi: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><i>φ</i></span>",');
+  HTMLString.Add('    title: "phi",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><i>φ</i></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('omega: {');
+  HTMLString.Add('    icon: "<span class=&quot;formula&quot;><i>ω</i></span>",');
+  HTMLString.Add('    title: "omega",');
+  HTMLString.Add('    result: () => {');
+  HTMLString.Add('          exec("insertHTML","<span class=&quot;formula&quot;><i>ω</i></span>"); ');
+  HTMLString.Add('    },');
+  HTMLString.Add('},');
+  HTMLString.Add('}');     ////// end of MathsList
+  result:=HTMLString;
+end;
+
+
+function BuildMathsMenu:TStringList;
+var
+  HTMLString:TStringList;
+begin
+  HTMLString:=TStringList.Create;
+  HTMLString.Add('  maths.forEach(mathsSymbol => {');
+  HTMLString.Add('    const button = createElement("button")');
+  HTMLString.Add('    button.className = classes.button');
+  HTMLString.Add('    button.innerHTML = mathsSymbol.icon');
+  HTMLString.Add('    button.title = mathsSymbol.title');
+  HTMLString.Add('    button.style.backgroundColor = mathsSymbol.BackgroundColor');
+  HTMLString.Add('    button.setAttribute("type", "button")');
+  HTMLString.Add('    button.onclick = () => mathsSymbol.result() && content.focus()');
+  HTMLString.Add('    if (mathsSymbol.state) {');
+  HTMLString.Add('      const handler = () => button.classList[action.state() ? "add" : "remove"](classes.selected)');
+  HTMLString.Add('      addEventListener(content, "keyup", handler)');
+  HTMLString.Add('      addEventListener(content, "mouseup", handler)');
+  HTMLString.Add('      addEventListener(button, "click", handler)');
+  HTMLString.Add('    }');
+  HTMLString.Add('    appendChild(mathsbar, button)');
+  HTMLString.Add('  })');
+  result:=HTMLString;
 end;
 
 procedure dotest;
@@ -1353,6 +1613,7 @@ begin
   AddDefaultAttribute(myDefaultAttribs,'ShowUnderline','Boolean','True','Allow text underline to be set',false);
   AddDefaultAttribute(myDefaultAttribs,'ShowStrikethrough','Boolean','True','Allow text strikethrough to be set',false);
   AddDefaultAttribute(myDefaultAttribs,'ShowSuperscript','Boolean','True','Allow text superscript to be set',false);
+  AddDefaultAttribute(myDefaultAttribs,'ShowMaths','Boolean','True','Display the Maths symbols toolbar',false);
   AddDefaultsToTable(MyNodeType,myDefaultAttribs);
 
   AddAttribOptions(MyNodeType,'Alignment',AlignmentOptions);

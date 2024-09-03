@@ -77,17 +77,17 @@ type TWrapperPanel=Class(TInterfaceObject)
    FAlignChildrenVertical:Boolean;
 
    function GetName:string;
-   function GetIsVisible:Boolean;              //
+   function GetIsVisible:Boolean;
    function GetContainerWidth:string;
    function GetContainerHeight:string;
-   function GetHint:string;                   //
+   function GetHint:string;
    function GetBgColor:TColor;
    function GetLabelText:string;
    function GetLabelPos:String;
-   function GetAlignment:String;              //
+   function GetAlignment:String;
    function GetSpacingAround:integer;
    function GetBorder:Boolean;
-   function GetHTMLClasses:String;            //
+   function GetHTMLClasses:String;
 
    procedure SetMyName(AValue:string);
    procedure SetHint(AValue:string);

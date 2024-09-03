@@ -290,7 +290,7 @@ procedure RefreshComponentProps(myComponent:TDataNode);
 procedure InitFormObject(myForm:TForm;NodeName:String);
 procedure AddNodeFuncLookup(NodeType:string;InObFuncPtr:TCreateInObFunc;ScreenObjFunc:TAddComponentFunc);
 procedure SetInterfaceProperty(myName,NameSpace,PropName,NewValue:string);
-function mygetClipboardData(stringname:string):string;
+function mygetClipboardData(stringname:string; TargetNode:TDataNode=nil):string;
 function FinishHTMLPasteAction(myValue:string):string;
 {$endif}
 
@@ -336,7 +336,7 @@ const SystemRootName= 'UIRootNode';
 const CodeRootName= 'CodeUnits';
 const PortraitMode=false;
 
-var SystemNodeTree,UIRootNode,CodeRootNode, DMRoot:TDataNode;
+var SystemNodeTree,UIRootNode,CodeRootNode:TDataNode;
 var StartingUp:Boolean;
 
 var   NodeFuncsLookup:TNodeFuncsTable;             // lookup table used in data node creation
@@ -941,6 +941,7 @@ var
   NewNode,FormNode:TDataNode;
   NewWidget:TControl;
   supp:Boolean;
+  x:integer;
 begin
   //Create Widget (also creates datanode)
   supp:=SuppressEvents;
@@ -1329,10 +1330,10 @@ procedure AppendAttribute;
 begin
   DfltAttrib:=GetDefaultAttrib(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName);
   if DfltAttrib.AttribName='' then
-    if (CurrentItem.NodeClass<>'DM') then
-      DfltAttrib.AttribIncludeInSave:=true
-    else
-      DfltAttrib.AttribIncludeInSave:=false;
+//    if (CurrentItem.NodeClass<>'DM') then
+      DfltAttrib.AttribIncludeInSave:=true;
+//    else
+//      DfltAttrib.AttribIncludeInSave:=false;
   if (FindSuppressedProperty(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName)<0)
   and (DfltAttrib.AttribIncludeInSave = true)
   and (IsExcluded(CurrentItem,CurrentItem.NodeAttributes[i]) = false)
@@ -1382,7 +1383,7 @@ begin
   or (CurrentItem.NodeClass='NV')
   or (CurrentItem.NodeClass='SVG')
   or (CurrentItem.NodeClass='Code')
-  or (CurrentItem.NodeClass='DM')
+  //or (CurrentItem.NodeClass='DM')
   // special case (for XIDE) include the set of composites in the resources tree
   or ((CurrentItem.NodeType='TXComposite') and (CurrentItem.NodeClass='RUI'))
   or ((CurrentItem.NodeName='Composites') and (CurrentItem.NodeClass='RUI'))
@@ -1539,9 +1540,9 @@ begin
   interfaceString:=NodeTreeToInterfaceString(SystemNodeTree,MainForm.Name);
   WriteToFile(ProjectDirectory+'tempinc/systemintface.inc',interfaceString);
   systemstring:= NodeTreeToXML(SystemNodeTree,nil,false,true);
-  if DMRoot<>nil then
-    for i:=0 to length(DMRoot.ChildNodes)-1 do
-      systemstring:=systemstring+NodeTreeToXML(DMRoot.ChildNodes[i],DMRoot,false,true);
+  //if DMRoot<>nil then
+  //  for i:=0 to length(DMRoot.ChildNodes)-1 do
+  //    systemstring:=systemstring+NodeTreeToXML(DMRoot.ChildNodes[i],DMRoot,false,true);
 
   fullstring:= systemstring;
 
@@ -1965,7 +1966,10 @@ begin
      myAttribs[i]:=SourceNode.NodeAttributes[i];
 
   NewNode:=TDataNode.Create(SourceNode.NodeClass, SourceNode.NodeName,SourceNode.NameSpace,SourceNode.NodeType);
-  NewNode.IsDynamic:=true;
+  if SourceNode.NodeClass = 'RUI' then
+    NewNode.IsDynamic:=true
+  else
+    NewNode.IsDynamic:=SourceNode.IsDynamic;
   NewNode.NodeAttributes:=myAttribs;
 
   NewNode.myEventTypes:=TStringList.Create;
@@ -2000,15 +2004,16 @@ begin
   begin
     if (SourceNode.NodeClass = 'UI')
     or (SourceNode.NodeClass = 'NV')
-    or (SourceNode.NodeClass = 'DM')
+//    or (SourceNode.NodeClass = 'DM')
     or (SourceNode.NodeClass = 'SVG') then
     begin
       // create the screen object and data node...
       begin
-        if (SourceNode.NodeClass <> 'DM') then
-        begin
+//        if (SourceNode.NodeClass <> 'DM') then
+//        begin
           myself:=AddDynamicWidget(SourceNode.NodeType,ParentNode.MyForm,ParentNode,SourceNode.NodeName,SourceNode.NameSpace,'Left',position);
           myself.NameSpace:=SourceNode.NameSpace;
+          myself.IsDynamic := SourceNode.IsDynamic;
           CopyEventHandlers(myself,SourceNode,((SourceNode.NodeType='TXCompositeIntf')or(SourceNode.NodeType='TXComposite')));
           // pass 1
           for i:=0 to length(SourceNode.NodeAttributes)-1 do
@@ -2049,14 +2054,17 @@ begin
               end;
             end;
           end;
-        end
-        else
-        begin
-          myself:=SourceNode;
-          AddChildToParentNode(ParentNode,myself,position);
-        end;
+//        end
+//        else
+//        begin
+//          myself:=SourceNode;
+//          AddChildToParentNode(ParentNode,myself,position);
+//        end;
 
         // now insert any child nodes
+        if  (SourceNode.NodeType='TX3DTable') and (length(SourceNode.ChildNodes)>0) then
+          //Fudge:  AddDynamicWidget will have added a new set of node children, but we want the set from SourceNode here
+          DeleteNodeChildren(myself);
         for i:=0 to length(SourceNode.ChildNodes)-1 do
           InsertSystemNode(myself,SourceNode.ChildNodes[i],-1);
       end;
@@ -2390,14 +2398,14 @@ begin
      end
      else if ParentName<>'' then
      begin
-       if SourceNode.NodeClass<>'DM' then
-         ParentNode:=FindDataNodeByID(SystemNodeTree,ParentName,BaseNameSpace,false)
-       else
-       begin
-         ParentNode:=FindDataNodeByID(DMRoot,ParentName,'',false);
-         if ParentNode=nil then
-           ParentNode:=DMRoot;
-       end;
+       //if SourceNode.NodeClass<>'DM' then
+         ParentNode:=FindDataNodeByID(SystemNodeTree,ParentName,BaseNameSpace,false);
+       //else
+       //begin
+       //  ParentNode:=FindDataNodeByID(DMRoot,ParentName,'',false);
+       //  if ParentNode=nil then
+       //    ParentNode:=DMRoot;
+       //end;
 
        //parent might be in same namespace
        if (ParentNode=nil) and (SourceNode.NameSpace<>'') then
@@ -2488,7 +2496,8 @@ begin
        end
        else if (SourceNode.NodeClass='Code')
          or (SourceNode.NodeClass='RUI')
-         or (SourceNode.NodeClass='DM') then
+         //or (SourceNode.NodeClass='DM')
+         then
        begin
          myNode:=SourceNode;
        end;
@@ -2560,12 +2569,14 @@ end;
 
 {$else}
 
-function mygetClipboardData(stringname:string):string;
+function mygetClipboardData(stringname:string; TargetNode:TDataNode=nil):string;
 begin
   // set 'normal' appearance for paste dialog form
   PasteDialogUnit.PasteDoneBtn.IsVisible:=false;
   PasteDialogUnit.PasteLabel.LabelCaption:='Waiting for a copy/paste action';
   PasteDialogUnit.PasteTarget.IsVisible:=true;
+  PasteDialogUnit.DataName:=stringname;
+  PasteDialogUnit.TargetNode:= TargetNode;
 
   OpenModal('PasteDialog');
 
@@ -2611,6 +2622,11 @@ begin
                                            pas.PasteDialogUnit.CompletionEvent.NameSpace,
                                            PasteString,'');
                     pas.PasteDialogUnit.CompletionEvent=null;
+                  }
+                  else if (pas.PasteDialogUnit.DataName == 'TableData') {
+                    console.log('paste:',PasteString);
+                    console.log('TargetNode',pas.PasteDialogUnit.TargetNode);
+                    pas.PasteDialogUnit.TargetNode.PasteButtonCompletion(PasteString);
                   }
                 } catch(err) { alert(err.message+'  in NodeUtils.closeClipboardPasteDialog'); }
              }, 10);
@@ -3696,8 +3712,8 @@ begin
   // create a parent node for all Code nodes
   CodeRootNode:=TDataNode.Create('Code',CodeRootName,'','Root',false);
   AddChildToParentNode(SystemNodeTree,CodeRootNode,-1);
-  DMRoot:=TDataNode.Create('Root','DMRoot','','Root',false);
-  AddChildToParentNode(SystemNodeTree,DMRoot,-1);
+  //DMRoot:=TDataNode.Create('Root','DMRoot','','Root',false);
+  //AddChildToParentNode(SystemNodeTree,DMRoot,-1);
 end;
 
 {$ifndef JScript}

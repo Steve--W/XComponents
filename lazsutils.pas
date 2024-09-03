@@ -103,7 +103,7 @@ const
 
 
 implementation
-uses WrapperPanel, Events, XIFrame, XTabControl, XScrollBox, XForm;
+uses WrapperPanel, Events, XIFrame, XTabControl, XScrollBox, XForm,XTable;
 
 {$ifdef Chromium}
 var dummyChromium:TChromium;
@@ -1248,6 +1248,8 @@ begin
         end;
       end;
     end;
+    if myself is TXTable then
+      TXTable(myself).ResetAnchors;
 
     TheControl.EnableAutoSizing;
   end;

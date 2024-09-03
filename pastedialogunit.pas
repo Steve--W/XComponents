@@ -19,6 +19,10 @@ var
   PasteDialogEvents:TPasteDialogEvents;
   PasteDoneBtn:TXButton;
   PasteLabel:TXLabel;
+  DataName:String;
+  {$ifdef JScript}
+  TargetNode:TDataNode;  // only used for XTable internal paste button
+  {$endif}
 
   procedure SetupPasteDialogForm;
 

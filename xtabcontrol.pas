@@ -1154,7 +1154,8 @@ begin
       if (x==null) {alert('cannot find element by class name TabPage');}
       else {
       for (i = 0; i < x.length; i++) {
-        x[i].style.display = "none";
+        if (x[i].parentNode == tabsdiv) {
+          x[i].style.display = "none"; }
       } }
 
       var y = butsdiv.getElementsByClassName('TabButton');
@@ -1197,7 +1198,6 @@ procedure ChangeTabPage(nodeId,parentNodeId,NameSpace:string;TabNode:TDataNode=n
 var
   PageNode:TDataNode;
 begin
- //   showmessage('calling openTab('+NodeId+','+parentNodeId+')'+','+NameSpace);
   PageNode:=TabNode;
   if PageNode=nil then
     PageNode:=FindDataNodeById(SystemNodeTree,nodeId,NameSpace,true);
