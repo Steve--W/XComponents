@@ -38,7 +38,7 @@ procedure ShowHideSelectedBorder(myNode:TDataNode;showborder:Boolean);
 function GetDataNodeFromTreeNode(nodeID,NameSpace:string):TDataNode;
 function getParentByTagName(topname:String;node:TObject;tagname:String):TObject;
 function ContainsChildWithTag(node:TObject;tagname:String):Boolean;
-procedure WriteToLocalStore(KeyName,TheData:String);
+function WriteToLocalStore(KeyName,TheData:String;ShowFilesOption:Boolean=false):Boolean;
 function ReadFromLocalStore(KeyName:String):String;
 procedure ClearLocalStore(KeyName:String);
 function GetCurrentHeight(ObjectName:String):integer;
@@ -800,22 +800,31 @@ begin
   result:=found;
 end;
 
-procedure WriteToLocalStore(KeyName,TheData:String);
+function WriteToLocalStore(KeyName,TheData:String;ShowFilesOption:Boolean=false):Boolean;
+var
+  ShowFiles:boolean;
 begin
   if KeyName<>'' then
   begin
     asm
     try{
-
+    ShowFiles = false;
     var object = {dataValue: TheData, timestamp: new Date().getTime()}
     localStorage.setItem(KeyName, JSON.stringify(object));
-//    localStorage.setItem(KeyName,TheData);
     }catch(err) {
-      alert('Error on saving '+KeyName+' to Local Storage. See console for details');
-      console.log(err.message+'  in HTMLUtils.WriteToLocalStore');
+      if (ShowFilesOption) {
+         ShowFiles = confirm('Cannot auto-save system description. Local Storage may be full.  OK to list items?');
+        if (!ShowFiles) {alert('Continuing without auto-save');}
+      }
+      else
+      {
+        alert('Error on saving '+KeyName+' to Local Storage. See console for details');
+        console.log(err.message+'  in HTMLUtils.WriteToLocalStore');
+      }
       }
     end;
   end;
+  result:=ShowFiles;
 end;
 
 function ReadFromLocalStore(KeyName:String):String;

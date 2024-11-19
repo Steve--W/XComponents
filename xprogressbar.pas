@@ -275,7 +275,7 @@ begin
 end;
 
 begin
-  // this is the set of node attributes that each TXNumberSpinner instance will have.
+  // this is the set of node attributes that each TXProgressBar instance will have.
   AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'BarWidth','String','200','',false);
   AddDefaultAttribute(myDefaultAttribs,'SpacingAround','Integer','0','',false);

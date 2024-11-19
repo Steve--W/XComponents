@@ -228,7 +228,6 @@ var
   LabelText,LabelPos:string;
   OnChangeString, OnClickString:String;
 begin
-//showmessage('createwidget combobox '+ScreenObjectName);
   LabelText:= MyNode.getAttribute('LabelText',true).AttribValue;
 
   OnClickString:='onclick="event.stopPropagation();pas.Events.handleEvent(null,''Click'','''+ScreenObjectName+''','''+NameSpace+''', this.value);" ';
@@ -238,6 +237,7 @@ begin
                            '" ';
 
   asm
+    //console.log('createwidget combobox '+ScreenObjectName);
     try{
     var wrapper = pas.HTMLUtils.CreateWrapperDiv(MyNode,ParentNode,'UI',ScreenObjectName,NameSpace,$impl.MyNodeType,position);
 
@@ -374,6 +374,7 @@ begin
        ob.selectedIndex=AValue;            //!! does not take effect if the combobox is hidden (eg on another tab page)
        if ((AValue>=0)&&(AValue<ob.options.length)) {
          ob.options[AValue].selected = true;
+         lNode.SetAttributeValue('ItemValue',ob.options[AValue].value,'String');
          }
        }
   end;

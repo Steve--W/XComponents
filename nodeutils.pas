@@ -2004,13 +2004,10 @@ begin
   begin
     if (SourceNode.NodeClass = 'UI')
     or (SourceNode.NodeClass = 'NV')
-//    or (SourceNode.NodeClass = 'DM')
     or (SourceNode.NodeClass = 'SVG') then
     begin
       // create the screen object and data node...
       begin
-//        if (SourceNode.NodeClass <> 'DM') then
-//        begin
           myself:=AddDynamicWidget(SourceNode.NodeType,ParentNode.MyForm,ParentNode,SourceNode.NodeName,SourceNode.NameSpace,'Left',position);
           myself.NameSpace:=SourceNode.NameSpace;
           myself.IsDynamic := SourceNode.IsDynamic;
@@ -2054,12 +2051,6 @@ begin
               end;
             end;
           end;
-//        end
-//        else
-//        begin
-//          myself:=SourceNode;
-//          AddChildToParentNode(ParentNode,myself,position);
-//        end;
 
         // now insert any child nodes
         if  (SourceNode.NodeType='TX3DTable') and (length(SourceNode.ChildNodes)>0) then

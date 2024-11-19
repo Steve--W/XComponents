@@ -254,8 +254,9 @@ begin
   messgs.OnClick:=@self.ClickMessage;
   TheMessages:=messgs;
 
-  myControl.Align:=alClient;      //panel
-  TheMessages.Align:=alBottom;    //memo
+  //myControl.Align:=alClient;      //panel
+  myControl.Align:=alTop;      //panel         ///// ???? alignment
+  TheMessages.Align:=alBottom;    //memo       ///// ???? alignment
   myControl.Tag:=-1;
 
   self.SetMyEventTypes;

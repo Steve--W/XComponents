@@ -328,7 +328,7 @@ begin
 end;
 
 begin
-  // this is the set of node attributes that each TXNumberSpinner instance will have.
+  // this is the set of node attributes that each TXNumericSlider instance will have.
   AddWrapperDefaultAttribs(myDefaultAttribs);
   AddDefaultAttribute(myDefaultAttribs,'BarWidth','String','50','',false);
   AddDefaultAttribute(myDefaultAttribs,'Border','Boolean','False','',false);
