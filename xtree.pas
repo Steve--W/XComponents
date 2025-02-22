@@ -382,7 +382,7 @@ var
   e:TeventStatus;
   DestName:String;
   DestNode:TDataNode;
-  values:TNodeEventValue;
+  //values:TNodeEventValue;
 begin
   Src := TmyTreeView(Source).Selected;
   Dst := TmyTreeView(Sender).GetNodeAt(X,Y);
@@ -394,13 +394,13 @@ begin
     TmyTreeView(Sender).DropTargetNode:=Dst;
     e:=TEventStatus.Create('Drop',DestName);
     DestNode:=TXTree(self.parent).myNode;
-    values:=TNodeEventValue.Create;
-    values.DstText:=Dst.Text;
-    values.myTree:=TXTree(self.Parent);
-    values.SrcText:=Src.Text;
-    values.SourceName:=TmyTreeView(Source).Parent.Name;
-    values.myNode:=DestNode;
-    e.ValueObject:=values;
+    //values:=TNodeEventValue.Create;
+    e.DstText:=Dst.Text;
+    //values.myTree:=TXTree(self.Parent);
+    e.SrcText:=Src.Text;
+    e.SourceName:=TmyTreeView(Source).Parent.Name;
+    e.myTreeNode:=DestNode;
+    //e.ValueObject:=values;
     CallHandleEvent(e,'Drop',Dst.Text,Sender);
   end;
   self.IsDropTarget:=false;
@@ -414,7 +414,7 @@ var
   SourceName, DestName, DstText:string;
   i:integer;
   e:TEventStatus;
-  ob:TNodeEventValue;
+//  ob:TNodeEventValue;
 begin
   // Sender is TTreeView
   if (Source is TTreeView) then
@@ -438,14 +438,14 @@ begin
         DstText:=DestTreeNode.Text;
         DestNode:=TXTree(self.parent).myNode;
         e:=TEventStatus.Create('DropAccepted',DestName);
-        ob:=TNodeEventValue.Create;
-        ob.DstText:=DstText;
-        ob.myTree:=TXTree(self.Parent);
-        ob.SrcText:=Src.Text;
-        ob.SourceName:=SourceName;
-        ob.myNode:=DestTreeNode;
-        e.ValueObject:=ob;
-        ExecuteEventHandler(e,'DropAccepted',DestName,'',DestNode);   //bypasses event trappers
+        //ob:=TNodeEventValue.Create;
+        e.DstText:=DstText;
+        //ob.myTree:=TXTree(self.Parent);
+        e.SrcText:=Src.Text;
+        e.SourceName:=SourceName;
+        e.myTreeNode:=DestTreeNode;
+        //e.ValueObject:=ob;
+        FindAndRunEventHandler(e,'DropAccepted',DestName,'',DestNode);   //bypasses event trappers
         Accept := MyStrToBool(e.ReturnString);
       end;
 
@@ -1009,7 +1009,7 @@ var
   thisXTree:TXTree;
   thisNode:TDataNode;
   e:TEventStatus;
-  NodeObj:TNodeEventValue;
+  //NodeObj:TNodeEventValue;
 begin
 //asm
 //alert('HandleTreeNodeDrop ob.id='+ob.id+' DestTreeId='+DestTreeId+' DstText='+DstText);
@@ -1020,15 +1020,15 @@ begin
     thisNode:=FindDataNodeById(SystemNodeTree,DestTreeId,NameSpace,true);
     thisXTree:=TXTree(thisNode.ScreenObject);
     begin
-      NodeObj:=TNodeEventValue.Create;
+      //NodeObj:=TNodeEventValue.Create;
       e:=TEventStatus.Create('Drop',thisNode.NodeName);
       e.NameSpace:=NameSpace;
-      NodeObj.DstText:=DstText;
-      NodeObj.myTree:=thisXTree;
-      NodeObj.SrcText:=DraggingTree.NodeBeingDragged;
-      NodeObj.SourceName:=DraggingTree.myNode.NodeName;
-      NodeObj.myNode:=ob;
-      e.ValueObject:=NodeObj;
+      e.DstText:=DstText;
+      //NodeObj.myTree:=thisXTree;
+      e.SrcText:=DraggingTree.NodeBeingDragged;
+      e.SourceName:=DraggingTree.myNode.NodeName;
+      e.myTreeNode:=ob;
+      //e.ValueObject:=NodeObj;
 
       asm
       pas.Events.handleEvent(e, 'Drop' ,ob.id,NameSpace ,DstText);
@@ -1044,7 +1044,7 @@ var
   thisXTree:TXTree;
   thisNode:TDataNode;
   e:TEventStatus;
-  NodeObj:TNodeEventValue;
+//  NodeObj:TNodeEventValue;
 begin
 //if DraggingTree=nil then showmessage('HandleTreeNodeDragOver DestTreeId='+DestTreeId+' DstText='+DstText+' DraggingTree=nil')
 //else showmessage('HandleTreeNodeDragOver DestTreeId='+DestTreeId+' DstText='+DstText+' DraggingTree is set');
@@ -1060,16 +1060,16 @@ begin
     // 2) execute the function - send in SourceName,Src.Text,DstText
     // 3) get the result (e.ReturnString)
     begin
-      NodeObj:=TNodeEventValue.Create;
+      //NodeObj:=TNodeEventValue.Create;
       e:=TEventStatus.Create('DropAccepted',thisNode.NodeName);
       e.NameSpace:=NameSpace;
-      NodeObj.DstText:=DstText;
-      NodeObj.myTree:=thisXTree;
-      NodeObj.SrcText:=DraggingTree.NodeBeingDragged;
-      NodeObj.SourceName:=DraggingTree.myNode.NodeName;
-      NodeObj.myNode:=ob;
-      e.ValueObject:=NodeObj;
-      ExecuteEventHandler(e,'DropAccepted',thisNode.NodeName,'',thisXTree);     //bypasses event trappers
+      e.DstText:=DstText;
+      //NodeObj.myTree:=thisXTree;
+      e.SrcText:=DraggingTree.NodeBeingDragged;
+      e.SourceName:=DraggingTree.myNode.NodeName;
+      e.myTreeNode:=ob;
+      //e.ValueObject:=NodeObj;
+      FindAndRunEventHandler(e,'DropAccepted',thisNode.NodeName,'',thisXTree);     //bypasses event trappers
       result := MyStrToBool(e.ReturnString);
     end;
   end;

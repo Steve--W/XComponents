@@ -315,7 +315,7 @@ GlobalCEFApp.LogFile              := 'cefdebug.log';
 GlobalCEFApp.LogSeverity          := LOGSEVERITY_INFO;  //LOGSEVERITY_VERBOSE;
 
 GlobalCEFApp.WindowlessRenderingEnabled := True;
-GlobalCEFApp.EnableHighDPISupport       := True;
+// cef update GlobalCEFApp.EnableHighDPISupport       := True;
 GlobalCEFApp.DisableFeatures            := 'NetworkService,OutOfBlinkCors';
 
 InitialiseCefMessaging;

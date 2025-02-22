@@ -125,8 +125,9 @@ type
       procedure myChromiumAfterCreated(Sender: TObject; const browser: ICefBrowser);  virtual;
       procedure myChromiumBeforeClose(Sender: TObject; const browser: ICefBrowser);
       //TOnBeforePopup = procedure(Sender: TObject; const browser: ICefBrowser; const frame: ICefFrame; const targetUrl, targetFrameName: ustring; targetDisposition: TCefWindowOpenDisposition; userGesture: Boolean; const popupFeatures: TCefPopupFeatures; var windowInfo: TCefWindowInfo; var client: ICefClient; var settings: TCefBrowserSettings; var extra_info: ICefDictionaryValue; var noJavascriptAccess: Boolean; var Result: Boolean) of object;
+      // cef update: expected "<procedure variable type of procedure(TObject;const ICefBrowser;const ICefFrame;LongInt;const ustring;const ustring;TCefWindowOpenDisposition;Boolean;const TCefPopupFeatures;var TCefWindowInfo;var ICefClient;var TCefBrowserSettings;var ICefDictionaryValue"
       procedure myChromiumBeforePopup(Sender: TObject;
-          const browser: ICefBrowser; const frame: ICefFrame; const targetUrl,
+          const browser: ICefBrowser; const frame: ICefFrame; popup_id: Integer;  const targetUrl,
           targetFrameName: ustring; targetDisposition: TCefWindowOpenDisposition;
           userGesture: Boolean; const popupFeatures: TCefPopupFeatures;
           var windowInfo: TCefWindowInfo; var client: ICefClient;
@@ -396,7 +397,7 @@ begin
 end;
 
 procedure TXIFrame.myChromiumBeforePopup(Sender: TObject;
-  const browser: ICefBrowser; const frame: ICefFrame; const targetUrl,
+  const browser: ICefBrowser; const frame: ICefFrame; popup_id:Integer; const targetUrl,
   targetFrameName: ustring; targetDisposition: TCefWindowOpenDisposition;
   userGesture: Boolean; const popupFeatures: TCefPopupFeatures;
   var windowInfo: TCefWindowInfo; var client: ICefClient;
@@ -404,7 +405,7 @@ procedure TXIFrame.myChromiumBeforePopup(Sender: TObject;
   var Result: Boolean);
 begin
   // For simplicity, this demo blocks all popup windows and new tabs
-  Result := (targetDisposition in [WOD_NEW_FOREGROUND_TAB, WOD_NEW_BACKGROUND_TAB, WOD_NEW_POPUP, WOD_NEW_WINDOW]);
+  Result := (targetDisposition in [CEF_WOD_NEW_FOREGROUND_TAB, CEF_WOD_NEW_BACKGROUND_TAB, CEF_WOD_NEW_POPUP, CEF_WOD_NEW_WINDOW]);
 end;
 
 procedure TXIFrame.CEFLoaded(Sender: TObject; const browser: ICefBrowser; const TheFrame:ICefFrame; z:Longint);
@@ -995,7 +996,8 @@ end;
         and (myChromium.Browser<>nil) then
         begin
           tmp:=myChromium.Browser.MainFrame.GetUrl;
-          myChromium.Browser.MainFrame.LoadString(DataString, 'data:text/html');        //wobble??
+// cef update          myChromium.Browser.MainFrame.LoadString(DataString, 'data:text/html');        //wobble??
+          myChromium.LoadString(DataString, myChromium.Browser.MainFrame);        //wobble??
  //         //self.Wobble;
         end;
         {$else}

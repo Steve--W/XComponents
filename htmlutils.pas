@@ -708,7 +708,7 @@ procedure ShowHideSelectedBorder(myNode:TDataNode;showborder:Boolean);
 var
   HadBorder:Boolean;
 begin
-  showmessage('ShowHideSelectedBorder '+myNode.NodeType+'  '+myBoolToStr(showborder));
+  //showmessage('ShowHideSelectedBorder '+myNode.NodeType+'  '+myBoolToStr(showborder));
   if myNode.GetAttribute('Border',true).AttribValue <> '' then
      HadBorder:=myStrToBool(myNode.GetAttribute('Border',true).AttribValue)
   else

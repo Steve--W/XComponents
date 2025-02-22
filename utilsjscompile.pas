@@ -112,7 +112,7 @@ begin
     +'    rtl.run("'+ProgramName+'"); ' +LineEnding
     +'    pas.'+ProgramName+'.InitialisePage();'  +LineEnding
     +IFrameMessageHandler
-    +'  }catch(err) {alert("Error in StartupCode ---"+err.message);}; '  +LineEnding
+    +'  }catch(err) {alert("Error in StartupCode ---"+err.message);console.log(err)}; '  +LineEnding
     +'};  '   +LineEnding
     +'</script>  '   +LineEnding
     +'</head> '  +LineEnding;

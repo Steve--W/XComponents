@@ -37,19 +37,21 @@ public
   AsyncProcsRunning:TStringList; // list of async procs fired off during the initialisation phase.
   ContinueAfterTrappers:Boolean; // is true unless the event was intercepted by a trapper, and stopped.
   ReturnString:String;           // used by TXThreads, and also for completion stage of async events (eg. in copyfromclip)
-  AsyncReturnObject:TObjArray;   // for completion stage of async event(s) (eg. returned data from local db storage)
   eventValue:String;             // to carry original event value, eg. for trapper events
-  ValueObject:TObject;           // used in tree node operations, eg. drag/drop
+  //ValueObject:TObject;
+  // used in tree node operations, eg. drag/drop
+  SourceName,SrcText,DstText:String;
+  myTreeNode:TObject;
   constructor Create(EvType,NdId:String);
   function EventHasWaitingAsyncProcs():Boolean;
   function ClearAsync(ProcName:string):Boolean;
 end;
 
-type TNodeEventValue = class(TObject)
-  myTree:TObject;
-  SourceName,SrcText,DstText:String;
-  myNode:TObject;
-end;
+//type TNodeEventValue = class(TObject)
+//  //myTree:TObject;
+//  SourceName,SrcText,DstText:String;
+//  //myNode:TObject;
+//end;
 
 type
   TGPUPixelArray    = array of array of T2DNumArray ;
@@ -62,8 +64,25 @@ type TDSKeyValue = record
 end;
 type TDSKeyArray = array of TDSKeyValue;
 
+
 var
   glbEvent:TEventStatus;
+  {$ifndef JScript}
+  EventsNameSpace:PChar;
+  {$else}
+  EventsNameSpace:String;
+  {$endif}
+
+type THandler = procedure(e:TEventStatus;NodeId:String;myValue:String);
+type TExEvHandler = procedure(e:TEventStatus;NodeId: String; myValue: String; initfunc,mainfunc:THandler;InitPyCode,MainPyCode:String);
+type TRunPyFunc = function(PyScriptCode:TStringList;nm:String):Boolean;
+type TEFunc = procedure(e:TEventStatus);
+type TEFuncNoArgs = function():String;
+var
+  RunPyScriptFunc:TRunPyFunc;
+  PassEToPythonFunc:TEFunc;
+  GetEFromPythonFunc:TEFuncNoArgs;
+  ExecuteEventHandlerFunc:TExEvHandler;
 
 implementation
 
@@ -75,8 +94,12 @@ begin
   self.EventType:=EvType;
   self.NodeId:=NdId;
   self.AsyncProcsRunning:=TStringList.Create;
-  self.ValueObject:=nil;
-  setlength(self.AsyncReturnObject,0);
+//  self.ValueObject:=nil;
+  self.myTreeNode:=nil;
+  self.SourceName:='';
+  self.DstText:='';
+  self.SrcText:='';
+//  setlength(self.AsyncReturnObject,0);
 end;
 
 function TEventStatus.EventHasWaitingAsyncProcs():Boolean;
@@ -99,6 +122,13 @@ begin
     result:=true;
   end;
 end;
+
+begin
+  {$ifndef JScript}
+  EventsNameSpace:=PChar('');
+  {$else}
+  EventsNameSpace:='';
+  {$endif}
 
 
 end.

@@ -22,7 +22,7 @@ uses
   {$endif}
 
 procedure ShowXForm(XFormID:String; modal:Boolean;Namespace:String='');
-procedure CloseXForm(XFormID:String;Namespace:String='');
+procedure XFormClose(XFormID:String;Namespace:String='');
 
 {$ifndef JScript}
 
@@ -37,6 +37,7 @@ private
   {$ifndef JScript}
   fMyNode:TDataNode;
   fHandleClosure:TEventHandler;
+  procedure OnActivateForm(Sender: TObject);
   {$endif}
 
 
@@ -211,6 +212,11 @@ begin
     ShowMessage('XForm '+XFormID+' not found');
 end;
 
+procedure TXForm.OnActivateForm(Sender: TObject);
+begin
+  Screen.cursor:=crDefault;
+end;
+
 constructor TXForm.Create(TheOwner: TComponent);
 begin
   inherited Create(TheOwner);
@@ -219,6 +225,7 @@ constructor TXForm.CreateNew(AOwner: TComponent; Num: Integer = 0);
 begin
   inherited CreateNew(AOwner,Num);
   self.OnClose:=@self.formclose;
+  self.OnActivate:=@self.OnActivateForm;
 end;
 
 procedure TXForm.FormClose(Sender: TObject; var CloseAction: TCloseAction);
@@ -539,7 +546,7 @@ begin
     {$endif}
 end;
 
-procedure  CloseXForm(XFormID:String;NameSpace:String='');
+procedure  XFormClose(XFormID:String;NameSpace:String='');
 var
   FormToClose:TForm;
   formNode:TdataNode;
@@ -597,6 +604,7 @@ begin
           self.showmodal
         else if AValue='Normal' then
           self.Show;
+
     end;
     {$else}
     if self.NodeName<>'' then

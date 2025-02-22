@@ -24,6 +24,13 @@ uses
   EventsInterface
   ;
 
+const
+{$ifndef JScript}
+  RuntimeEnv:String = 'Desktop';
+{$else}
+  RuntimeEnv:String = 'Browser';
+{$endif}
+
 type TIntArray = Array of integer;
 type TDataNode = class;  //forward
 type TNodeAttribute = class;  //forward
@@ -41,6 +48,7 @@ type TEventHandlerRec = class(TObject)
   TheHandler:TEventHandler;   // for event handler functions that exist in the compiled project
   TheCode:String;             // for dynamically created XComponents with user-entered event code
   InitCode:String;            // for dynamically created XComponents with user-entered event code
+  EventLanguage:String;       // for dynamically created XComponents with user-entered event code
   ReadOnlyInterface:Boolean; // for TXComposite components only.
   EventHint:String;          // for TXCompositeIntf components only.
 end;
@@ -172,7 +180,7 @@ type   TDataNode = class(TForm)         // <- TObject
           function GetEventInitCode(EventType:String):String;
           function GetEventROI(EventType:String):Boolean;
           procedure InitialiseEventHandlers;
-          procedure AddEvent(EventType,MainCode,InitCode:String;ReadOnly:Boolean=false;EventHint:String='');
+          procedure AddEvent(EventType,Language,MainCode,InitCode:String;ReadOnly:Boolean=false;EventHint:String='');
           procedure DeleteEvent(EventType:String);
           procedure DeleteAttribute(AttributeName:string);
           procedure DebugEvents(sometext:String);
@@ -755,7 +763,7 @@ begin
   self.ChildNodes:=mychildren;
 end;
 
-procedure TDataNode.AddEvent(EventType,MainCode,InitCode:String;ReadOnly:Boolean=false;EventHint:String='');
+procedure TDataNode.AddEvent(EventType,Language,MainCode,InitCode:String;ReadOnly:Boolean=false;EventHint:String='');
 var
   j:integer;
 begin
@@ -768,6 +776,7 @@ begin
   self.myEventHandlers[j].ReadOnlyInterface:=ReadOnly;
   self.myEventHandlers[j].TheHandler:=nil;
   self.myEventHandlers[j].EventHint:=EventHint;
+  self.myEventHandlers[j].EventLanguage:=Language;
 end;
 
 procedure TDataNode.DeleteEvent(EventType:String);
@@ -800,8 +809,9 @@ end;
 function TDataNode.FindRegisteredEvent(EventType:string):TEventHandler;
 var
   i:integer;
+  fn:TEventHandler;
 begin
-  result:=nil;
+  fn:=nil;
   if length(self.myEventHandlers) < self.myEventTypes.Count then
     setlength(self.myEventHandlers,self.myEventTypes.Count);
   for i:=0 to self.myEventTypes.Count-1 do
@@ -809,8 +819,9 @@ begin
     if self.myEventHandlers[i]=nil then
       self.myEventHandlers[i]:=TEventHandlerRec.Create;
     if self.myEventTypes[i] = EventType then
-      result:=self.myEventHandlers[i].TheHandler;
+      fn:=self.myEventHandlers[i].TheHandler;
   end;
+  result:=fn;
 end;
 
 procedure TDataNode.RegisterEvent(EventType:String;TheHandler:TEventHandler);
@@ -1330,10 +1341,8 @@ procedure AppendAttribute;
 begin
   DfltAttrib:=GetDefaultAttrib(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName);
   if DfltAttrib.AttribName='' then
-//    if (CurrentItem.NodeClass<>'DM') then
       DfltAttrib.AttribIncludeInSave:=true;
-//    else
-//      DfltAttrib.AttribIncludeInSave:=false;
+
   if (FindSuppressedProperty(CurrentItem.NodeType,CurrentItem.NodeAttributes[i].AttribName)<0)
   and (DfltAttrib.AttribIncludeInSave = true)
   and (IsExcluded(CurrentItem,CurrentItem.NodeAttributes[i]) = false)
@@ -1383,7 +1392,6 @@ begin
   or (CurrentItem.NodeClass='NV')
   or (CurrentItem.NodeClass='SVG')
   or (CurrentItem.NodeClass='Code')
-  //or (CurrentItem.NodeClass='DM')
   // special case (for XIDE) include the set of composites in the resources tree
   or ((CurrentItem.NodeType='TXComposite') and (CurrentItem.NodeClass='RUI'))
   or ((CurrentItem.NodeName='Composites') and (CurrentItem.NodeClass='RUI'))
@@ -1446,7 +1454,8 @@ begin
           end;
           // build the full event string
           XMLString:=XMLString
-                           + CurrentItem.myEventTypes[i]
+                           + CurrentItem.myEventHandlers[i].EventLanguage
+                           + AttribBitsDelimiter+CurrentItem.myEventTypes[i]
                            + AttribBitsDelimiter+SubstituteSpecials(trim(CurrentItem.myEventHandlers[i].TheCode))
                            + AttribBitsDelimiter+SubstituteSpecials(trim(CurrentItem.myEventHandlers[i].InitCode));
           if (CurrentItem.NodeType = 'TXCompositeIntf')
@@ -1540,9 +1549,6 @@ begin
   interfaceString:=NodeTreeToInterfaceString(SystemNodeTree,MainForm.Name);
   WriteToFile(ProjectDirectory+'tempinc/systemintface.inc',interfaceString);
   systemstring:= NodeTreeToXML(SystemNodeTree,nil,false,true);
-  //if DMRoot<>nil then
-  //  for i:=0 to length(DMRoot.ChildNodes)-1 do
-  //    systemstring:=systemstring+NodeTreeToXML(DMRoot.ChildNodes[i],DMRoot,false,true);
 
   fullstring:= systemstring;
 
@@ -1928,6 +1934,7 @@ begin
         if AddIfMissing then
         begin
           DestNode.AddEvent(SourceNode.myEventTypes[i],
+                            SourceNode.myEventHandlers[i].EventLanguage,
                             SourceNode.myEventHandlers[i].TheCode,
                             SourceNode.myEventHandlers[i].InitCode,
                             SourceNode.myEventHandlers[i].ReadOnlyInterface,
@@ -1940,6 +1947,7 @@ begin
       begin
         if Destnode.myEventHandlers[j]=nil then
           Destnode.myEventHandlers[j]:=TEventHandlerRec.Create;
+        Destnode.myEventHandlers[j].EventLanguage:=SourceNode.myEventHandlers[i].EventLanguage;
         Destnode.myEventHandlers[j].TheCode:=SourceNode.myEventHandlers[i].TheCode;
         Destnode.myEventHandlers[j].InitCode:=SourceNode.myEventHandlers[i].InitCode;
         Destnode.myEventHandlers[j].ReadOnlyInterface:=SourceNode.myEventHandlers[i].ReadOnlyInterface;
@@ -1966,7 +1974,8 @@ begin
      myAttribs[i]:=SourceNode.NodeAttributes[i];
 
   NewNode:=TDataNode.Create(SourceNode.NodeClass, SourceNode.NodeName,SourceNode.NameSpace,SourceNode.NodeType);
-  if SourceNode.NodeClass = 'RUI' then
+  if (SourceNode.NodeClass = 'RUI')
+  or (SourceNode.NodeClass = 'RNV') then
     NewNode.IsDynamic:=true
   else
     NewNode.IsDynamic:=SourceNode.IsDynamic;
@@ -1975,7 +1984,7 @@ begin
   NewNode.myEventTypes:=TStringList.Create;
   for i:=0 to SourceNode.myEventTypes.count-1 do
   begin
-     NewNode.AddEvent(SourceNode.myEventTypes[i],'','');
+     NewNode.AddEvent(SourceNode.myEventTypes[i],'','','');
   end;
   CopyEventHandlers(NewNode,SourceNode,(SourceNode.NodeType='TXCompositeIntf'));
 
@@ -2164,29 +2173,44 @@ function EventsFromXML(eventsList:TStringList; var EventNames:TStringList):TEven
 var
   myEvents:TEventHandlers;
   AttribBits:TStringList;
-  i:integer;
+  i,b:integer;
+  //ss:string;
 begin
   //showmessage('EventsFromXML. count='+inttostr(eventsList.count));
+  //ShowMessage(eventsList.Text);
   setlength(myEvents,eventsList.count);
   for i:=0 to eventsList.count-1 do
   begin
     myEvents[i]:=TEventHandlerRec.Create;
     AttribBits :=  stringsplit(eventsList[i],AttribBitsDelimiter);
-    EventNames.Add(TrimWhiteSpace(AttribBits[0]));
-    myEvents[i].TheCode:=UnSubstituteSpecials(AttribBits[1]);
-    if AttribBits.Count>2 then
+
+    // language added Feb 2025.  Sytems saved prior to this had first 'bit' EventType.
+    b:=0;
+    if (AttribBits[0] = 'Pascal') or (AttribBits[0] = 'Python')  or (AttribBits[0] = '') then
     begin
-      myEvents[i].InitCode:=UnSubstituteSpecials(AttribBits[2]);
+      myEvents[i].EventLanguage:=AttribBits[0];
+      b:=1;
+    end
+    else
+      myEvents[i].EventLanguage:='Pascal';
+    //ss:=AttribBits[b];
+    EventNames.Add(TrimWhiteSpace(AttribBits[b]));
+    myEvents[i].TheCode:=UnSubstituteSpecials(AttribBits[b+1]);
+    if AttribBits.Count>b+2 then
+    begin
+      myEvents[i].InitCode:=UnSubstituteSpecials(AttribBits[b+2]);
     end;
-    if AttribBits.Count>3 then
+    if AttribBits.Count>b+3 then
     begin
-      myEvents[i].ReadOnlyInterface:=MyStrToBool(AttribBits[3]);
+      myEvents[i].ReadOnlyInterface:=MyStrToBool(AttribBits[b+3]);
     end;
-    if AttribBits.Count>4 then
+    if AttribBits.Count>b+4 then
     begin
-      myEvents[i].EventHint:=AttribBits[4];
+      myEvents[i].EventHint:=AttribBits[b+4];
     end;
   end;
+  //showmessage('EventsFromXML. names='+inttostr(eventNames.count));
+  //ShowMessage(eventNames.Text);
 
   result:=myEvents;
 end;
@@ -2208,11 +2232,12 @@ begin
         found:=true;
         foundEvent.InitCode:=SourceHandlers[i].InitCode;
         foundEvent.TheCode:=SourceHandlers[i].TheCode;
+        foundEvent.EventLanguage:=SourceHandlers[i].EventLanguage;
         foundEvent.TheHandler:=nil;
     end
     else
     begin
-      TargetNode.AddEvent(EventNames[i],SourceHandlers[i].TheCode,SourceHandlers[i].InitCode);
+      TargetNode.AddEvent(EventNames[i],SourceHandlers[i].EventLanguage,SourceHandlers[i].TheCode,SourceHandlers[i].InitCode);
     end;
   end;
 end;
@@ -2918,10 +2943,12 @@ var
 begin
   if StartNode=UIRootNode then
   begin
+     SetLength(StartNode.myEventHandlers,StartNode.myEventTypes.Count);
      for i:=0 to length(StartNode.myEventHandlers)-1 do
      begin
        if StartNode.myEventHandlers[i]=nil then
          StartNode.myEventHandlers[i]:=TEventHandlerRec.Create;
+       StartNode.myEventHandlers[i].EventLanguage:='';
        StartNode.myEventHandlers[i].InitCode:='';
        StartNode.myEventHandlers[i].TheCode:='';
        StartNode.myEventHandlers[i].TheHandler:=nil;

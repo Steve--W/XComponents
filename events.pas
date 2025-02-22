@@ -41,8 +41,8 @@ type
   PQueueRec = ^TQueueRec;
 
 function ReloadDll(DllFileName:String):Boolean;
-procedure CallHandleEvent(e:TEventStatus;EventType,MyValue:string; MyControl:TObject);  overload;
-procedure CallHandleEvent(EventType,MyValue:string; MyControl:TObject);  overload;
+function CallHandleEvent(e:TEventStatus;EventType,MyValue:string; MyControl:TObject):Boolean;  overload;
+function CallHandleEvent(EventType,MyValue:string; MyControl:TObject):Boolean;  overload;
 procedure CallHandleEventlater(EventType,MyValue:string; MyControl:TObject);
 procedure HandleEventLater(e:TEventStatus;EventType,NodeId,NameSpace,MyValue:string);
 
@@ -50,6 +50,7 @@ var   EventCode : TEventClass;   // contains event handling procedures
       MyLibC: TLibHandle= dynlibs.NilHandle;
       ConsoleString:String;
       ConsoleNode:TDataNode;
+      FPCAvailable:Boolean;
 
 var mmi : IInterface;    // type is  IMyMethodInterface
 
@@ -60,18 +61,19 @@ function FindEventFunction(NameSpace,myName,EventType:string;MyNode:TDataNode;Do
 var
   DllName:String;
 
-procedure ExecuteEventHandler(e:TEventStatus;MyEventType,nodeID,myValue:string;myNode:TDataNode);
-procedure handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue,PropName:string);  overload;
-procedure handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue:string);           overload;
-procedure handleEvent(MyEventType,nodeID,NameSpace,myValue:string);                          overload;
+function FindAndRunEventHandler(e:TEventStatus;MyEventType,nodeID,myValue:string;myNode:TDataNode):Boolean;
+function handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue,PropName:string):Boolean;  overload;
+function handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue:string):Boolean;           overload;
+function handleEvent(MyEventType,nodeID,NameSpace,myValue:string):Boolean;                          overload;
 {$ifndef JScript}
 function FindNodeId(MyControl:TObject; var outer:TObject; var NameSpace:String):String;
 {$endif}
 
-
+procedure ExecuteEventHandler(e:TEventStatus;NodeId: String; myValue: String; initfunc,mainfunc:THandler;InitPyCode,MainPyCode:String);
+procedure RunTheEventFunc(e:TEventStatus;NodeId: String; myValue: String; fn:THandler;PyCode:String);
 
 implementation
-uses XTabControl, XComboBox,
+uses XTabControl, XComboBox, XForm,
 {$ifndef JScript}
 XIFrame, XSVGContainer,
 {$endif}
@@ -117,11 +119,13 @@ begin
   result:=nodeID;
 end;
 
-procedure CallHandleEvent(e:TEventStatus;EventType,MyValue:string; MyControl:TObject);
+function CallHandleEvent(e:TEventStatus;EventType,MyValue:string; MyControl:TObject):Boolean;
 var
   nodeID,NameSpace:string;
   outer:TObject;
+  ok:Boolean;
 begin
+   ok:=true;
    if (not SuppressEvents)
    and (MyControl<>nil) then
    begin
@@ -129,14 +133,15 @@ begin
 
      if outer<>nil then
      begin
-       handleEvent(e,EventType,nodeID,NameSpace,MyValue);
+       ok:=handleEvent(e,EventType,nodeID,NameSpace,MyValue);
      end;
 
    end;
+   result:=ok;
 end;
-procedure CallHandleEvent(EventType,MyValue:string; MyControl:TObject);
+function CallHandleEvent(EventType,MyValue:string; MyControl:TObject):Boolean;
 begin
-  CallHandleEvent(nil,EventType,MyValue,MyControl);
+  result:=CallHandleEvent(nil,EventType,MyValue,MyControl);
 end;
 procedure TEventClass.DoEventLater(Data: PtrInt);
 var
@@ -198,7 +203,7 @@ end;
 {$ifndef JScript}
 function ExecDLLInitFunc:String;
 type
-   TMyFunc=procedure(mmi : IInterface); stdcall;
+   TMyFunc=procedure(mmi : IInterface; evh:TExEvHandler); stdcall;
 var
    fn: TMyFunc;
 begin
@@ -208,7 +213,7 @@ begin
     fn:= TMyFunc(GetProcedureAddress(MyLibC,'SetDllContext'));
     if Assigned(fn) then
     begin
-      fn (mmi);   //Executes the dll function SetDllContext
+      fn (mmi,ExecuteEventHandlerFunc);   //Executes the dll function SetDllContext
     end
     else
       result:='dll Function SetDllContext not found'   ;
@@ -235,13 +240,16 @@ begin
     ExecDLLInitFunc;
 end;
 
-function ExecDLLEventFunc(e:TEventStatus;procname:String;Params:TstringList):String;
+
+function ExecDLLEventFunc(e:TEventStatus;procname:String;Params:TstringList):Boolean;
 type
    TMyFunc=procedure(e:TEventStatus;nodeID:AnsiString;myValue:AnsiString); stdcall;     // same as TEventHandler
 var
    fn: TMyFunc;
    myNode:TDataNode;
+   ok:Boolean;
 begin
+  ok:=true;
   if MyLibC = dynlibs.NilHandle then
   {$ifdef windows}
     ReloadDll(DllName+'.'+SharedSuffix);
@@ -267,16 +275,24 @@ begin
       else
         showmessage('func '+procname+' need to handle parameters in ExecDLLEventFunc')
     else
-      result:='Function '+procname+' not found in ExecDLLEventFunc'   ;
+    begin
+      ok:=false;
+      showmessage('Function '+procname+' not found in ExecDLLEventFunc')   ;
+    end;
 
-  end;
+  end
+  else ok:=false;
+  result:=ok;
 end;
 
-procedure RunComponentEvent(e:TEventStatus;myName,NameSpace,EventType:string;MyNode:TDataNode;MyValue:string);
+function RunComponentEvent(e:TEventStatus;myName,NameSpace,EventType:string;MyNode:TDataNode;MyValue:string):Boolean;
 var
   m: TMethod;
   params:TStringList;
+  Event:TEventHandlerRec;
+  HandlerFound:Boolean;
 begin
+  HandlerFound:=false;
   m.Code:=nil;
   //find existing event handler (in the form) for a component created in Lazarus IDE with compiled events...
   if MyNode.MyForm<>nil then
@@ -297,19 +313,36 @@ begin
     and (MyNode.HasUserEventCode(EventType))
     and (not SuppressUserEvents) then
     begin
+      Event:= MyNode.GetEvent(EventType);
       // third option - a dynamically created component with dynamically created event code (eg. created in XIDE project)...
       // in this case the code will have been compiled into the events dll
-      params:=TStringList.Create;
-      params.Add(myname);
-      params.Add(myValue);
-      ExecDLLEventFunc(e,e.NameSpace+myName+'Handle'+EventType,params);
-      params.Free;
+      if Event.EventLanguage = 'Pascal' then
+      begin
+        params:=TStringList.Create;
+        params.Add(myname);
+        params.Add(myValue);
+        HandlerFound:=ExecDLLEventFunc(e,e.NameSpace+myName+'Handle'+EventType,params);
+        params.Free;
+        if not HandlerFound then
+          if not FPCAvailable then
+            ShowMessage('Warning: Cannot execute Pascal code. FPC unavaliable (check Settings)');
+      end
+      else if Event.EventLanguage = 'Python' then
+      begin
+        m := TMethod(TXForm(MainForm).MyNode.FindRegisteredEvent('PythonEvent'));  // a generic function to find and execute python script
+        if m.Code=nil then EXIT(false);
+        if m.Data=nil then
+          m.Data := pointer(TXForm(MainForm).MyNode.ScreenObject); //store pointer to form object
+
+        TEventHandler(m)(e,myName,myValue);
+      end;
     end
     else
-       EXIT;                 // or no handler has been defined
+       EXIT(false);                 // or no handler has been defined
   end
   else
   begin
+    HandlerFound:=true;
     if m.Data=nil then
       m.Data := pointer(MyNode.ScreenObject); //store pointer to object instance  (self of the function)
     TEventHandler(m)(e,myName,myValue);
@@ -320,21 +353,29 @@ begin
     EditAttributeValue(ConsoleNode,'ItemValue',PChar(ConsoleString));
     ConsoleString:='';
   end;
+  result:=HandlerFound;
 
 end;
 {$else}
 function FindEventFunction(NameSpace,myName,EventType:string;MyNode:TDataNode;DoBind:Boolean):TObject;
 var
-  UnitName:String;
+  UnitName,Language:String;
   AllowUserEvents:Boolean;
   fn:TObject;
+  Event:TEventHandlerRec;
 begin
   UnitName:=MainUnitname+'Events';
   fn:=nil;
   AllowUserEvents:=not SuppressUserEvents;
+  Event:=MyNode.GetEvent(EventType);
+  if Event<>nil then
+    Language:=Event.EventLanguage
+  else
+    Language:='Pascal';
 asm
 try {
-//alert('FindEventFunction NS='+NameSpace+' myName='+myName+' MyNode='+MyNode.NameSpace+'.'+MyNode.NodeName);
+//console.log('FindEventFunction NS='+NameSpace+' myName='+myName+' MyNode='+MyNode.NameSpace+'.'+MyNode.NodeName);
+//console.log('FindEventFunction '+EventType+' MyNode='+MyNode.NameSpace+'.'+MyNode.NodeName);
   fn=null;
   var handlerName=NameSpace+myName+'Handle'+EventType;
 
@@ -355,6 +396,7 @@ try {
 
   // THIRD ......
   if ((fn==null)&&(AllowUserEvents==true)) {
+  if (Language == 'Pascal') {
   // the component may have been created dynamically at run-time
   // with dynamically added event code (eg. using the XIDE project)
   // in which case look for the event handler in module XIDEMainEvents
@@ -362,32 +404,41 @@ try {
     //console.log('FindEventFunction looking in dynamic events unit '+UnitName+' for '+handlerName);
     var mdl=pas[UnitName];
     if ((mdl!=null)&&(mdl!=undefined)) {
-      //alert('found module '+UnitName);
         fn = mdl[ handlerName];
         if (fn!=null) {
           if (DoBind) {
           fn = fn.bind(mdl); }    // so that the 'this' context will be preserved
         }
       }
+    } }
+
+    // FOURTH...
+    if ((fn==null)&&(AllowUserEvents==true)) {
+    // if we are running with Python events, look for the generic handler
+    // registered with the main form...
+      if (Language == 'Python') {
+        fn = pas.NodeUtils.MainForm.myNode.FindRegisteredEvent('PythonEvent');
+        }
     }
 
-    // FOURTH ......
-    if ((fn==null)&&(AllowUserEvents==true)) {
-    // the event we seek may be a thread event, for a TXThreads component.
-    // These events are compiled into a separate unit (MainUnitName+'EventsThreads')
 
-      //alert('FindEventFunction looking in thread events unit '+UnitName+'Threads for '+handlerName);
-      var mdl=pas[UnitName+'Threads'];
-      if ((mdl!=null)&&(mdl!=undefined)) {
-        //alert('found module '+UnitName);
-          fn = mdl[ handlerName];
-          if (fn!=null) {
-            //alert('found function '+handlerName);
-            if (DoBind) {
-            fn = fn.bind(mdl); }    // so that the 'this' context will be preserved
-          }
-        }
-      }
+//    // FIFTH ......
+//    if ((fn==null)&&(AllowUserEvents==true)) {
+//    // the event we seek may be a thread event, for a TXThreads component.
+//    // These events are compiled into a separate unit (MainUnitName+'EventsThreads')
+//
+//      //alert('FindEventFunction looking in thread events unit '+UnitName+'Threads for '+handlerName);
+//      var mdl=pas[UnitName+'Threads'];
+//      if ((mdl!=null)&&(mdl!=undefined)) {
+//        //alert('found module '+UnitName);
+//          fn = mdl[ handlerName];
+//          if (fn!=null) {
+//            //alert('found function '+handlerName);
+//            if (DoBind) {
+//            fn = fn.bind(mdl); }    // so that the 'this' context will be preserved
+//          }
+//        }
+ //     }
     if (fn==undefined) {fn=null;}
 
 }catch(err) { alert(err.message+'  in Events.FindEventFunction '+myName+' '+EventType);}
@@ -395,7 +446,7 @@ end;
 result:=fn;
 end;
 
-procedure RunComponentEvent(e:TEventStatus;myName,NameSpace,EventType:string;MyNode:TDataNode;MyValue:string);
+function RunComponentEvent(e:TEventStatus;myName,NameSpace,EventType:string;MyNode:TDataNode;MyValue:string):Boolean;
 var
   UnitName:String;
   fn:TObject;
@@ -434,7 +485,7 @@ function ExecuteEventTrappers(e:TEventStatus;MyEventType,nodeID,myValue:string;m
      for j:=0 to NumHandlers - 1 do
      begin
          // Execute the registered event handler if it exists
-       //ShowMessage('ExecuteEventTrapper. '+trappers[i].NodeName+' '+MyEventType+' NodeId='+nodeID+' value='+myValue);
+         //ShowMessage('ExecuteEventTrapper. '+trappers[i].NodeName+' '+MyEventType+' NodeId='+nodeID+' value='+myValue);
          newe:=TEventStatus.Create(MyEventType,nodeID);
          // nodeid and namespace provide the original 'event node' for use in the trapper function
          newe.eventValue:=myValue;
@@ -504,11 +555,13 @@ begin
   end;
 end;
 
-procedure ExecuteEventHandler(e:TEventStatus;MyEventType,nodeID,myValue:string;myNode:TDataNode);
+function FindAndRunEventHandler(e:TEventStatus;MyEventType,nodeID,myValue:string;myNode:TDataNode):Boolean;
   var
      i,NumHandlers:integer;
+     found:Boolean;
   begin
-    //ShowMessage('ExecuteEventHandler. '+MyEventType+' NodeId='+nodeID+' value='+myValue);
+    found:=true;
+    //ShowMessage('FindAndRunEventHandler. '+MyEventType+' NodeId='+nodeID+' value='+myValue);
     NumHandlers:= myNode.MyEventTypes.count;
     for i:=0 to NumHandlers - 1 do
     begin
@@ -517,7 +570,9 @@ procedure ExecuteEventHandler(e:TEventStatus;MyEventType,nodeID,myValue:string;m
         // Execute the registered event handler if it exists
         if (myNode.NodeType<>'TXComposite')
         and (myNode.NodeType<>'TXCompositeIntf') then
-          RunComponentEvent(e,nodeID,e.NameSpace,MyEventType,myNode,myValue)
+        begin
+          found:=RunComponentEvent(e,nodeID,e.NameSpace,MyEventType,myNode,myValue);
+        end
         else if (myNode.NodeType='TXComposite') then
         begin
           // for a composite, if the event is 'ReadOnlyInterface', then execute the corresponding
@@ -532,17 +587,19 @@ procedure ExecuteEventHandler(e:TEventStatus;MyEventType,nodeID,myValue:string;m
         end;
       end;
     end;
+    result:=found;
 end;
 
-procedure  handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue,PropName:string);
+function  handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue,PropName:string):Boolean;
 var
   CurrentNode :TDataNode;
   m: TMethod;
   {$ifndef JScript}
   sc:TCursor;
   {$endif}
+  found:Boolean;
 begin
-
+  found:=true;
   if (StartingUp = false)
   and (not SuppressEvents) //!! check this !!!!
   then
@@ -553,9 +610,6 @@ begin
       e:=TEventStatus.Create(MyEventType,nodeID);
       e.NameSpace:=NameSpace;
     end;
-
-
-   //ShowMessage('handle event...'+MyEventType+' '+nodeID);
 
      // Identify the system node.
      // nodeID is the screen object name (nodename in the TDataNode tree)
@@ -592,8 +646,8 @@ begin
          if e.ContinueAfterTrappers then
          begin
             // run the specific event handler defined in the form for this component and event type (if any)
-            //showmessage('calling ExecuteEventHandler');
-            ExecuteEventHandler(e,MyEventType,CurrentNode.nodeName,myValue,CurrentNode) ;
+            //showmessage('calling FindAndRunEventHandler');
+            found:=FindAndRunEventHandler(e,MyEventType,CurrentNode.nodeName,myValue,CurrentNode) ;
          end;
 
      end;
@@ -602,15 +656,110 @@ begin
      Screen.Cursor:=sc;
      {$endif}
    end;
+  result:=found;
 end;
 
-procedure  handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue:string);
+function  handleEvent(e:TEventStatus;MyEventType,nodeID,NameSpace,myValue:string):Boolean;
 begin
-  handleEvent(e,MyEventType,nodeID,NameSpace,myValue,'');
+  result:=handleEvent(e,MyEventType,nodeID,NameSpace,myValue,'');
 end;
-procedure  handleEvent(MyEventType,nodeID,NameSpace,myValue:string);
+function  handleEvent(MyEventType,nodeID,NameSpace,myValue:string):Boolean;
 begin
-  handleEvent(nil,MyEventType,nodeID,NameSpace,myValue,'');
+  result:=handleEvent(nil,MyEventType,nodeID,NameSpace,myValue,'');
+end;
+
+
+////// procedure called from generated events unit, to execute user's event handlers and to
+////// control async functions with the init/main code sections in the event
+// initfunc and mainfunc point to Pascal functions to be executed.
+// If events are in Python mode, initfunc and mainfunc are null, with the Python scripts in InitPyCode,MainPyCode
+procedure RunTheEventFunc(e:TEventStatus;NodeId: String; myValue: String; fn:THandler;PyCode:String);
+var
+  bits:TStringList;
+  str:string;
+  i:integer;
+begin
+  if fn<>nil then  // (Pascal) execute a function in the dll
+    fn(e,NodeId,myValue)
+  else
+  begin  // run python script
+    bits:=TStringlist.Create;
+    bits.text:=PyCode;
+    glbEvent:=e;
+{$ifdef JScript}
+    // refresh the global 'e' object in the Python (Pyodide) environment
+    bits.insert(0,'e = pas.EventsInterface.glbEvent');
+    //bits.insert(1,'print("python e.ReturnString:",e.ReturnString)');
+    //bits.insert(1,'print("python e:",e)');
+{$else}
+    PassEToPythonFunc(e);
+    bits.Insert(0,'e = PyInterfaceE.Value');
+{$endif}
+    RunPyScriptFunc(bits,NodeId+' '+e.EventType);
+    bits.Free;
+{$ifndef JScript}
+    if e<>nil then
+      e.ReturnString:=GetEFromPythonFunc();
+{$endif}
+  end;
+end;
+
+procedure ExecuteEventHandler(e:TEventStatus;NodeId: String; myValue: String; initfunc,mainfunc:THandler;InitPyCode,MainPyCode:String);
+var
+  asyncWaiting:boolean;
+begin
+  asyncWaiting := false;
+  if (e<>nil) then
+    asyncWaiting := e.EventHasWaitingAsyncProcs;
+  {$ifndef JScript}
+  EventsNameSpace:=PChar(e.NameSpace);
+  {$else}
+  //asm console.log('ExecuteEventHandler code:'+InitPyCode+MainPyCode); end;
+  EventsNameSpace:=e.NameSpace;
+  {$endif}
+  if ((e=nil) or (e.InitDone=false))
+  and (not asyncWaiting) then
+  begin
+    if (e=nil) then
+    begin
+      e:=TEventStatus.Create(e.eventType,NodeId);
+      e.NameSpace:='';
+    end;
+    e.InitRunning:=true;
+    e.InitDone:=true;
+    RunTheEventFunc(e,NodeId,myValue,initfunc,InitPyCode);
+    e.InitRunning:=false;
+  end;
+  if e.AsyncProcsRunning.Count = 1 then
+    e.ClearAsync('ShowBusy');
+  if e.EventHasWaitingAsyncProcs = false then
+  begin
+    {$ifndef JScript}
+    RunTheEventFunc(e,NodeId,myValue,mainfunc,MainPyCode);
+    {$else}
+    if (e.eventType = 'DropAccepted')
+    or (e.eventType = 'DragStart') then
+      RunTheEventFunc(e,NodeId,myValue,mainfunc,MainPyCode)    // must do these synchronously
+    else
+    begin
+      /// timeout/job-queue so that any changes made in the 'init' secton will be refreshed on screen
+      if mainfunc<>nil then
+      begin
+        asm
+        console.log('timeout for main (pascal events)...');
+        myTimeout(mainfunc,5,'Event Main',0,e,NodeId,myValue,MainPyCode);
+        end;
+      end
+      else
+      begin
+        asm
+        console.log('timeout for main (python events)...');
+        myTimeout(pas.Events.RunTheEventFunc,5,'Event Main',0,e,NodeId,myValue,null,MainPyCode);
+        end;
+      end;
+    end;
+    {$endif}
+  end;
 end;
 
 
@@ -618,6 +767,7 @@ end;
 //============================================  End of Common Events Code ================================
 //======================================================================================================
 Begin
+  ExecuteEventHandlerFunc:=@ExecuteEventHandler;
  {$ifndef JScript}
   EventCode := TEventClass.Create;
 {$endif}
