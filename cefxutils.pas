@@ -174,7 +174,7 @@ begin
   otxt:=SimpleNodeSearch(document,'TXGPUCanvas','oarr');
   stxt:=SimpleNodeSearch(document,'TXGPUCanvas','sarr');
   actxt:=SimpleNodeSearch(document,'TXGPUCanvas','acdiv');
-  CefLog('sending sendGPUarrays', 1, CEF_LOG_SEVERITY_INFO, '' );
+  CefLog('sending sendGPUarrays1', 1, CEF_LOG_SEVERITY_INFO, '' );
   //CefDebugLog('sending sendGPUarrays. sendGPUarrays1 ');
   // Send back results to the browser process
   // Notice that the 'sendGPUarrays' message name needs to be recognized in
@@ -193,7 +193,7 @@ begin
   otxt:=SimpleNodeSearch(document,'TXGPUCanvas','oarr');
   stxt:=SimpleNodeSearch(document,'TXGPUCanvas','sarr');
   actxt:=SimpleNodeSearch(document,'TXGPUCanvas','acdiv');
-  CefLog('sending sendGPUarrays', 1, CEF_LOG_SEVERITY_INFO, '' );
+  CefLog('sending sendGPUarrays2', 1, CEF_LOG_SEVERITY_INFO, '' );
   //CefDebugLog('sending sendGPUarrays. sendGPUarrays2 '+stxt);
   // Send back results to the browser process
   // Notice that the 'sendGPUarrays' message name needs to be recognized in

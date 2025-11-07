@@ -134,7 +134,7 @@ begin
   TTrackBar(myControl).TickStyle:=tsAuto;
   TTrackBar(myControl).Constraints.MaxHeight:=20;
 
-  AddLabel(myControl);
+  AddLabel(myControl,self.LabelText);
 
 end;
 

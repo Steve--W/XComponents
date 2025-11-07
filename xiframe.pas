@@ -355,7 +355,7 @@ begin
     // Setting IsContainer false will prevent Lazarus IDE designer dropping new child controls into this one.
     self.IsContainer:=false;
 
-    AddLabel(myControl);
+    AddLabel(myControl,self.LabelText);
 
   end;
 

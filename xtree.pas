@@ -340,7 +340,7 @@ begin
   // Setting IsContainer false will prevent Laz IDE dropping new child controls into this one.
   self.IsContainer:=false;
 
-  AddLabel(myControl);
+  AddLabel(myControl,self.LabelText);
 
 end;
 

@@ -169,7 +169,7 @@ begin
 
   self.IsContainer:=false;
 
-  AddLabel(myControl);
+  AddLabel(myControl,self.LabelText);
 
 end;
 

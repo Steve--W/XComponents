@@ -569,9 +569,9 @@ begin
         end;
       end;
     end;
+    Data.Free;
+    zData.Free;
   end;
-  Data.Free;
-  zData.Free;
 
   result:=arr;
 end;

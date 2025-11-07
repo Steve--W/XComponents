@@ -116,7 +116,7 @@ type
     procedure PopulateMeFromJSONData(GridString:String);
     procedure PopulateStringGrid(gridData:String);
     procedure AddRowFromJSONData(rownum:integer; jData : TJSONData);
-    procedure ResetAnchors;
+    procedure ResetAnchorsForButtons;
     {$endif}
     function QuoteCellForJSON(cellval:String; rownum:integer):String;
     function ConstructDataString:String;
@@ -222,11 +222,17 @@ begin
   btnPanel := TCustomPanel.Create(self);
   btnPanel.parent := self;
   btnPanel.SetSubComponent(true);
-  btnPanel.Align:=alBottom;
+  //btnPanel.Align:=alBottom;
+  btnPanel.Align:=alNone;
   btnPanel.ControlStyle := myControl.ControlStyle - [csNoDesignSelectable];
-  btnPanel.Anchors := [akBottom];
+  //btnPanel.Anchors := [akBottom];
+  btnPanel.Anchors := [akLeft,akBottom];
+
   btnPanel.AnchorSideBottom.Control := self;
   btnPanel.AnchorSideBottom.Side := asrBottom;
+  btnPanel.AnchorSideLeft.Control := myControl;
+  btnPanel.AnchorSideLeft.Side := asrLeft;
+
   btnPanel.BorderStyle:=bsNone;
   btnPanel.BevelInner:=bvNone;
   btnPanel.BevelOuter:=bvNone;
@@ -263,7 +269,7 @@ begin
   TStringGrid(myControl).Options:=[goColSizing,goFixedVertLine,goFixedHorzLine,goVertLine,goHorzLine,goSmoothScroll,goEditing];
   //  default - scrollbars will appear as required
 
-  AddLabel(myControl);
+  AddLabel(myControl,self.LabelText);
 
 
 end;
@@ -273,51 +279,86 @@ var
   NewNode:TDataNode;
 begin
   NewNode:=CreateDynamicLazWidget('TXTable',ParentNode.MyForm,ParentNode,ScreenObjectName,NameSpace,Alignment,position);
+  TXTable(NewNode.ScreenObject).SortOutMyAlignmentAndLabelPos;
+
   result:=NewNode;
 end;
 
-procedure TXTable.ResetAnchors;
+procedure TXTable.ResetAnchorsForButtons;
 var
   theLbl:TLabel;
+
+(*  procedure diagn(aControl:TControl);
+    var
+    t,b,l,r:TControl;
+    tc,bc,lc,rc:String;
+    a:TAlign;
+    anc:TAnchors;
+    function theclass(aControl:TControl):String;
+    var str:String;
+    begin
+      if aControl<>nil then
+        str:=aControl.ClassName;
+      result:=str;
+    end;
+  begin
+    a:= aControl.align;
+    anc:= aControl.Anchors;
+    t:=aControl.AnchorSideTop.Control;
+    b:=aControl.AnchorSideBottom.Control;
+    l:=aControl.AnchorSideLeft.Control;
+    r:=aControl.AnchorSideRight.Control;
+    tc:=theclass(aControl.AnchorSideTop.Control);
+    bc:=theclass(aControl.AnchorSideBottom.Control);
+    lc:=theclass(aControl.AnchorSideLeft.Control);
+    rc:=theclass(aControl.AnchorSideRight.Control);
+    a:= aControl.align;
+  end;
+*)
+
 begin
+
   // take account of the (non-standard) presence of the button panel within the outer wrapperpanel.
-  TStringGrid(myControl).Anchors := [akTop,akBottom,akLeft,akRight];
-  TStringGrid(myControl).AnchorSideLeft.Control:=self;
-  TStringGrid(myControl).AnchorSideLeft.Side:=asrLeft;
-  TStringGrid(myControl).AnchorSideRight.Control:=self;
-  TStringGrid(myControl).AnchorSideRight.Side:=asrRight;
-  TStringGrid(myControl).AnchorSideTop.Control:=self;
-  TStringGrid(myControl).AnchorSideTop.Side:=asrTop;
-  TStringGrid(myControl).AnchorSideBottom.Control:=self;
-  TStringGrid(myControl).AnchorSideBottom.Side:=asrBottom;
+  // buttons are always below the table
   if btnPanel.Visible then
   begin
-    TStringGrid(myControl).AnchorSideBottom.Control:=btnPanel;
-    TStringGrid(myControl).AnchorSideBottom.Side:=asrTop;
-  end;
-
-  if self.myLbl<>nil then
-  begin
-    theLbl := self.myLbl;
-    if self.LabelPos='Top' then
+    if self.myLbl<>nil then
     begin
-      TStringGrid(myControl).AnchorSideTop.Control:=theLbl;
-      TStringGrid(myControl).AnchorSideTop.Side:=asrBottom;
-    end;
-    if self.LabelPos='Bottom' then
-    begin
-      TStringGrid(myControl).AnchorSideBottom.Control:=theLbl;
-      TStringGrid(myControl).AnchorSideBottom.Side:=asrTop;
-      if btnPanel.Visible then
+      theLbl := self.myLbl;
+      if self.LabelPos='Bottom' then
       begin
-        theLbl.AnchorSideBottom.Control:=btnPanel;
-        theLbl.AnchorSideBottom.Side:=asrTop;
+        theLbl.align:=alNone;
+        theLbl.AnchorHorizontalCenterTo(TStringGrid(myControl));
+        theLbl.Anchors := [akBottom,akLeft];
+        theLbl.AnchorSideBottom.Control := btnPanel;
+        theLbl.AnchorSideBottom.Side := asrTop;
+
+        TStringGrid(myControl).Anchors := TStringGrid(myControl).Anchors+[akBottom];   // AddAnchor(TStringGrid(myControl).Anchors,akBottom);
+        TStringGrid(myControl).AnchorSideTop.Control:=self;
+        TStringGrid(myControl).AnchorSideTop.Side:=asrTop;
+        TStringGrid(myControl).AnchorSideBottom.Control:=theLbl;
+        TStringGrid(myControl).AnchorSideBottom.Side:=asrTop;
+
+      end
+      else
+      begin
+        TStringGrid(myControl).Anchors := TStringGrid(myControl).Anchors + [akBottom];
+        TStringGrid(myControl).AnchorSideBottom.Control:=btnPanel;
+        TStringGrid(myControl).AnchorSideBottom.Side:=asrTop;
       end;
+      // diagnostics...............
+      //diagn(TStringGrid(myControl));
+      //diagn(theLbl);
+      //diagn(btnPanel);
+    end
+    else
+    begin
+      TStringGrid(myControl).AnchorSideBottom.Control:=btnPanel;
+      TStringGrid(myControl).AnchorSideBottom.Side:=asrTop;
     end;
   end;
 
 end;
-
 procedure TXTable.TableChange(Sender:TObject) ;
 var
   newData:String;
@@ -379,11 +420,11 @@ procedure TXTable.SetTableWidth(AValue:string);
 var
   tc:TControl;
 begin
-  //tc:=self.myControl;
-  tc:=self;
+  tc:=self.myControl;
+  //tc:=self;
   myNode.SetAttributeValue('TableWidth',AValue);
-  SetHeightWidth(self.myNode,tc,'TableWidth','TableHeight');
-  self.ResetAnchors;
+  SetHeightWidth(self.myNode,tc,'TableWidth','TableHeight');   // height/width apply to the table control
+  self.ResetAnchorsForButtons;
 
 end;
 
@@ -391,11 +432,11 @@ procedure TXTable.SetTableHeight(AValue:string);
 var
   tc:TControl;
 begin
-  //tc:=self.myControl;
-  tc:=self;
+  tc:=self.myControl;
+  //tc:=self;
   myNode.SetAttributeValue('TableHeight',AValue);
-  SetHeightWidth(self.myNode,tc,'TableWidth','TableHeight');
-  self.ResetAnchors;
+  SetHeightWidth(self.myNode,tc,'TableWidth','TableHeight');   // height/width apply to the table control
+  self.ResetAnchorsForButtons;
 end;
 
 procedure TXTable.SetColWidth(AValue:integer);
@@ -1193,12 +1234,12 @@ begin
         str:=str+QuoteCellForJSON(cells[j],i);
       end;
       str:=str+']';
+      cells.Free;
     end;
   end;
   str:=str+']';
 //  ShowAllChars(str);
   rows.Free;
-  cells.Free;
   result:=str;
 end;
 
@@ -1411,7 +1452,7 @@ begin
     self.btnControlPaste.Visible:=true
   else
     self.btnControlPaste.Visible:=false;
-  self.ResetAnchors;
+  self.ResetAnchorsForButtons;
   {$else}
   asm
   var ob = document.getElementById(this.NameSpace+this.NodeName+'ContentsBtns');

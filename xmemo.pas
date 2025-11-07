@@ -155,6 +155,8 @@ begin
   TMemo(myControl).WordWrap:=true;
   TMemo(myControl).ScrollBars:=ssVertical;
 
+  ////TMemo(myControl).Font.Name:='Courier';
+
   self.SetMyEventTypes;
 
   CreateComponentDataNode2(self,MyNodeType,myDefaultAttribs, self.myEventTypes, TheOwner,IsDynamic);
@@ -163,7 +165,7 @@ begin
   // Setting IsContainer false will prevent designer dropping new child controls into this one.
   self.IsContainer:=false;
 
-  AddLabel(myControl);
+  AddLabel(myControl,self.LabelText);
 
 end;
 

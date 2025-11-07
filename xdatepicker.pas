@@ -147,7 +147,7 @@ begin
   // Setting IsContainer false will prevent designer dropping new child controls into this one.
   self.IsContainer:=false;
 
-  AddLabel(myControl);
+  AddLabel(myControl,self.LabelText);
 
   ItemValue:=DateToStr(TDateTimePicker(myControl).Date);
 

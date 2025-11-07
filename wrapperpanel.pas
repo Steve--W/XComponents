@@ -116,7 +116,7 @@ type TWrapperPanel=Class(TInterfaceObject)
     constructor Create(TheOwner:TComponent);  override;
     constructor Create(TheOwner:TComponent;IsDynamic:Boolean); virtual;
     destructor Destroy; override;
-    procedure AddLabel(TargetControl:TControl);
+    procedure AddLabel(TargetControl:TControl;Txt:String);
     procedure EditingDone; override;
     procedure MyEditingDone(Sender:TObject);
     {$else}
@@ -830,14 +830,14 @@ end;
 {$ifndef JScript}
 
 
-procedure TWrapperPanel.AddLabel(TargetControl:TControl);
+procedure TWrapperPanel.AddLabel(TargetControl:TControl;Txt:String);
 var
   Lbl:TLabel;
 begin
 
   // add a label
    MyLbl := TLabel.Create(self);
-   MyLbl.Caption:='.';
+   MyLbl.Caption:=Txt;
    LabelRightSettings(TargetControl,myLbl);
    MyLbl.parent:=self;
 end;

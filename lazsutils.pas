@@ -1249,7 +1249,7 @@ begin
       end;
     end;
     if myself is TXTable then
-      TXTable(myself).ResetAnchors;
+      TXTable(myself).ResetAnchorsForButtons;
 
     TheControl.EnableAutoSizing;
   end;

@@ -127,7 +127,7 @@ begin
   TProgressBar(myControl).Step:=1;
   TProgressBar(myControl).Constraints.MaxHeight:=20;
 
-  AddLabel(myControl);
+  AddLabel(myControl,self.LabelText);
 
 end;
 
