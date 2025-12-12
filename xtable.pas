@@ -129,7 +129,7 @@ type
     function GetCellValue(row,col:integer):string;
     procedure SetCellValue(row,col:integer;AValue:string);
     function GetCellsAsArray(SkipHeader:Boolean):TTableCellsArray;
-    function GetTableDataForExcel:String;
+    function GetMyTableDataForExcel:String;
     procedure AddTableRows(numRows:integer);
     procedure AddTableColumns(numCols:integer);
     procedure DeleteRow(r:integer);
@@ -624,7 +624,7 @@ begin
    if not (csDesigning in componentState) then
    if (not SuppressEvents) then
    begin
-     strg:=GetTableDataForExcel;
+     strg:=GetMyTableDataForExcel;
      myCopyToClip('String',strg);
    end;
 end;
@@ -1053,7 +1053,7 @@ begin
   begin
     TargetNode:=TXTable(FindDataNodeByid(SystemNodeTree,NodeName,NameSpace,true));
 
-    strg:=TargetNode.GetTableDataForExcel;
+    strg:=TargetNode.GetMyTableDataForExcel;
     myCopyToClip('String',strg);
   end;
 end;
@@ -1267,7 +1267,7 @@ begin
   self.TableData:=tdata;
 end;
 
-function TXTable.GetTableDataForExcel:String;
+function TXTable.GetMyTableDataForExcel:String;
 var
   i,j,colcount:integer;
   str,rowstr,cellstr:string;
