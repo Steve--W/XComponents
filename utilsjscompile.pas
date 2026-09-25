@@ -9,6 +9,7 @@
 
  **********************************************************************
  *)
+
 unit UtilsJSCompile;
 
 {$ifndef JScript}
@@ -228,6 +229,7 @@ begin
   ResourceToFile('xmemo',ProgPath+'resources/xcomponents/xmemo.pas');
   ResourceToFile('xtree',ProgPath+'resources/xcomponents/xtree.pas');
   ResourceToFile('xradiobtns',ProgPath+'resources/xcomponents/xradiobtns.pas');
+  ResourceToFile('xchecklistbox',ProgPath+'resources/xcomponents/xchecklistbox.pas');
   ResourceToFile('xtable',ProgPath+'resources/xcomponents/xtable.pas');
   ResourceToFile('xform',ProgPath+'resources/xcomponents/xform.pas');
   ResourceToFile('xprogressbar',ProgPath+'resources/xcomponents/xprogressbar.pas');
@@ -474,7 +476,12 @@ begin
       HTMLString:=CreateHTMLWrapper(ProgramName,'FromLaz',true,TheLines.Text);
       WriteToFile(ProgramName+'.html',HTMLString);
 
-      OpenDocument(ProjectDirectory+ProgramName+'.html');
+      try
+        OpenURL('http://localhost:8000/'+ProgramName+'.html');
+      except
+        ShowMessage('No localhost:8000 available.  Launching file...');
+        OpenDocument(ProjectDirectory+ProgramName+'.html');
+      end;
     end;
 
     FreeAndNil(TheLines);

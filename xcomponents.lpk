@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
-  <Package Version="4">
+  <Package Version="5">
     <PathDelim Value="\"/>
     <Name Value="XComponents"/>
     <Type Value="RunAndDesignTime"/>
@@ -52,7 +52,7 @@
         <CustomOptions Value="-dChromium"/>
       </Other>
     </CompilerOptions>
-    <Files Count="43">
+    <Files Count="44">
       <Item1>
         <Filename Value="wrapperpanel.pas"/>
         <UnitName Value="WrapperPanel"/>
@@ -254,7 +254,13 @@
         <Filename Value="cefxutils.pas"/>
         <UnitName Value="CEFXUtils"/>
       </Item43>
+      <Item44>
+        <Filename Value="xchecklistbox.pas"/>
+        <HasRegisterProc Value="True"/>
+        <UnitName Value="XCheckListBox"/>
+      </Item44>
     </Files>
+    <CompatibilityMode Value="True"/>
     <RequiredPkgs Count="6">
       <Item1>
         <PackageName Value="FrameViewer09"/>

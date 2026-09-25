@@ -14,7 +14,7 @@ uses
   XMemo, XTree, XTable, XCode, XProgressBar, XNumericSlider, XNumberSpinner, 
   XDatePicker, XColorPicker, XImage, XBitMap, XRadioBtns, XMenu, XIFrame, 
   XHTMLEditor, XSVGContainer, XHTMLText, XTrapEvents, XStore, PasteDialogUnit, 
-  CompilerLogUnit, CEFXUtils, LazarusPackageIntf;
+  CompilerLogUnit, CEFXUtils, XCheckListBox, LazarusPackageIntf;
 
 implementation
 
@@ -50,6 +50,7 @@ begin
   RegisterUnit('XHTMLText', @XHTMLText.Register);
   RegisterUnit('XTrapEvents', @XTrapEvents.Register);
   RegisterUnit('XStore', @XStore.Register);
+  RegisterUnit('XCheckListBox', @XCheckListBox.Register);
 end;
 
 initialization

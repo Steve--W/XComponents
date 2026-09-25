@@ -1574,6 +1574,7 @@ var
     l:integer;
 begin
   if NodeType='' then EXIT;
+  asm console.log('adding funcs for node type '+ NodeType); end;
   l:=Length(NodeFuncsLookup);
   SetLength(NodeFuncsLookup,l+1);
   myRec.NodeType:=NodeType;
@@ -2810,16 +2811,16 @@ var
   inobFn:TCreateInObFunc;
   mynode:TDataNode;
 begin
-  //showmessage('CreateInterfaceObject '+NodeType+' '+NodeName);
+  asm console.log('CreateInterfaceObject '+NodeType+' '+NodeName); end;
   // Find the interface object and link to this node
   // Object creation procs are stored in NodeFuncLookup.
   // Find the creation func for this node type, and execute it.
   inobFn:=LookupNodeInObFunc(NodeType);
   if inobFn=nil then
-    showmessage('no interface object creation function for '+myNode.NodeName)
+    showmessage('no interface object creation function for '+NodeType+' '+NodeName)
   else
   begin
-    //showmessage('function found');
+    //asm console.log('function found'); end;
     myObj:=inobFn(MyForm,NodeName,NameSpace);
   end;
   result:=myObj;
